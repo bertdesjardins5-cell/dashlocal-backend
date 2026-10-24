@@ -10,6 +10,10 @@ API = f"{BASE_URL}/api"
 TZ = ZoneInfo("America/Los_Angeles")
 
 
+def nice(d):
+    return datetime.fromisoformat(d).strftime("%a %d %b")  # server nice_date format
+
+
 def day(n):
     return (datetime.now(TZ).date() + timedelta(days=n)).isoformat()
 
@@ -95,7 +99,7 @@ def test_same_day_booking_no_move(api, r101):
 def test_track_scheduled_alert_unrouted(api):
     s = pytest.moved
     t = api.get(f"{API}/track/{s['tracking_code']}").json()
-    assert t["alert"] == f"Scheduled for {day(1)}", t
+    assert t["alert"] == f"Scheduled for {nice(day(1))}", t
 
 
 def test_zones_by_date(api):
@@ -126,7 +130,7 @@ def test_batch_future_route(api):
     st = api.post(f"{API}/routes/{route['id']}/start")
     assert st.status_code == 400 and "scheduled for" in st.json()["detail"].lower()
     t = api.get(f"{API}/track/{s['tracking_code']}").json()
-    assert t["alert"] == f"Scheduled for {day(1)}", t
+    assert t["alert"] == f"Scheduled for {nice(day(1))}", t
 
 
 def test_move_back_to_today_from_future_route(api):

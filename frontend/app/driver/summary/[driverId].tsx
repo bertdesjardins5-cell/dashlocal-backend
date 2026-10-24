@@ -7,6 +7,7 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import { api, dayLabel, Driver, fmtDepotTime } from "@/src/api";
 import { Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
+import WeekScorecard, { ScoreDay, ScoreTotals } from "@/src/components/WeekScorecard";
 
 type Summary = {
   driver: Driver;
@@ -26,6 +27,8 @@ type Summary = {
   hours: number;
   drops_per_hour: number;
   geofence_arrivals: number;
+  avg_rating: number | null;
+  ratings: number;
   pod: { photo: number; signature: number; qr: number };
   stops: { seq: number; route_id: string; customer_name: string; tracking_code: string; status: string; delivered_at: string | null; window: string | null; on_time: boolean | null; fail_reason: string | null }[];
 };
@@ -36,6 +39,7 @@ export default function DriverSummary() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const q = useQuery({ queryKey: ["driver-summary", driverId], queryFn: () => api<Summary>(`/drivers/${driverId}/summary`) });
+  const week = useQuery({ queryKey: ["driver-scorecard", driverId], queryFn: () => api<{ days: ScoreDay[]; totals: ScoreTotals }>(`/drivers/${driverId}/scorecard`) });
   const d = q.data;
   const hrs = d ? `${Math.floor(d.hours)}H ${String(Math.round((d.hours % 1) * 60)).padStart(2, "0")}M` : "";
 
@@ -45,6 +49,8 @@ export default function DriverSummary() {
         { k: "ON-TIME", v: d.on_time_rate == null ? "—" : `${d.on_time_rate}%`, sub: `${d.windowed_on_time}/${d.windowed_delivered} WINDOWS HIT`, id: "summary-on-time" },
         { k: "KM DRIVEN", v: d.km_driven.toFixed(1), sub: `${d.planned_km.toFixed(1)} KM PLANNED`, id: "summary-km" },
         { k: "DROPS/HR", v: `${d.drops_per_hour}`, sub: `${hrs} ON ROUTE`, id: "summary-pace" },
+        { k: "RATING", v: d.avg_rating == null ? "—" : `${d.avg_rating}★`, sub: `${d.ratings} CUSTOMER RATINGS`, id: "summary-rating" },
+        { k: "GEOFENCE", v: `${d.geofence_arrivals}`, sub: "AUTO ARRIVALS", id: "summary-geofence" },
       ]
     : [];
 
@@ -52,7 +58,7 @@ export default function DriverSummary() {
     <View style={s.root} testID="driver-summary-screen">
       <Header title="DAY SUMMARY" subtitle={d ? `${d.driver.name} · ${dayLabel(d.date)}` : undefined} />
       {q.isLoading ? <Loading /> : q.error || !d ? <ErrorBlock message={(q.error as Error)?.message ?? "Not found"} onRetry={() => { q.refetch(); }} /> : (
-        <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }} refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => { q.refetch(); }} />}>
+        <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }} refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => { q.refetch(); week.refetch(); }} />}>
           <View style={[s.hero, d.all_completed && { backgroundColor: colors.success }]} testID="summary-hero">
             <Mono style={s.heroKicker}>{d.routes.length ? d.routes.map((r) => r.name).join(" · ") : "NO ROUTES STARTED TODAY"}</Mono>
             <Display style={s.heroTitle}>{d.all_completed ? "SHIFT\nCOMPLETE" : d.routes.length ? "SHIFT IN\nPROGRESS" : "NOTHING\nYET"}</Display>
@@ -79,6 +85,8 @@ export default function DriverSummary() {
               </View>
             ))}
           </View>
+          <Mono style={s.section}>THIS WEEK · LAST 7 DAYS</Mono>
+          {week.data ? <WeekScorecard days={week.data.days} totals={week.data.totals} /> : <Loading testID="week-loading" />}
           <Mono style={s.section}>DROPS · {d.total_stops}</Mono>
           {d.stops.map((x) => (
             <View key={`${x.route_id}-${x.tracking_code}`} style={s.row} testID={`summary-stop-${x.tracking_code}`}>

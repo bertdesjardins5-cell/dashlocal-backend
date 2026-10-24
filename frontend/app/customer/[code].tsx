@@ -5,8 +5,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
-import { api, fmtDepotTime, Tracking, windowLabel, WS_BASE } from "@/src/api";
+import { api, fmtDepotTime, smsNote, Tracking, windowLabel, WS_BASE } from "@/src/api";
 import WindowPicker from "@/src/components/WindowPicker";
+import RatingPrompt from "@/src/components/RatingPrompt";
 import RouteMap from "@/src/components/RouteMap";
 import { Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
@@ -58,10 +59,10 @@ export default function TrackOrder() {
     if (!t) return;
     setSavingWin(true);
     try {
-      const st = await api<Tracking["stop"] & { moved_off_route: string | null }>(`/stops/${t.stop.id}/window`, { method: "PUT", body: { date, start, end } });
+      const st = await api<Tracking["stop"] & { moved_off_route: string | null; sms_status?: string }>(`/stops/${t.stop.id}/window`, { method: "PUT", body: { date, start, end } });
       const fresh = await q.refetch();
       if (fresh.data) setLive(fresh.data);
-      toast.show(start ? `WINDOW ${windowLabel(st)} BOOKED` : "WINDOW CLEARED", "green");
+      toast.show(`${start ? `WINDOW ${windowLabel(st)} BOOKED` : "WINDOW CLEARED"}${smsNote(st.sms_status)}`, "green");
     } catch (e: any) {
       toast.show(e.message, "red");
     } finally {
@@ -122,6 +123,16 @@ export default function TrackOrder() {
                 </Mono>
                 <WindowPicker testIDPrefix="customer-window" date={t.stop.window_date} start={t.stop.window_start} end={t.stop.window_end} disabled={savingWin || t.stop.status === "arrived"} onSelect={requestWindow} />
               </View>
+            ) : null}
+            {delivered ? (
+              <RatingPrompt
+                stop={t.stop}
+                onRated={(st) => {
+                  setLive({ ...t, stop: st });
+                  toast.show("THANKS FOR YOUR FEEDBACK", "green");
+                }}
+                onError={(m) => toast.show(m, "red")}
+              />
             ) : null}
           </View>
         </View>

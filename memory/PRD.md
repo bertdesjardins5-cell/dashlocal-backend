@@ -20,6 +20,10 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - 2026-10-24: Future-day booking — window_date (today..+6 in UI, +13 API); booking another day moves a pending stop off its route; routes have service_date; admin batches by zone + day; future routes plan from 08:00 that day and can't be dispatched early.
 - 2026-10-24: Driver day summary — /api/drivers/{id}/summary (drops, failed, on-time rate vs windows, km driven vs planned, drops/hr, PoD mix); summary screen from manifest header / empty / complete states.
 - 2026-10-24: Printable label sheet — /api/routes/{id}/labels.html (A4, 8 QR labels per page, server-rendered SVG QR); LABELS button prints via expo-print (native) or new tab auto-print (web).
+- 2026-10-24: Weekly scorecard — /api/drivers/{id}/scorecard (7 days: drops, windowed on-time %, drops/hr, km, rating) + /api/scorecards (ranked drivers); week section with bar chart on driver summary; admin "Driver scorecards" list with sparkline; seed adds 6 days of completed history routes (H-MMDD); today views (analytics, routes, track-codes) exclude history.
+- 2026-10-24: Labels in loading order — reverse drop order with LOAD nn tags and loading hint.
+- 2026-10-24: Customer rating — POST /api/stops/{id}/rating (1–5, once, delivered only, tags as comment); prompt appears on tracking screen as soon as the drop is delivered (WebSocket); avg rating in analytics, summary, scorecards.
+- 2026-10-24: Booking confirmation texts — Twilio SMS on window booked/changed/cleared (non-blocking, logged); sms_status returned; seeded fictional 555-01xx numbers are skipped.
 
 ## Backlog
 - P1: auth/roles; push notifications (on request only)

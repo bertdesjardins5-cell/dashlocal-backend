@@ -25,6 +25,8 @@ export type Stop = {
   window_start: string | null;
   window_end: string | null;
   window_date: string | null;
+  rating?: number | null;
+  rating_comment?: string | null;
   planned_eta?: string | null;
   late_min?: number;
   fail_reason: string | null;
@@ -99,6 +101,9 @@ export const windowLabel = (s: { window_start: string | null; window_end: string
   s.window_start && s.window_end
     ? `${s.window_date && s.window_date !== depotToday() ? `${dayLabel(s.window_date)} ` : ""}${s.window_start}–${s.window_end}`
     : null;
+
+export const smsNote = (status?: string) =>
+  status === "sent" ? " · CONFIRMATION TEXT SENT" : status === "failed" ? " · TEXT COULD NOT BE SENT" : "";
 
 // Depot-local calendar helpers (dates are YYYY-MM-DD strings).
 export function depotToday(): string {

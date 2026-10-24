@@ -8,7 +8,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from "react-native-draggable-flatlist";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
-import { api, API, dayLabel, depotToday, fmtDepotTime, RouteDetail, Stop, windowLabel } from "@/src/api";
+import { api, API, dayLabel, depotToday, fmtDepotTime, RouteDetail, smsNote, Stop, windowLabel } from "@/src/api";
 import RouteMap from "@/src/components/RouteMap";
 import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
@@ -51,14 +51,14 @@ export default function AdminRoute() {
     if (!sel) return;
     setBusy("win");
     try {
-      const st = await api<Stop & { moved_off_route: string | null }>(`/stops/${sel.id}/window`, { method: "PUT", body: { date, start, end } });
+      const st = await api<Stop & { moved_off_route: string | null; sms_status?: string }>(`/stops/${sel.id}/window`, { method: "PUT", body: { date, start, end } });
       await q.refetch();
       if (st.moved_off_route) {
         setSel(null);
-        toast.show(`${st.tracking_code} BOOKED FOR ${windowLabel(st)} — MOVED OFF THIS ROUTE`, "green");
+        toast.show(`${st.tracking_code} BOOKED FOR ${windowLabel(st)} — MOVED OFF THIS ROUTE${smsNote(st.sms_status)}`, "green");
       } else {
         setSel({ ...sel, ...st });
-        toast.show(start ? `WINDOW ${windowLabel(st)} SET · OPTIMIZE TO APPLY` : "WINDOW CLEARED", "green");
+        toast.show(`${start ? `WINDOW ${windowLabel(st)} SET · OPTIMIZE TO APPLY` : "WINDOW CLEARED"}${smsNote(st.sms_status)}`, "green");
       }
     } catch (e: any) {
       toast.show(e.message, "red");

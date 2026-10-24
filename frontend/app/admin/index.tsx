@@ -12,7 +12,7 @@ type Zone = { zone: string; postal_code: string; count: number };
 type RouteRow = { id: string; name: string; status: string; total: number; completed: number; driver: Driver | null; planned_distance_m: number; service_date: string };
 type Analytics = {
   drops_per_hour: number; avg_deviation_pct: number; delivered: number; failed: number; total_orders: number; unassigned: number;
-  success_rate: number; geofence_arrival_pct: number; active_routes: number;
+  success_rate: number; geofence_arrival_pct: number; active_routes: number; avg_rating: number | null;
   routes: { id: string; name: string; drops_per_hour: number; deviation_pct: number | null; planned_km: number; actual_km: number }[];
 };
 
@@ -31,8 +31,12 @@ export default function AdminDashboard() {
   const zones = useQuery({ queryKey: ["zones", day], queryFn: () => api<Zone[]>(`/zones?date=${day}`) });
   const routes = useQuery({ queryKey: ["routes"], queryFn: () => api<RouteRow[]>("/routes"), refetchInterval: 10000 });
   const drivers = useQuery({ queryKey: ["drivers"], queryFn: () => api<(Driver & { route: any })[]>("/drivers") });
+  const cards = useQuery({
+    queryKey: ["scorecards"],
+    queryFn: () => api<{ driver: Driver; on_time_rate: number | null; drops_per_hour: number; delivered: number; avg_rating: number | null; trend: number[] }[]>("/scorecards"),
+  });
 
-  const refresh = () => { an.refetch(); zones.refetch(); routes.refetch(); drivers.refetch(); };
+  const refresh = () => { an.refetch(); zones.refetch(); routes.refetch(); drivers.refetch(); cards.refetch(); };
 
   const batch = async (zone: string) => {
     const driver_id = assign[zone];
@@ -63,6 +67,7 @@ export default function AdminDashboard() {
     { k: "SUCCESS", v: `${an.data.success_rate}%`, id: "kpi-success" },
     { k: "GEOFENCE ARRIVALS", v: `${an.data.geofence_arrival_pct}%`, id: "kpi-geofence" },
     { k: "UNASSIGNED", v: an.data.unassigned, id: "kpi-unassigned" },
+    { k: "AVG RATING", v: an.data.avg_rating == null ? "—" : `${an.data.avg_rating}★`, id: "kpi-rating" },
   ] : [];
 
   return (
@@ -81,6 +86,24 @@ export default function AdminDashboard() {
               </View>
             ))}
           </View>
+
+          <Mono style={s.section}>DRIVER SCORECARDS · LAST 7 DAYS</Mono>
+          {cards.data?.map((c, i) => (
+            <Pressable key={c.driver.id} testID={`scorecard-${c.driver.id}`} onPress={() => router.push(`/driver/summary/${c.driver.id}`)} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
+              <Display style={[s.rank, i === 0 && { color: colors.brandPrimary }]}>{i + 1}</Display>
+              <View style={{ flex: 1, gap: 4 }}>
+                <Display style={s.rowTitle}>{c.driver.name}</Display>
+                <Mono style={s.meta}>
+                  {c.on_time_rate == null ? "—" : `${c.on_time_rate}%`} ON-TIME · {c.drops_per_hour}/HR · {c.delivered} DROPS · {c.avg_rating ? `${c.avg_rating}★` : "NO RATINGS"}
+                </Mono>
+              </View>
+              <View style={s.spark}>
+                {c.trend.map((v, j) => (
+                  <View key={j} style={[s.sparkBar, { height: 4 + (v / Math.max(1, ...c.trend)) * 24, backgroundColor: j === c.trend.length - 1 ? colors.brandPrimary : colors.surfaceInverse }]} />
+                ))}
+              </View>
+            </Pressable>
+          ))}
 
           <Mono style={s.section}>ROUTES</Mono>
           {routes.data?.length === 0 ? <Mono style={s.emptyText}>NO ACTIVE ROUTES</Mono> : null}
@@ -146,6 +169,9 @@ const useStyles = makeStyles((c) => ({
   kpiVal: { fontSize: 30, letterSpacing: -1 },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.lg, borderBottomWidth: 2, borderColor: c.border },
   rowTitle: { fontSize: 18 },
+  rank: { fontSize: 26, width: 28 },
+  spark: { flexDirection: "row", alignItems: "flex-end", gap: 2, height: 30 },
+  sparkBar: { width: 5 },
   meta: { fontSize: 11, color: c.muted },
   emptyText: { padding: spacing.lg, fontSize: 13, color: c.muted },
   zone: { padding: spacing.lg, gap: spacing.md, borderBottomWidth: 2, borderColor: c.border },
