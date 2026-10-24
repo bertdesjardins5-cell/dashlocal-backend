@@ -1,0 +1,46 @@
+{
+  "summary": "Iteration 5: Future-day booking, Driver Day Summary, Printable Label Sheet. Backend: 14/14 new pytest pass + 30/30 regression (44/44). Frontend (375x667 web preview): customer day/slot picker, admin batch-by-day + future route (no DISPATCH, date in subtitle), print-labels (opens labels.html?autoprint=1 tab, no error toast), admin stop-sheet move-off toast + sheet close + resequence, driver summary (in-progress, empty, complete states) all work. Found 3 real bugs: (1) GET /drivers/{id}/route returns a FUTURE planned route over today's planned route; (2) arrive/deliver allowed on stops of a future (not-started) route and driver manifest shows NAVIGATE/OPEN DROP for it; (3) customer tracking screen keeps stale ETA/driver/alert after booking another day. Plus minor validation issue (compact date '20261026' accepted). No deprecated Expo packages detected. Twilio NOT triggered. Data reset at end.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/drivers/{driver_id}/route", "issue": "When a driver has both a future planned route and a today planned route, it returns whichever planned route find_one hits first (no service_date filter/sort). Repro: batch SoMa for drv-2 service_date=tomorrow (R-102), then batch Sunset for drv-2 today (R-103) -> /drivers/drv-2/route returns R-102 (tomorrow), so the driver app shows 'SCHEDULED FOR 25 SUN' and no START ROUTE for today's route. Fix: query planned with service_date >= today sorted by service_date asc (server.py:545-546).", "priority": "HIGH"},
+      {"endpoint": "POST /api/stops/{id}/arrive, /deliver, /fail", "issue": "No route-status/service_date guard: stops on a future-dated planned route can be arrived/delivered today (verified arrive -> 200 on R-102 tomorrow stop). Once 'arrived', set_window refuses day changes. Driver manifest (driver/[driverId].tsx) also renders next-stop-card with NAVIGATE/OPEN DROP for scheduled future routes. Fix: reject with 400 when route.service_date > today (or route not active), and hide next-stop actions when route-scheduled-notice is shown.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "check_service_date (zones/batch/window)", "issue": "date.fromisoformat on Python 3.11+ accepts compact 'YYYYMMDD'; POST /routes/batch with service_date '20261026' created route R-104 with service_date '20261026', which breaks all string comparisons (today_str compare, zones/eligibility). Validate with regex ^\\d{4}-\\d{2}-\\d{2}$ and normalise via .isoformat(). Batch/zones also have no upper bound on service_date (only window booking enforces +13)."},
+      {"endpoint": "GET /api/drivers/{id}/summary", "issue": "on_time_rate counts deliveries without a window as on-time (4 delivered, 2 windowed -> 100%). Spec says 'delivered within window end' - consider on_time_rate = windowed_on_time/windowed_delivered, or label clearly. Also summary has no 'date' param on frontend (always today)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Customer books a different day (customer/[code].tsx:61 requestWindow)", "issue": "After PUT /window, code does setLive({ ...t, stop: st }) which overrides the fresher WS/refetch payload (t = live ?? q.data). Result: booking TMRW for MD1002 (moved off R-101) still shows ETA 15:00, 5 STOPS AWAY, driver Marcus Reid, no 'Scheduled for' banner; booking TODAY back still shows 'SCHEDULED FOR 2026-10-25'. Correct only after reload. Fix: after PUT, fetch /track/{code} (or setLive(null) and await q.refetch()) instead of merging stop into stale payload.", "affected_testIDs": ["tracking-eta", "tracking-stops-away", "tracking-alert-banner", "customer-window-section"]}
+    ],
+    "design_issues": [
+      {"screen": "admin/route/[id]", "issues": ["RE-OPTIMIZE button label wraps to 2 lines at 375px when LABELS button is present; header subtitle truncated ('2.7 KM P...')"]},
+      {"screen": "customer/[code]", "issues": ["Alert banner shows raw ISO 'SCHEDULED FOR 2026-10-25' while the rest of the UI uses dayLabel ('25 SUN')"]},
+      {"screen": "driver/[driverId]", "issues": ["After route completion, reload shows 'NO ROUTE ASSIGNED' (completed routes not returned) rather than route-complete state; empty-view-summary-button still reaches SHIFT COMPLETE summary so acceptable"]},
+      {"screen": "WindowPicker", "issues": ["Day/slot chips are 36px tall (hitSlop 4 makes ~44 effective) - ok; internal 'day' state not resynced when date prop changes from WS"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_future_days_summary_labels.py", "/app/test_reports/pytest/pytest_results_iter5.xml"],
+  "action_items": [
+    "Fix GET /drivers/{id}/route to prefer today's (earliest service_date >= today) planned route over future ones",
+    "Block arrive/deliver/fail (and geofence) for stops on routes with service_date > today / not active; hide NAVIGATE/OPEN DROP on driver manifest for scheduled future routes",
+    "customer/[code].tsx requestWindow: replace setLive({...t, stop: st}) with a fresh /track/{code} fetch so ETA/driver/alert update after day change",
+    "Strict YYYY-MM-DD validation in check_service_date (reject '20261026'); optionally cap batch/zones date at +13 days",
+    "Optional: on_time_rate should be based on windowed deliveries only; format alert date with dayLabel"
+  ],
+  "critical_code_review_comments": [
+    "server.py is 1084 lines (>700) - consider splitting routes/summary/labels into modules",
+    "simulate-step 'meters' is a query param, not body",
+    "admin route print on web uses window.open synchronously in onPress - works (popup opened in test)"
+  ],
+  "updated_files": ["/app/backend/tests/test_future_days_summary_labels.py"],
+  "success_rate": {"backend": "100% of planned tests (44/44) - 2 additional bugs found by exploratory API checks", "frontend": "~90% (all requested flows pass; customer post-booking state stale)"},
+  "seed_data_creation": "None; used POST /api/admin/reset before and after.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Server clock is Oct 2026 (LA). Run pytest with -n 0 (pytest.ini adds xdist loadscope; modules share DB via reset). Admin stop sheet uses slide animation - wait ~1.5s before clicking admin-window-* chips. Summary KPI cards use FadeInDown - wait before reading text. Do not run test_twilio_contact.py (paid).",
+  "rca_of_issue": "Driver route: find_one({'status':'planned'}) without service_date ordering. Future-route delivery: arrive/deliver only check stop.status. Customer stale UI: local live state merged with PUT response overrides WS payload broadcast earlier in the same request."
+}

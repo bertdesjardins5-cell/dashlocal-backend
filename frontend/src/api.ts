@@ -24,6 +24,7 @@ export type Stop = {
   pod_qr_verified: boolean;
   window_start: string | null;
   window_end: string | null;
+  window_date: string | null;
   planned_eta?: string | null;
   late_min?: number;
   fail_reason: string | null;
@@ -39,6 +40,7 @@ export type RouteDetail = {
   driver_id: string | null;
   status: "planned" | "active" | "completed";
   planned_distance_m: number;
+  service_date: string;
   actual_distance_m: number;
   started_at: string | null;
   driver: Driver | null;
@@ -93,5 +95,25 @@ export function fmtDepotTime(iso: string | null | undefined): string {
     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
 }
-export const windowLabel = (s: { window_start: string | null; window_end: string | null }) =>
-  s.window_start && s.window_end ? `${s.window_start}–${s.window_end}` : null;
+export const windowLabel = (s: { window_start: string | null; window_end: string | null; window_date?: string | null }) =>
+  s.window_start && s.window_end
+    ? `${s.window_date && s.window_date !== depotToday() ? `${dayLabel(s.window_date)} ` : ""}${s.window_start}–${s.window_end}`
+    : null;
+
+// Depot-local calendar helpers (dates are YYYY-MM-DD strings).
+export function depotToday(): string {
+  try {
+    return new Date().toLocaleDateString("en-CA", { timeZone: DEPOT_TZ });
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+export function addDays(d: string, n: number): string {
+  const t = new Date(`${d}T12:00:00Z`);
+  t.setUTCDate(t.getUTCDate() + n);
+  return t.toISOString().slice(0, 10);
+}
+export function dayLabel(d: string): string {
+  const t = new Date(`${d}T12:00:00Z`);
+  return t.toLocaleDateString("en-US", { weekday: "short", day: "numeric", timeZone: "UTC" }).toUpperCase();
+}

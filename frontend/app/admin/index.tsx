@@ -4,12 +4,12 @@ import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
-import { api, Driver } from "@/src/api";
+import { addDays, api, dayLabel, depotToday, Driver } from "@/src/api";
 import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
 
 type Zone = { zone: string; postal_code: string; count: number };
-type RouteRow = { id: string; name: string; status: string; total: number; completed: number; driver: Driver | null; planned_distance_m: number };
+type RouteRow = { id: string; name: string; status: string; total: number; completed: number; driver: Driver | null; planned_distance_m: number; service_date: string };
 type Analytics = {
   drops_per_hour: number; avg_deviation_pct: number; delivered: number; failed: number; total_orders: number; unassigned: number;
   success_rate: number; geofence_arrival_pct: number; active_routes: number;
@@ -25,8 +25,10 @@ export default function AdminDashboard() {
   const [assign, setAssign] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
 
+  const [day, setDay] = useState(depotToday());
+  const days = Array.from({ length: 7 }, (_, i) => addDays(depotToday(), i));
   const an = useQuery({ queryKey: ["analytics"], queryFn: () => api<Analytics>("/analytics"), refetchInterval: 10000 });
-  const zones = useQuery({ queryKey: ["zones"], queryFn: () => api<Zone[]>("/zones") });
+  const zones = useQuery({ queryKey: ["zones", day], queryFn: () => api<Zone[]>(`/zones?date=${day}`) });
   const routes = useQuery({ queryKey: ["routes"], queryFn: () => api<RouteRow[]>("/routes"), refetchInterval: 10000 });
   const drivers = useQuery({ queryKey: ["drivers"], queryFn: () => api<(Driver & { route: any })[]>("/drivers") });
 
@@ -37,7 +39,7 @@ export default function AdminDashboard() {
     if (!driver_id) return toast.show("PICK A DRIVER FIRST", "red");
     setBusy(zone);
     try {
-      const r = await api<{ id: string; name: string }>("/routes/batch", { method: "POST", body: { zone, driver_id } });
+      const r = await api<{ id: string; name: string }>("/routes/batch", { method: "POST", body: { zone, driver_id, service_date: day } });
       toast.show(`${r.name} CREATED & OPTIMIZED`, "green");
       refresh();
       router.push(`/admin/route/${r.id}`);
@@ -91,7 +93,7 @@ export default function AdminDashboard() {
                     <Display style={s.rowTitle}>{r.name}</Display>
                     <Pill label={r.status} tone={statusTone(r.status)} />
                   </View>
-                  <Mono style={s.meta}>{r.driver?.name ?? "UNASSIGNED"} · {r.completed}/{r.total} DROPS · {(r.planned_distance_m / 1000).toFixed(1)} KM PLAN</Mono>
+                  <Mono style={s.meta}>{r.service_date !== depotToday() ? `${dayLabel(r.service_date)} · ` : ""}{r.driver?.name ?? "UNASSIGNED"} · {r.completed}/{r.total} DROPS · {(r.planned_distance_m / 1000).toFixed(1)} KM PLAN</Mono>
                   {ar ? <Mono style={s.meta}>{ar.drops_per_hour} DROPS/HR · DEV {ar.deviation_pct ?? "—"}{ar.deviation_pct != null ? "%" : ""} · {ar.actual_km} KM DRIVEN</Mono> : null}
                 </View>
                 <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />
@@ -99,7 +101,14 @@ export default function AdminDashboard() {
             );
           })}
 
-          <Mono style={s.section}>UNASSIGNED · BATCH BY ZONE</Mono>
+          <Mono style={s.section}>UNASSIGNED · BATCH BY ZONE & DAY</Mono>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ height: 56, flexGrow: 0, borderBottomWidth: 2, borderColor: colors.border }} contentContainerStyle={{ gap: spacing.sm, alignItems: "center", paddingHorizontal: spacing.lg }}>
+            {days.map((d, i) => (
+              <Pressable key={d} testID={`batch-day-${i}`} onPress={() => setDay(d)} style={[s.chip, d === day && { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary }]}>
+                <Mono style={[s.chipText, d === day && { color: colors.onBrandPrimary }]}>{i === 0 ? "TODAY" : i === 1 ? "TMRW" : dayLabel(d)}</Mono>
+              </Pressable>
+            ))}
+          </ScrollView>
           {zones.data?.length === 0 ? <Mono style={s.emptyText}>ALL ORDERS ASSIGNED</Mono> : null}
           {zones.data?.map((z) => (
             <View key={z.zone} style={s.zone} testID={`zone-${z.zone}`}>

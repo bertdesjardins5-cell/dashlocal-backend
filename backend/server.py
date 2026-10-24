@@ -1,5 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect, Query
-from fastapi.responses import Response
+from fastapi.responses import Response, HTMLResponse
 from fastapi.concurrency import run_in_threadpool
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -11,13 +11,15 @@ import logging
 import uuid
 import re
 import requests
+import qrcode
+import qrcode.image.svg
 from xml.sax.saxutils import escape as xml_escape
 from twilio.rest import Client as TwilioClient
 from twilio.base.exceptions import TwilioRestException
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Set
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date as date_cls, time as time_cls
 from zoneinfo import ZoneInfo
 
 ROOT_DIR = Path(__file__).parent
@@ -48,6 +50,7 @@ AVG_SPEED_KMH = 25.0
 SERVICE_MIN = 4.0
 DEPOT = {"lat": 37.7749, "lng": -122.4194, "name": "SF Central Depot"}
 TZ = ZoneInfo("America/Los_Angeles")  # depot timezone for customer delivery windows
+MAX_BOOKING_DAYS = 13
 OPT_BUFFER_MIN = 10  # optimizer aims to arrive at least this long before a window closes
 
 # ---------------------------------------------------------------- object storage
@@ -100,13 +103,27 @@ def path_length_m(start, pts) -> float:
     return total
 
 
+def today_str() -> str:
+    return datetime.now(TZ).date().isoformat()
+
+
+def plan_base(service_date: Optional[str]) -> datetime:
+    """Planning clock for a route: now for today's routes, 08:00 depot time for future service dates."""
+    now = datetime.now(TZ)
+    if service_date and service_date > now.date().isoformat():
+        return datetime.combine(date_cls.fromisoformat(service_date), time_cls(8, 0), TZ)
+    return now
+
+
 def window_minutes(s: dict, now_local: datetime):
-    """Customer time window as (start, end) minutes from now, or None. Windows are HH:MM in the depot timezone, today."""
+    """Customer time window as (start, end) minutes from the planning clock, or None.
+    Windows are HH:MM in the depot timezone on window_date (today when unset)."""
     if not s.get("window_start") or not s.get("window_end"):
         return None
+    day = date_cls.fromisoformat(s["window_date"]) if s.get("window_date") else now_local.date()
     def mins(hhmm):
         h, m = map(int, hhmm.split(":"))
-        return (now_local.replace(hour=h, minute=m, second=0, microsecond=0) - now_local).total_seconds() / 60
+        return (datetime.combine(day, time_cls(h, m), TZ) - now_local).total_seconds() / 60
     return mins(s["window_start"]), mins(s["window_end"])
 
 
@@ -144,10 +161,10 @@ def better(c, best) -> bool:
     return c[2] + 0.5 < best[2]
 
 
-def optimize_sequence(start, stops: list) -> list:
+def optimize_sequence(start, stops: list, now_local: Optional[datetime] = None) -> list:
     """Time-window aware: urgency-weighted nearest-neighbour seed, then 2-opt + relocate moves
     minimising (total lateness, distance) lexicographically."""
-    now_local = datetime.now(TZ)
+    now_local = now_local or datetime.now(TZ)
     remaining = stops[:]
     order, cur, t = [], start, 0.0
     while remaining:
@@ -221,6 +238,7 @@ class Stop(BaseModel):
     pod_qr_verified: bool = False
     window_start: Optional[str] = None  # "HH:MM" depot local time
     window_end: Optional[str] = None
+    window_date: Optional[str] = None  # "YYYY-MM-DD" depot local; None = today / any day
     fail_reason: Optional[str] = None
 
 
@@ -234,12 +252,14 @@ class Route(BaseModel):
     actual_distance_m: float = 0
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
+    service_date: str = Field(default_factory=lambda: datetime.now(TZ).date().isoformat())
     created_at: str = Field(default_factory=now_iso)
 
 
 class BatchIn(BaseModel):
     zone: str
     driver_id: str
+    service_date: Optional[str] = None
 
 
 class SequenceIn(BaseModel):
@@ -298,8 +318,9 @@ async def route_detail(route: Route) -> dict:
     done = [s for s in stops if s.status in ("delivered", "failed")]
     open_ = [s.model_dump() for s in stops if s.status not in ("delivered", "failed")]
     start = {"lat": driver["lat"], "lng": driver["lng"]} if driver and route.status == "active" else DEPOT
-    now = datetime.now(timezone.utc)
-    plan = {s["id"]: x for s, x in zip(open_, schedule(start, open_))}
+    base = plan_base(route.service_date)
+    now = base.astimezone(timezone.utc)
+    plan = {s["id"]: x for s, x in zip(open_, schedule(start, open_, base))}
     out_stops = []
     for s in stops:
         d = s.model_dump()
@@ -350,7 +371,7 @@ async def tracking_payload(code: str) -> dict:
     out = {"stop": stop.model_dump(), "route_status": None, "driver": None, "stops_away": None,
            "eta_minutes": None, "eta_time": None, "late_min": 0, "path": [], "alert": None, "depot": DEPOT}
     if not stop.route_id:
-        out["alert"] = "Order received — awaiting dispatch"
+        out["alert"] = f"Scheduled for {nice_date(stop.window_date)}" if stop.window_date and stop.window_date > today_str() else "Order received — awaiting dispatch"
         return out
     route = Route(**(await db.routes.find_one({"id": stop.route_id}, {"_id": 0})))
     out["route_status"] = route.status
@@ -373,13 +394,16 @@ async def tracking_payload(code: str) -> dict:
     start = {"lat": driver.lat, "lng": driver.lng} if driver else DEPOT
     seq_stops = [s.model_dump() for s in open_before] + [stop.model_dump()]
     pts = [{"lat": s["lat"], "lng": s["lng"]} for s in seq_stops]
-    target = schedule(start, seq_stops)[-1]
+    base = plan_base(route.service_date)
+    target = schedule(start, seq_stops, base)[-1]
     eta = target["arrive_min"]
-    out["eta_minutes"] = round(eta)
-    out["eta_time"] = (datetime.now(timezone.utc) + timedelta(minutes=round(eta))).isoformat()
+    out["eta_minutes"] = round(eta) if route.service_date <= today_str() else None
+    out["eta_time"] = (base.astimezone(timezone.utc) + timedelta(minutes=round(eta))).isoformat()
     out["late_min"] = round(target["late_min"])
     out["path"] = [start] + pts
-    if route.status != "active":
+    if route.service_date > today_str():
+        out["alert"] = f"Scheduled for {nice_date(route.service_date)}"
+    elif route.status != "active":
         out["alert"] = "Route planned — driver not yet on the road"
     elif len(open_before) == 0:
         out["alert"] = "You're next! Driver is heading to you"
@@ -444,20 +468,57 @@ async def seed(force: bool = False):
     for idx, (a, b) in {5: (0, 1), 1: (2, 3), 8: (1, 2)}.items():
         if h + b <= 23:
             stops[idx].window_start, stops[idx].window_end = f"{h + a:02d}:00", f"{h + b:02d}:00"
+            stops[idx].window_date = today_str()
     await db.stops.insert_many([s.model_dump() for s in stops])
     # one route pre-batched & started for the demo
     await create_batch("Mission", "drv-1", start=True)
 
 
-async def create_batch(zone: str, driver_id: str, start: bool = False) -> Route:
-    docs = await db.stops.find({"zone": zone, "route_id": None}, {"_id": 0}).to_list(500)
+def eligible_query(service_date: str) -> dict:
+    """Unassigned orders deliverable on service_date: undated ones plus those booked for that day."""
+    return {"route_id": None, "status": "pending", "$or": [{"window_date": None}, {"window_date": service_date}]}
+
+
+ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def check_service_date(d: Optional[str]) -> str:
+    d = d or today_str()
+    try:
+        if not ISO_DATE.match(d):
+            raise ValueError
+        date_cls.fromisoformat(d)
+    except ValueError:
+        raise HTTPException(400, "Date must be YYYY-MM-DD")
+    if d < today_str():
+        raise HTTPException(400, "Date is in the past")
+    if d > (datetime.now(TZ).date() + timedelta(days=MAX_BOOKING_DAYS)).isoformat():
+        raise HTTPException(400, f"Bookings open up to {MAX_BOOKING_DAYS} days ahead")
+    return d
+
+
+def nice_date(d: str) -> str:
+    return date_cls.fromisoformat(d).strftime("%a %d %b")
+
+
+async def ensure_stop_actionable_today(stop: "Stop"):
+    """Drivers can only work stops on routes scheduled for today (or earlier)."""
+    if stop.route_id:
+        r = await db.routes.find_one({"id": stop.route_id}, {"_id": 0, "service_date": 1})
+        if r and r.get("service_date", today_str()) > today_str():
+            raise HTTPException(400, f"Stop is scheduled for {nice_date(r['service_date'])}")
+
+
+async def create_batch(zone: str, driver_id: str, start: bool = False, service_date: Optional[str] = None) -> Route:
+    service_date = check_service_date(service_date)
+    docs = await db.stops.find({"zone": zone, **eligible_query(service_date)}, {"_id": 0}).to_list(500)
     if not docs:
-        raise HTTPException(400, "No unassigned orders in this zone")
+        raise HTTPException(400, "No unassigned orders in this zone for that day")
     stops = [Stop(**d) for d in docs]
-    ordered = optimize_sequence(DEPOT, [s.model_dump() for s in stops])
+    ordered = optimize_sequence(DEPOT, [s.model_dump() for s in stops], plan_base(service_date))
     count = await db.routes.count_documents({})
     route = Route(id=str(uuid.uuid4()), name=f"R-{101 + count} {zone}", zone=zone, driver_id=driver_id,
-                  planned_distance_m=round(path_length_m(DEPOT, ordered)))
+                  service_date=service_date, planned_distance_m=round(path_length_m(DEPOT, ordered)))
     if start:
         route.status = "active"
         route.started_at = now_iso()
@@ -501,8 +562,14 @@ async def list_drivers():
 @api_router.get("/drivers/{driver_id}/route")
 async def driver_route(driver_id: str):
     await get_driver_or_404(driver_id)
-    doc = await db.routes.find_one({"driver_id": driver_id, "status": "active"}, {"_id": 0}) or \
-        await db.routes.find_one({"driver_id": driver_id, "status": "planned"}, {"_id": 0})
+    # active route first, then the soonest planned route from today on, then today's finished route
+    doc = await db.routes.find_one({"driver_id": driver_id, "status": "active"}, {"_id": 0})
+    if not doc:
+        nxt = await db.routes.find({"driver_id": driver_id, "status": "planned", "service_date": {"$gte": today_str()}}, {"_id": 0}).sort("service_date", 1).to_list(1)
+        doc = nxt[0] if nxt else None
+    if not doc:
+        done = await db.routes.find({"driver_id": driver_id, "status": "completed", "service_date": today_str()}, {"_id": 0}).sort("completed_at", -1).to_list(1)
+        doc = done[0] if done else None
     if not doc:
         return {"route": None}
     return {"route": await route_detail(Route(**doc))}
@@ -556,8 +623,8 @@ async def simulate_step(driver_id: str, meters: float = 180):
 
 
 @api_router.get("/zones")
-async def zones():
-    docs = await db.stops.find({"route_id": None}, {"_id": 0}).to_list(1000)
+async def zones(date: Optional[str] = None):
+    docs = await db.stops.find(eligible_query(check_service_date(date)), {"_id": 0}).to_list(1000)
     groups: Dict[str, dict] = {}
     for d in docs:
         g = groups.setdefault(d["zone"], {"zone": d["zone"], "postal_code": d["postal_code"], "count": 0, "orders": []})
@@ -569,7 +636,7 @@ async def zones():
 @api_router.post("/routes/batch")
 async def batch(body: BatchIn):
     await get_driver_or_404(body.driver_id)
-    route = await create_batch(body.zone, body.driver_id)
+    route = await create_batch(body.zone, body.driver_id, service_date=body.service_date)
     return await route_detail(route)
 
 
@@ -599,7 +666,7 @@ async def optimize(route_id: str):
     if route.status == "active" and route.driver_id:
         d = await get_driver_or_404(route.driver_id)
         start = {"lat": d.lat, "lng": d.lng}
-    ordered = optimize_sequence(start, [s.model_dump() for s in open_])
+    ordered = optimize_sequence(start, [s.model_dump() for s in open_], plan_base(route.service_date))
     await apply_sequence(route_id, [s.id for s in done] + [s["id"] for s in ordered])
     if route.status == "planned":
         await db.routes.update_one({"id": route_id}, {"$set": {"planned_distance_m": round(path_length_m(DEPOT, ordered))}})
@@ -626,6 +693,8 @@ async def start_route(route_id: str):
     route = await get_route_or_404(route_id)
     if route.status != "planned":
         raise HTTPException(400, "Route already started")
+    if route.service_date > today_str():
+        raise HTTPException(400, f"Route is scheduled for {nice_date(route.service_date)}")
     if route.driver_id and await db.routes.find_one({"driver_id": route.driver_id, "status": "active"}):
         raise HTTPException(400, "Driver already has an active route")
     await db.routes.update_one({"id": route_id}, {"$set": {"status": "active", "started_at": now_iso(), "actual_distance_m": 0}})
@@ -657,6 +726,7 @@ async def verify_qr(stop_id: str, body: QrIn):
     stop = await get_stop_or_404(stop_id)
     if stop.status in ("delivered", "failed"):
         raise HTTPException(400, f"Stop is already {stop.status}")
+    await ensure_stop_actionable_today(stop)
     scanned = body.code.strip().upper()
     if scanned.startswith("MULTIDROP:"):
         scanned = scanned.split(":", 1)[1]
@@ -672,6 +742,9 @@ HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 class WindowIn(BaseModel):
     start: Optional[str] = None
     end: Optional[str] = None
+    date: Optional[str] = None  # YYYY-MM-DD depot local, defaults to today
+
+
 
 
 @api_router.put("/stops/{stop_id}/window")
@@ -680,15 +753,39 @@ async def set_window(stop_id: str, body: WindowIn):
     stop = await get_stop_or_404(stop_id)
     if stop.status in ("delivered", "failed"):
         raise HTTPException(400, f"Stop is already {stop.status}")
+    day = None
     if body.start or body.end:
         if not (body.start and body.end and HHMM.match(body.start) and HHMM.match(body.end)) or body.start >= body.end:
             raise HTTPException(400, "Window needs start and end in HH:MM with start before end")
-        if body.end <= datetime.now(TZ).strftime("%H:%M"):
+        day = check_service_date(body.date)
+        if day == today_str() and body.end <= datetime.now(TZ).strftime("%H:%M"):
             raise HTTPException(400, "That window has already passed today")
-    await db.stops.update_one({"id": stop_id}, {"$set": {"window_start": body.start or None, "window_end": body.end or None}})
+    moved_off = None
+    if stop.route_id and day:
+        r = await db.routes.find_one({"id": stop.route_id}, {"_id": 0})
+        if r and r.get("service_date", today_str()) != day:
+            if stop.status != "pending":
+                raise HTTPException(400, "Driver has already arrived — the day can't be changed now")
+            moved_off = r["name"]
+    upd = {"window_start": body.start or None, "window_end": body.end or None, "window_date": day}
+    if moved_off:
+        upd.update({"route_id": None, "seq": 0})
+    await db.stops.update_one({"id": stop_id}, {"$set": upd})
     if stop.route_id:
-        await broadcast_route(stop.route_id)
-    return (await get_stop_or_404(stop_id)).model_dump()
+        if moved_off:
+            rest = await get_stops(stop.route_id)
+            await apply_sequence(stop.route_id, [x.id for x in rest])
+            r = await db.routes.find_one({"id": stop.route_id}, {"_id": 0})
+            if not rest and r["status"] == "planned":
+                await db.routes.delete_one({"id": stop.route_id})
+            else:
+                await maybe_complete_route(stop.route_id)
+                await broadcast_route(stop.route_id)
+        else:
+            await broadcast_route(stop.route_id)
+    if hub.rooms.get(f"track:{stop.tracking_code}"):
+        await hub.send(f"track:{stop.tracking_code}", await tracking_payload(stop.tracking_code))
+    return {**(await get_stop_or_404(stop_id)).model_dump(), "moved_off_route": moved_off}
 
 
 @api_router.post("/stops/{stop_id}/arrive")
@@ -696,6 +793,7 @@ async def arrive(stop_id: str):
     stop = await get_stop_or_404(stop_id)
     if stop.status != "pending":
         raise HTTPException(400, f"Stop is {stop.status}")
+    await ensure_stop_actionable_today(stop)
     await db.stops.update_one({"id": stop_id}, {"$set": {"status": "arrived", "arrived_at": now_iso(), "arrival_method": "manual"}})
     if stop.route_id:
         await broadcast_route(stop.route_id)
@@ -707,6 +805,7 @@ async def deliver(stop_id: str, body: DeliverIn):
     stop = await get_stop_or_404(stop_id)
     if stop.status in ("delivered", "failed"):
         raise HTTPException(400, f"Stop is already {stop.status}")
+    await ensure_stop_actionable_today(stop)
     if not body.photo_path and not body.signature and not stop.pod_qr_verified:
         raise HTTPException(400, "Proof of delivery requires a photo, signature or parcel QR scan")
     upd = {"status": "delivered", "delivered_at": now_iso(), "pod_photo_path": body.photo_path, "pod_signature": body.signature}
@@ -724,6 +823,7 @@ async def fail(stop_id: str, body: FailIn):
     stop = await get_stop_or_404(stop_id)
     if stop.status in ("delivered", "failed"):
         raise HTTPException(400, f"Stop is already {stop.status}")
+    await ensure_stop_actionable_today(stop)
     await db.stops.update_one({"id": stop_id}, {"$set": {"status": "failed", "fail_reason": body.reason, "delivered_at": now_iso()}})
     if stop.route_id:
         await maybe_complete_route(stop.route_id)
@@ -844,6 +944,99 @@ async def track_codes():
     """Demo helper listing tracking codes on active/planned routes."""
     docs = await db.stops.find({"route_id": {"$ne": None}}, {"_id": 0}).sort("seq", 1).to_list(200)
     return [{"tracking_code": d["tracking_code"], "customer_name": d["customer_name"], "status": d["status"], "seq": d["seq"]} for d in docs]
+
+
+def delivered_on_time(st: Stop) -> Optional[bool]:
+    """True/False for windowed deliveries, None when the stop had no window."""
+    if not st.delivered_at or not st.window_end:
+        return None
+    local = datetime.fromisoformat(st.delivered_at).astimezone(TZ)
+    day = date_cls.fromisoformat(st.window_date) if st.window_date else local.date()
+    h, m = map(int, st.window_end.split(":"))
+    return local <= datetime.combine(day, time_cls(h, m), TZ)
+
+
+@api_router.get("/drivers/{driver_id}/summary")
+async def driver_summary(driver_id: str, date: Optional[str] = None):
+    """End-of-day scorecard for a driver: drops, on-time rate, km driven, pace."""
+    driver = await get_driver_or_404(driver_id)
+    day = date or today_str()
+    routes = [Route(**d) for d in await db.routes.find({"driver_id": driver_id, "service_date": day, "started_at": {"$ne": None}}, {"_id": 0}).to_list(50)]
+    stops: List[Stop] = []
+    hours = 0.0
+    for r in routes:
+        stops += await get_stops(r.id)
+        end = datetime.fromisoformat(r.completed_at) if r.completed_at else datetime.now(timezone.utc)
+        hours += max((end - datetime.fromisoformat(r.started_at)).total_seconds() / 3600, 1 / 60)
+    delivered = [x for x in stops if x.status == "delivered"]
+    failed = [x for x in stops if x.status == "failed"]
+    windowed = [x for x in delivered if x.window_end]
+    on_time = sum(1 for x in delivered if delivered_on_time(x) is not False)
+    km = sum(r.actual_distance_m for r in routes) / 1000
+    planned_km = sum(r.planned_distance_m for r in routes) / 1000
+    return {
+        "driver": driver.model_dump(), "date": day,
+        "routes": [{"id": r.id, "name": r.name, "status": r.status} for r in routes],
+        "all_completed": bool(routes) and all(r.status == "completed" for r in routes),
+        "total_stops": len(stops), "delivered": len(delivered), "failed": len(failed),
+        "remaining": len(stops) - len(delivered) - len(failed),
+        "on_time": on_time,
+        # on-time rate counts only deliveries that had a customer window
+        "on_time_rate": round(sum(1 for x in windowed if delivered_on_time(x)) / len(windowed) * 100) if windowed else None,
+        "windowed_delivered": len(windowed), "windowed_on_time": sum(1 for x in windowed if delivered_on_time(x)),
+        "km_driven": round(km, 2), "planned_km": round(planned_km, 2),
+        "hours": round(hours, 2), "drops_per_hour": round(len(delivered) / hours, 1) if hours else 0,
+        "geofence_arrivals": sum(1 for x in stops if x.arrival_method == "geofence"),
+        "pod": {"photo": sum(1 for x in delivered if x.pod_photo_path), "signature": sum(1 for x in delivered if x.pod_signature),
+                "qr": sum(1 for x in delivered if x.pod_qr_verified)},
+        "stops": [{"seq": x.seq, "route_id": x.route_id, "customer_name": x.customer_name, "tracking_code": x.tracking_code, "status": x.status,
+                   "delivered_at": x.delivered_at, "window": f"{x.window_start}-{x.window_end}" if x.window_end else None,
+                   "on_time": delivered_on_time(x), "fail_reason": x.fail_reason} for x in stops],
+    }
+
+
+def qr_svg(data: str) -> str:
+    img = qrcode.make(data, image_factory=qrcode.image.svg.SvgPathImage, box_size=8, border=1)
+    return img.to_string(encoding="unicode")
+
+
+@api_router.get("/routes/{route_id}/labels.html", response_class=HTMLResponse)
+async def route_labels(route_id: str, autoprint: int = 0):
+    """Printable A4 sheet: one QR parcel label per open stop, 8 per page."""
+    route = await get_route_or_404(route_id)
+    stops = [x for x in await get_stops(route_id) if x.status not in ("delivered", "failed")]
+    esc = xml_escape
+    cards = []
+    for x in stops:
+        win = f"{x.window_date or ''} {x.window_start}-{x.window_end}".strip() if x.window_end else "ANY TIME"
+        note = f'<div class="note">{esc(x.notes)}</div>' if x.notes else ''
+        cards.append(f"""<div class="label"><div class="qr">{qr_svg('MULTIDROP:' + x.tracking_code)}</div>
+<div class="info"><div class="seq">DROP #{x.seq:02d}</div><div class="code">{esc(x.tracking_code)}</div>
+<div class="name">{esc(x.customer_name)}</div><div class="addr">{esc(x.address)}</div>
+<div class="meta">{esc(x.postal_code)} &middot; {esc(x.zone.upper())}</div><div class="win">WINDOW {esc(win)}</div>{note}</div></div>""")
+    script = '<script>window.onload = function () { setTimeout(function () { window.print(); }, 300); };</script>' if autoprint else ''
+    html = f"""<!doctype html><html><head><meta charset="utf-8"><title>{esc(route.name)} labels</title>
+<style>
+@page {{ size: A4; margin: 8mm; }}
+* {{ box-sizing: border-box; }}
+body {{ font-family: 'Courier New', monospace; margin: 0; color: #0A0A0A; }}
+h1 {{ font-family: Arial, sans-serif; font-size: 16px; margin: 0 0 6px; }}
+.grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }}
+.label {{ border: 2px solid #0A0A0A; height: 64mm; padding: 3mm; display: flex; gap: 3mm; page-break-inside: avoid; break-inside: avoid; }}
+.qr svg {{ width: 34mm; height: 34mm; }}
+.info {{ flex: 1; display: flex; flex-direction: column; gap: 1mm; overflow: hidden; }}
+.seq {{ background: #0A0A0A; color: #fff; font-weight: bold; padding: 1mm 2mm; align-self: flex-start; font-size: 12px; }}
+.code {{ font-family: Arial, sans-serif; font-weight: 900; font-size: 22px; }}
+.name {{ font-weight: bold; font-size: 13px; }}
+.addr, .meta {{ font-size: 11px; }}
+.win {{ font-weight: bold; font-size: 11px; border-top: 2px solid #0A0A0A; padding-top: 1mm; }}
+.note {{ font-size: 10px; background: #FFD700; padding: 1mm; }}
+</style></head><body>
+<h1>{esc(route.name)} &middot; {esc(route.service_date)} &middot; {len(stops)} PARCELS</h1>
+<div class="grid">{''.join(cards) or '<p>No open parcels on this route.</p>'}</div>
+{script}
+</body></html>"""
+    return HTMLResponse(html)
 
 
 @api_router.get("/analytics")

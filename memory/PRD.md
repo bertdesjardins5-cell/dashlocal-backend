@@ -17,6 +17,9 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - 2026-10-24: Twilio masked call/SMS — call rings driver then bridges to customer; SMS quick-reply presets; edit driver/customer phone numbers (E.164 validation); double-tap guard; Twilio logging quieted.
 - 2026-10-24: Parcel QR proof of delivery — admin stop sheet shows QR parcel label (MULTIDROP:<code>); driver scan screen (expo-camera, permission flow, manual code fallback); /verify-qr; QR alone completes a drop.
 - 2026-10-24: Delivery time windows — 2-hour slots (SF time) set by customer (tracking screen) or admin; past slots blocked; time-window-aware optimizer (lateness → finish time → distance, 10-min buffer, 2-opt + relocate); per-stop planned ETA, LATE badges, late banner; customer ETA includes waiting for window.
+- 2026-10-24: Future-day booking — window_date (today..+6 in UI, +13 API); booking another day moves a pending stop off its route; routes have service_date; admin batches by zone + day; future routes plan from 08:00 that day and can't be dispatched early.
+- 2026-10-24: Driver day summary — /api/drivers/{id}/summary (drops, failed, on-time rate vs windows, km driven vs planned, drops/hr, PoD mix); summary screen from manifest header / empty / complete states.
+- 2026-10-24: Printable label sheet — /api/routes/{id}/labels.html (A4, 8 QR labels per page, server-rendered SVG QR); LABELS button prints via expo-print (native) or new tab auto-print (web).
 
 ## Backlog
 - P1: auth/roles; push notifications (on request only)

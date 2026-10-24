@@ -6,7 +6,7 @@ import * as Location from "expo-location";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
-import { api, fmtDepotTime, RouteDetail, windowLabel } from "@/src/api";
+import { api, dayLabel, depotToday, fmtDepotTime, RouteDetail, windowLabel } from "@/src/api";
 import RouteMap from "@/src/components/RouteMap";
 import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
@@ -120,11 +120,16 @@ export default function Manifest() {
 
   return (
     <View style={s.root} testID="driver-manifest-screen">
-      <Header title={route?.name ?? "MANIFEST"} subtitle={route ? `${route.completed}/${route.total} DROPS · ${route.driver?.name}` : undefined} />
+      <Header title={route?.name ?? "MANIFEST"} subtitle={route ? `${route.service_date !== depotToday() ? `${dayLabel(route.service_date)} · ` : ""}${route.completed}/${route.total} DROPS · ${route.driver?.name}` : undefined} right={
+        <Pressable testID="driver-summary-button" onPress={() => router.push(`/driver/summary/${driverId}`)} style={s.iconBtn}>
+          <Ionicons name="stats-chart" size={20} color={colors.onSurfaceInverse} />
+        </Pressable>
+      } />
       {q.isLoading ? <Loading /> : q.error ? <ErrorBlock message={(q.error as Error).message} onRetry={q.refetch} /> : !route ? (
         <View style={s.empty} testID="manifest-empty">
           <Display style={s.emptyTitle}>NO ROUTE{"\n"}ASSIGNED</Display>
           <Mono style={s.meta}>Ask dispatch to batch a zone to you.</Mono>
+          <Btn testID="empty-view-summary-button" label="VIEW TODAY'S SUMMARY" icon="stats-chart" variant="dark" onPress={() => router.push(`/driver/summary/${driverId}`)} />
         </View>
       ) : (
         <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }} refreshControl={<RefreshControl refreshing={q.isRefetching && mode === "off"} onRefresh={() => { q.refetch(); }} />}>
@@ -136,7 +141,11 @@ export default function Manifest() {
             markers={route.stops.map((st) => ({ id: st.id, lat: st.lat, lng: st.lng, label: String(st.seq), tone: st.id === route.next_stop_id ? "red" : st.status === "delivered" ? "green" : st.status === "failed" ? "dark" : "light" }))}
           />
 
-          {route.status === "planned" ? (
+          {route.status === "planned" && route.service_date > depotToday() ? (
+            <View style={s.block} testID="route-scheduled-notice">
+              <Mono style={s.meta}>SCHEDULED FOR {dayLabel(route.service_date)} · {route.total} DROPS · {(route.planned_distance_m / 1000).toFixed(1)} KM</Mono>
+            </View>
+          ) : route.status === "planned" ? (
             <View style={s.block}>
               <Mono style={s.meta}>ROUTE IS PLANNED · {route.total} DROPS · {(route.planned_distance_m / 1000).toFixed(1)} KM</Mono>
               <Btn testID="start-route-button" label="START ROUTE" icon="play" onPress={startRoute} loading={starting} />
@@ -166,7 +175,7 @@ export default function Manifest() {
             </View>
           ) : null}
 
-          {next ? (
+          {route.service_date > depotToday() ? null : next ? (
             <Animated.View entering={FadeIn}>
               <Pressable testID="next-stop-card" onPress={() => router.push(`/driver/stop/${next.id}`)} style={s.hero}>
                 <View style={s.heroTop}>
@@ -198,6 +207,7 @@ export default function Manifest() {
             <View style={s.empty} testID="route-complete">
               <Display style={s.emptyTitle}>ROUTE{"\n"}COMPLETE</Display>
               <Mono style={s.meta}>{route.completed} drops closed.</Mono>
+              <Btn testID="complete-view-summary-button" label="VIEW DAY SUMMARY" icon="stats-chart" onPress={() => router.push(`/driver/summary/${driverId}`)} />
             </View>
           )}
 
@@ -226,6 +236,7 @@ export default function Manifest() {
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
+  iconBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: c.onSurfaceInverse },
   empty: { padding: spacing.xl, gap: spacing.sm, borderBottomWidth: 2, borderColor: c.border },
   emptyTitle: { fontSize: 40, lineHeight: 42, letterSpacing: -1 },
   meta: { fontSize: 12, color: c.muted },

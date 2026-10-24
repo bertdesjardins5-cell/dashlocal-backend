@@ -54,14 +54,14 @@ export default function TrackOrder() {
   const t = live ?? q.data;
   const toast = useToast();
   const [savingWin, setSavingWin] = useState(false);
-  const requestWindow = async (start: string | null, end: string | null) => {
+  const requestWindow = async (date: string | null, start: string | null, end: string | null) => {
     if (!t) return;
     setSavingWin(true);
     try {
-      const st = await api<Tracking["stop"]>(`/stops/${t.stop.id}/window`, { method: "PUT", body: { start, end } });
-      setLive({ ...t, stop: st });
-      q.refetch();
-      toast.show(start ? `WINDOW ${start}–${end} REQUESTED` : "WINDOW CLEARED", "green");
+      const st = await api<Tracking["stop"] & { moved_off_route: string | null }>(`/stops/${t.stop.id}/window`, { method: "PUT", body: { date, start, end } });
+      const fresh = await q.refetch();
+      if (fresh.data) setLive(fresh.data);
+      toast.show(start ? `WINDOW ${windowLabel(st)} BOOKED` : "WINDOW CLEARED", "green");
     } catch (e: any) {
       toast.show(e.message, "red");
     } finally {
@@ -117,10 +117,10 @@ export default function TrackOrder() {
             {!delivered && t.stop.status !== "failed" ? (
               <View style={{ marginHorizontal: -spacing.lg, gap: spacing.xs }} testID="customer-window-section">
                 <Mono style={[s.label, { paddingHorizontal: spacing.lg }]}>
-                  {windowLabel(t.stop) ? `YOUR WINDOW ${windowLabel(t.stop)} (SF TIME)` : "REQUEST A DELIVERY WINDOW"}
+                  {windowLabel(t.stop) ? `YOUR WINDOW ${windowLabel(t.stop)} (SF TIME)` : "BOOK A DELIVERY DAY & WINDOW"}
                   {t.late_min ? ` · MAY RUN ${t.late_min}M LATE` : ""}
                 </Mono>
-                <WindowPicker testIDPrefix="customer-window" start={t.stop.window_start} end={t.stop.window_end} disabled={savingWin} onSelect={requestWindow} />
+                <WindowPicker testIDPrefix="customer-window" date={t.stop.window_date} start={t.stop.window_start} end={t.stop.window_end} disabled={savingWin || t.stop.status === "arrived"} onSelect={requestWindow} />
               </View>
             ) : null}
           </View>

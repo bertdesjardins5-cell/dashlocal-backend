@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Modal, Pressable, View } from "react-native";
+import { Modal, Platform, Pressable, View } from "react-native";
+import * as Print from "expo-print";
 import QRCode from "react-native-qrcode-svg";
 import WindowPicker from "@/src/components/WindowPicker";
 import { useLocalSearchParams } from "expo-router";
@@ -7,7 +8,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from "react-native-draggable-flatlist";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
-import { api, fmtDepotTime, RouteDetail, Stop, windowLabel } from "@/src/api";
+import { api, API, dayLabel, depotToday, fmtDepotTime, RouteDetail, Stop, windowLabel } from "@/src/api";
 import RouteMap from "@/src/components/RouteMap";
 import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
@@ -29,14 +30,36 @@ export default function AdminRoute() {
   const locked = (st: Stop) => st.status === "delivered" || st.status === "failed";
   const [sel, setSel] = useState<Stop | null>(null);
 
-  const setWindow = async (start: string | null, end: string | null) => {
+  const printLabels = async () => {
+    const url = `${API}/routes/${id}/labels.html`;
+    setBusy("print");
+    try {
+      if (Platform.OS === "web") {
+        window.open(`${url}?autoprint=1`, "_blank");
+      } else {
+        const html = await (await fetch(url)).text();
+        await Print.printAsync({ html });
+      }
+    } catch (e: any) {
+      toast.show(e.message ?? "Could not print labels", "red");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const setWindow = async (date: string | null, start: string | null, end: string | null) => {
     if (!sel) return;
     setBusy("win");
     try {
-      const st = await api<Stop>(`/stops/${sel.id}/window`, { method: "PUT", body: { start, end } });
-      setSel({ ...sel, ...st });
+      const st = await api<Stop & { moved_off_route: string | null }>(`/stops/${sel.id}/window`, { method: "PUT", body: { date, start, end } });
       await q.refetch();
-      toast.show(start ? `WINDOW ${start}–${end} SET · RE-OPTIMIZE TO APPLY` : "WINDOW CLEARED", "green");
+      if (st.moved_off_route) {
+        setSel(null);
+        toast.show(`${st.tracking_code} BOOKED FOR ${windowLabel(st)} — MOVED OFF THIS ROUTE`, "green");
+      } else {
+        setSel({ ...sel, ...st });
+        toast.show(start ? `WINDOW ${windowLabel(st)} SET · OPTIMIZE TO APPLY` : "WINDOW CLEARED", "green");
+      }
     } catch (e: any) {
       toast.show(e.message, "red");
     } finally {
@@ -121,7 +144,7 @@ export default function AdminRoute() {
 
   return (
     <View style={s.root} testID="admin-route-screen">
-      <Header title={route?.name ?? "ROUTE"} subtitle={route ? `${route.driver?.name ?? "UNASSIGNED"} · ${route.status.toUpperCase()} · ${(route.planned_distance_m / 1000).toFixed(1)} KM PLAN` : undefined} />
+      <Header title={route?.name ?? "ROUTE"} subtitle={route ? `${route.service_date !== depotToday() ? `${dayLabel(route.service_date)} · ` : ""}${route.driver?.name ?? "UNASSIGNED"} · ${route.status.toUpperCase()} · ${(route.planned_distance_m / 1000).toFixed(1)} KM PLAN` : undefined} />
       {q.isLoading ? <Loading /> : q.error || !route ? <ErrorBlock message={(q.error as Error)?.message ?? "Not found"} onRetry={q.refetch} /> : (
         <DraggableFlatList
           data={stops}
@@ -139,15 +162,16 @@ export default function AdminRoute() {
                 markers={stops.map((x, i) => ({ id: x.id, lat: x.lat, lng: x.lng, label: String(i + 1), tone: x.status === "delivered" ? "green" : x.id === route.next_stop_id ? "red" : "dark" }))}
               />
               <View style={s.actions}>
-                <Btn testID="route-optimize-button" label="RE-OPTIMIZE" icon="git-network" variant="dark" loading={busy === "opt"} onPress={() => run("opt", `/routes/${id}/optimize`, "ROUTE OPTIMIZED")} style={{ flex: 1 }} />
-                {route.status === "planned" ? (
+                <Btn testID="route-optimize-button" label="OPTIMIZE" icon="git-network" variant="dark" loading={busy === "opt"} onPress={() => run("opt", `/routes/${id}/optimize`, "ROUTE OPTIMIZED")} style={{ flex: 1 }} />
+                <Btn testID="print-labels-button" label="LABELS" icon="print" variant="outline" loading={busy === "print"} onPress={printLabels} style={{ flex: 1 }} />
+                {route.status === "planned" && route.service_date <= depotToday() ? (
                   <Btn testID="route-start-button" label="DISPATCH" icon="play" loading={busy === "start"} onPress={() => run("start", `/routes/${id}/start`, "ROUTE DISPATCHED")} style={{ flex: 1 }} />
                 ) : null}
               </View>
               <Mono style={s.section}>DRAG ≡ OR USE ARROWS TO RE-SEQUENCE · TAP A STOP FOR LABEL & WINDOW {busy === "seq" ? "· SAVING…" : ""}</Mono>
               {route.late_stops > 0 ? (
                 <View style={s.lateBanner} testID="route-late-banner">
-                  <Mono style={s.lateText}>{route.late_stops} STOP{route.late_stops > 1 ? "S" : ""} WILL MISS THEIR WINDOW — TAP RE-OPTIMIZE</Mono>
+                  <Mono style={s.lateText}>{route.late_stops} STOP{route.late_stops > 1 ? "S" : ""} WILL MISS THEIR WINDOW — TAP OPTIMIZE</Mono>
                 </View>
               ) : null}
             </View>
@@ -177,7 +201,7 @@ export default function AdminRoute() {
               </View>
             </View>
             <Mono style={[s.meta, { paddingHorizontal: spacing.lg, fontWeight: "700" }]}>DELIVERY WINDOW (SF TIME)</Mono>
-            <WindowPicker testIDPrefix="admin-window" start={sel.window_start} end={sel.window_end} disabled={locked(sel) || busy === "win"} onSelect={setWindow} />
+            <WindowPicker testIDPrefix="admin-window" date={sel.window_date} start={sel.window_start} end={sel.window_end} disabled={sel.status !== "pending" || busy === "win"} onSelect={setWindow} />
           </View>
           {toast.node}
         </Modal>
