@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 7 tested low-rating alerts with follow-up, live WS /api/ws/admin push, the delivered photo/signature/QR proof, and weekly badges with rank. The new suite test_low_ratings_badges.py passes 8/8 when run serially (-n0). It covers: list and filter; the open→resolved move; the note is saved and is kept when an empty note is sent on resolve; 400 for 3-star, 5-star and unrated stops and 404 for an unknown stop; a 2-star rating creates an open alert that is first in the list; a real websocket client receives {type:'low_rating', alert} with the correct stop and driver; badges match the best eligible metric, ties are shared and the minimum samples apply; rank and badges on the driver scorecard match /scorecards. Full regression, excluding the paid Twilio test: 66/66 pass serially. Frontend at 375x667, all passing: (1) Admin alerts. The block shows '3 LOW RATINGS NEED FOLLOW-UP' with low-rating-<code> rows. Tapping a row opens follow-up-sheet. Typing a note and tapping RESOLVE shows the 'MH2102 RESOLVED' toast, the row disappears and the count goes to 2. SAVE NOTE keeps the row and its count, and the note is pre-filled when the sheet is reopened. follow-up-close works. (2) Driver flow. On MD1003, QR manual entry plus a drawn signature, then COMPLETE DROP, navigates back to the manifest. /customer/MD1003 shows delivery-proof with the signature and QR tiles and no photo tile. Rating it 1★ shows rating-thanks. A second admin tab that was already open got the live 'NEW 1★ RATING' toast, its count went 2→3, and the low-rating-MD1003 row appeared without a refresh. (3) Photo proof. A stop delivered via the API with an uploaded photo shows the delivery-proof-photo thumbnail. Tapping it opens delivery-proof-photo-full, and delivery-proof-close closes it. (4) Badges. The admin scorecard rows show scorecard-<id>-badge-<key>, matching the API. /driver/summary/drv-2 shows week-badges (ON-TIME CHAMP, MOST DROPS) and 'RANK #1'. drv-1 shows RANK #3. Deprecated packages detected: none. No real SMS or calls were made. Data was reset at the end.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/scorecards (speed badge)", "issue": "Today's partial route inflates drops_per_hour. drv-1 delivered 3 stops in ~3 minutes (hours=0.05, day drops/hr 56.9), which raised his weekly rate from 3.2 to 3.5 and took FASTEST PACE away from drv-2 and drv-3 within minutes. The admin ANALYTICS DROPS/HR showed 53.7 for the same reason. Consider excluding today's in-progress route, or requiring a minimum number of hours."},
+      {"endpoint": "GET /api/alerts/low-ratings?status=foo", "issue": "An invalid status silently returns all alerts (200). Use Literal['open','resolved','all'] so it returns 422."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Driver stop screen, auto-back after COMPLETE DROP", "issue": "If the stop screen was opened by deep link (no history), router.back() raises the red toast \"The action 'GO_BACK' was not handled\". Use router.canGoBack() ? router.back() : router.replace(`/driver/${driverId}`). Reference: app/driver/stop/[stopId].tsx:130", "testID": "complete-drop-button", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin low-rating-alerts", "issues": ["The row meta shows only the time (e.g. '10:40') for history ratings from earlier days. Add the date, or a relative day such as 'Tue 10:40'.", "Only 5 rows are shown. The '+N MORE' text is not tappable, so alerts beyond 5 cannot be reached in the UI."]},
+      {"screen": "DeliveryProof full-photo modal", "issues": ["The close button uses a hardcoded top:48 instead of insets.top, so it can sit under the Dynamic Island / status bar on newer iPhones. Reference: src/components/DeliveryProof.tsx:68"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_low_ratings_badges.py", "/app/test_reports/pytest/pytest_iter7.xml"],
+  "action_items": [
+    "Use the canGoBack fallback for the post-delivery router.back() in app/driver/stop/[stopId].tsx:130.",
+    "Stop today's in-progress route from inflating drops_per_hour, which drives the speed badge and the analytics DROPS/HR (e.g. minimum hours, or exclude the active route).",
+    "Validate the status query param on /api/alerts/low-ratings.",
+    "Show the date on alert rows, and make '+N MORE' expandable.",
+    "Use insets.top for the delivery-proof-close position."
+  ],
+  "critical_code_review_comments": [
+    "LowRatingAlerts: the WS handler captures notify and q.refetch in a mount-only effect. This works now, but a stale notify could cause problems if the parent recreates it.",
+    "server.py is 1373 lines and should be split (alerts, scorecards/badges, POD, tracking).",
+    "The test suite must run serially (-n0). With xdist, the module fixtures call /admin/reset in parallel workers and cause false failures (404 on stop ids, races between open and resolved)."
+  ],
+  "updated_files": ["/app/backend/tests/test_low_ratings_badges.py (new)"],
+  "success_rate": {"backend": "100% (8/8 new, 66/66 regression serial)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "None. Data was created during the test (MD1001/MD1003/MD1006 delivered, MD1003 rated 1★, one photo uploaded) and then reset via POST /api/admin/reset.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n0. pytest.ini/xdist runs parallel workers, and each module fixture resets the DB. The seeded open low-rating count varies per reset (3 to 5). drv-1's first pending stops are MD1001, MD1003 and MD1006. The QR manual code is the tracking code. The signature pad is below the fold, so scroll it into view before drawing. Wait about 1s after opening follow-up-sheet (slide animation) before clicking its buttons. Python websockets 17.3 is installed for the WS test.",
+  "rca_of_issue": "GO_BACK: the stop screen calls router.back() unconditionally after delivery. Badge drift: day_stats hours for an active route cover only the elapsed span, so the first few drops give a huge drops/hr that skews the weekly total."
+}

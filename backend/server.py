@@ -51,6 +51,7 @@ SERVICE_MIN = 4.0
 DEPOT = {"lat": 37.7749, "lng": -122.4194, "name": "SF Central Depot"}
 TZ = ZoneInfo("America/Los_Angeles")  # depot timezone for customer delivery windows
 MAX_BOOKING_DAYS = 13
+MIN_PACE_HOURS = 0.5  # pace (drops/hr) never divides by less than 30 min, so a fresh route cannot spike it
 OPT_BUFFER_MIN = 10  # optimizer aims to arrive at least this long before a window closes
 
 # ---------------------------------------------------------------- object storage
@@ -242,6 +243,9 @@ class Stop(BaseModel):
     rating: Optional[int] = None  # customer rating 1-5 after delivery
     rating_comment: Optional[str] = None
     rated_at: Optional[str] = None
+    follow_up_status: Optional[str] = None  # open | resolved (only for 1-2 star ratings)
+    follow_up_note: Optional[str] = None
+    follow_up_at: Optional[str] = None
     fail_reason: Optional[str] = None
 
 
@@ -513,10 +517,13 @@ async def seed_history(rnd: random.Random, drivers: List[Driver]):
                                  delivered_at=t.astimezone(timezone.utc).isoformat(), pod_signature=None if failed else "M10 10 L60 40",
                                  pod_qr_verified=not failed and rnd.random() < 0.5,
                                  window_date=day.isoformat() if win else None, window_start=win[0] if win else None, window_end=win[1] if win else None,
-                                 rating=None if failed or rnd.random() < 0.4 else rnd.choice([3, 4, 4, 5, 5, 5]),
+                                 rating=None if failed or rnd.random() < 0.4 else rnd.choice([1, 2] + [3] * 2 + [4] * 7 + [5] * 9),
                                  ).model_dump())
                 if docs[-1]["rating"]:
                     docs[-1]["rated_at"] = t.astimezone(timezone.utc).isoformat()
+                    if docs[-1]["rating"] <= 2:
+                        docs[-1]["rating_comment"] = rnd.choice(["LATE", "HARD TO FIND PARCEL", "Parcel left in the rain", "Driver never rang the bell", "LATE, HARD TO FIND PARCEL"])
+                        docs[-1]["follow_up_status"] = "resolved" if back > 3 else "open"
                 n += 1
             planned = path_length_m(DEPOT, pts)
             await db.stops.insert_many(docs)
@@ -887,8 +894,69 @@ async def rate_delivery(stop_id: str, body: RatingIn):
     if not 1 <= body.stars <= 5:
         raise HTTPException(400, "Stars must be between 1 and 5")
     comment = (body.comment or "").strip()[:300] or None
-    await db.stops.update_one({"id": stop_id}, {"$set": {"rating": body.stars, "rating_comment": comment, "rated_at": now_iso()}})
-    return (await get_stop_or_404(stop_id)).model_dump()
+    upd = {"rating": body.stars, "rating_comment": comment, "rated_at": now_iso()}
+    if body.stars <= LOW_RATING:
+        upd["follow_up_status"] = "open"
+    await db.stops.update_one({"id": stop_id}, {"$set": upd})
+    rated = await get_stop_or_404(stop_id)
+    if body.stars <= LOW_RATING and hub.rooms.get("admin"):
+        await hub.send("admin", {"type": "low_rating", "alert": await low_rating_row(rated)})
+    return rated.model_dump()
+
+
+LOW_RATING = 2
+
+
+async def low_rating_row(st: "Stop") -> dict:
+    driver, route_name = None, None
+    if st.route_id:
+        r = await db.routes.find_one({"id": st.route_id}, {"_id": 0})
+        if r:
+            route_name = r["name"]
+            if r.get("driver_id"):
+                d = await db.drivers.find_one({"id": r["driver_id"]}, {"_id": 0, "id": 1, "name": 1})
+                driver = d
+    return {"stop": st.model_dump(), "driver": driver, "route_name": route_name}
+
+
+@api_router.get("/alerts/low-ratings")
+async def low_ratings(status: str = "open"):
+    """1-2 star deliveries for admin follow-up. status: open | resolved | all."""
+    q = {"rating": {"$lte": LOW_RATING, "$gte": 1}}
+    if status not in ("open", "resolved", "all"):
+        raise HTTPException(400, "status must be open, resolved or all")
+    if status in ("open", "resolved"):
+        q["follow_up_status"] = status
+    docs = await db.stops.find(q, {"_id": 0}).sort("rated_at", -1).to_list(200)
+    return [await low_rating_row(Stop(**d)) for d in docs]
+
+
+class FollowUpIn(BaseModel):
+    note: Optional[str] = None
+    resolved: bool = True
+
+
+@api_router.post("/stops/{stop_id}/follow-up")
+async def follow_up(stop_id: str, body: FollowUpIn):
+    stop = await get_stop_or_404(stop_id)
+    if not stop.rating or stop.rating > LOW_RATING:
+        raise HTTPException(400, "Only 1-2 star deliveries need follow-up")
+    note = (body.note or "").strip()[:500] or stop.follow_up_note
+    await db.stops.update_one({"id": stop_id}, {"$set": {"follow_up_status": "resolved" if body.resolved else "open",
+                                                         "follow_up_note": note, "follow_up_at": now_iso()}})
+    return await low_rating_row(await get_stop_or_404(stop_id))
+
+
+@api_router.websocket("/ws/admin")
+async def ws_admin(ws: WebSocket):
+    await hub.join("admin", ws)
+    try:
+        while True:
+            await ws.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        hub.leave("admin", ws)
 
 
 @api_router.post("/stops/{stop_id}/arrive")
@@ -1078,7 +1146,7 @@ async def day_stats(driver: Driver, day: str) -> dict:
     for r in routes:
         stops += await get_stops(r.id)
         end = datetime.fromisoformat(r.completed_at) if r.completed_at else datetime.now(timezone.utc)
-        hours += max((end - datetime.fromisoformat(r.started_at)).total_seconds() / 3600, 1 / 60)
+        hours += max((end - datetime.fromisoformat(r.started_at)).total_seconds() / 3600, MIN_PACE_HOURS)
     delivered = [x for x in stops if x.status == "delivered"]
     failed = [x for x in stops if x.status == "failed"]
     windowed = [x for x in delivered if x.window_end]
@@ -1109,7 +1177,15 @@ async def day_stats(driver: Driver, day: str) -> dict:
 
 @api_router.get("/drivers/{driver_id}/scorecard")
 async def driver_scorecard(driver_id: str, days: int = 7):
-    """Rolling weekly scorecard: one row per day (oldest first) plus week totals."""
+    """Rolling weekly scorecard: one row per day (oldest first), week totals and this week's badges."""
+    sc = await scorecard_data(driver_id, days)
+    board = await all_scorecards(days)
+    sc["badges"] = next((c["badges"] for c in board if c["driver"]["id"] == driver_id), [])
+    sc["rank"] = next((i + 1 for i, c in enumerate(board) if c["driver"]["id"] == driver_id), None)
+    return sc
+
+
+async def scorecard_data(driver_id: str, days: int = 7) -> dict:
     driver = await get_driver_or_404(driver_id)
     days = max(1, min(days, 31))
     today = datetime.now(TZ).date()
@@ -1128,6 +1204,7 @@ async def driver_scorecard(driver_id: str, days: int = 7):
         "totals": {
             "delivered": delivered, "failed": sum(r["failed"] for r in rows), "days_worked": sum(1 for r in rows if r["routes"]),
             "on_time_rate": round(win_ok / windowed * 100) if windowed else None, "windowed_delivered": windowed,
+            "ratings": sum(n for _, n in rated),
             "drops_per_hour": round(delivered / hours, 1) if hours else 0, "hours": round(hours, 2),
             "km_driven": round(sum(r["km_driven"] for r in rows), 1),
             "avg_rating": round(sum(a * n for a, n in rated) / sum(n for _, n in rated), 1) if rated else None,
@@ -1140,9 +1217,33 @@ async def all_scorecards(days: int = 7):
     """Week totals for every driver, best on-time rate first (admin dashboard)."""
     out = []
     for d in await db.drivers.find({}, {"_id": 0}).to_list(100):
-        sc = await driver_scorecard(d["id"], days)
+        sc = await scorecard_data(d["id"], days)
         out.append({"driver": sc["driver"], **sc["totals"], "trend": [r["delivered"] for r in sc["days"]]})
+    award_badges(out)
     return sorted(out, key=lambda x: (-(x["on_time_rate"] if x["on_time_rate"] is not None else -1), -x["drops_per_hour"]))
+
+
+BADGES = [
+    # key, label, metric, minimum sample (field, n)
+    ("on_time", "ON-TIME CHAMP", "on_time_rate", ("windowed_delivered", 3)),
+    ("top_rated", "TOP RATED", "avg_rating", ("delivered", 3)),
+    ("speed", "FASTEST PACE", "drops_per_hour", ("delivered", 5)),
+    ("volume", "MOST DROPS", "delivered", ("delivered", 1)),
+]
+
+
+def award_badges(cards: list):
+    """Weekly badges: best driver per metric (ties share the badge), minimum sample required."""
+    for c in cards:
+        c["badges"] = []
+    for key, label, metric, (field, n) in BADGES:
+        eligible = [c for c in cards if c.get(metric) is not None and c.get(field, 0) >= n]
+        if not eligible:
+            continue
+        best = max(c[metric] for c in eligible)
+        for c in eligible:
+            if c[metric] == best:
+                c["badges"].append({"key": key, "label": label, "value": best})
 
 
 def qr_svg(data: str) -> str:
@@ -1212,7 +1313,7 @@ async def analytics():
         if not r.started_at:
             continue
         end = datetime.fromisoformat(r.completed_at) if r.completed_at else datetime.now(timezone.utc)
-        h = max((end - datetime.fromisoformat(r.started_at)).total_seconds() / 3600, 1 / 60)
+        h = max((end - datetime.fromisoformat(r.started_at)).total_seconds() / 3600, MIN_PACE_HOURS)
         rd = await db.stops.count_documents({"route_id": r.id, "status": "delivered"})
         hours += h
         drops += rd

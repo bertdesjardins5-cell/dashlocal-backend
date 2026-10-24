@@ -8,6 +8,7 @@ import { api, dayLabel, Driver, fmtDepotTime } from "@/src/api";
 import { Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
 import WeekScorecard, { ScoreDay, ScoreTotals } from "@/src/components/WeekScorecard";
+import Badges, { Badge } from "@/src/components/Badges";
 
 type Summary = {
   driver: Driver;
@@ -39,7 +40,7 @@ export default function DriverSummary() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const q = useQuery({ queryKey: ["driver-summary", driverId], queryFn: () => api<Summary>(`/drivers/${driverId}/summary`) });
-  const week = useQuery({ queryKey: ["driver-scorecard", driverId], queryFn: () => api<{ days: ScoreDay[]; totals: ScoreTotals }>(`/drivers/${driverId}/scorecard`) });
+  const week = useQuery({ queryKey: ["driver-scorecard", driverId], queryFn: () => api<{ days: ScoreDay[]; totals: ScoreTotals; badges: Badge[]; rank: number | null }>(`/drivers/${driverId}/scorecard`) });
   const d = q.data;
   const hrs = d ? `${Math.floor(d.hours)}H ${String(Math.round((d.hours % 1) * 60)).padStart(2, "0")}M` : "";
 
@@ -85,7 +86,13 @@ export default function DriverSummary() {
               </View>
             ))}
           </View>
-          <Mono style={s.section}>THIS WEEK · LAST 7 DAYS</Mono>
+          <Mono style={s.section}>THIS WEEK · LAST 7 DAYS{week.data?.rank ? ` · RANK #${week.data.rank}` : ""}</Mono>
+          {week.data?.badges?.length ? (
+            <View style={{ padding: spacing.lg, gap: spacing.sm, borderBottomWidth: 2, borderColor: colors.border }} testID="week-badges">
+              <Mono style={{ fontSize: 11, fontWeight: "700", letterSpacing: 1 }}>YOUR BADGES THIS WEEK</Mono>
+              <Badges badges={week.data.badges} testIDPrefix="week-badge" />
+            </View>
+          ) : null}
           {week.data ? <WeekScorecard days={week.data.days} totals={week.data.totals} /> : <Loading testID="week-loading" />}
           <Mono style={s.section}>DROPS · {d.total_stops}</Mono>
           {d.stops.map((x) => (

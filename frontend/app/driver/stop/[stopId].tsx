@@ -127,7 +127,7 @@ export default function StopDetail() {
       await fn();
       toast.show(msg, "green");
       refreshAll();
-      if (back) setTimeout(() => router.back(), 900);
+      if (back) setTimeout(() => (router.canGoBack() ? router.back() : router.replace(driverId ? `/driver/${driverId}` : "/driver")), 900);
     } catch (e: any) {
       toast.show(e.message, "red");
     } finally {

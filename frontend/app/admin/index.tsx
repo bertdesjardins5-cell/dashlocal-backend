@@ -5,6 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { addDays, api, dayLabel, depotToday, Driver } from "@/src/api";
+import LowRatingAlerts from "@/src/components/LowRatingAlerts";
+import Badges, { Badge } from "@/src/components/Badges";
 import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
 
@@ -33,7 +35,7 @@ export default function AdminDashboard() {
   const drivers = useQuery({ queryKey: ["drivers"], queryFn: () => api<(Driver & { route: any })[]>("/drivers") });
   const cards = useQuery({
     queryKey: ["scorecards"],
-    queryFn: () => api<{ driver: Driver; on_time_rate: number | null; drops_per_hour: number; delivered: number; avg_rating: number | null; trend: number[] }[]>("/scorecards"),
+    queryFn: () => api<{ driver: Driver; on_time_rate: number | null; drops_per_hour: number; delivered: number; avg_rating: number | null; trend: number[]; badges: Badge[] }[]>("/scorecards"),
   });
 
   const refresh = () => { an.refetch(); zones.refetch(); routes.refetch(); drivers.refetch(); cards.refetch(); };
@@ -77,6 +79,7 @@ export default function AdminDashboard() {
       } />
       {an.isLoading ? <Loading /> : an.error ? <ErrorBlock message={(an.error as Error).message} onRetry={refresh} /> : (
         <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }} refreshControl={<RefreshControl refreshing={false} onRefresh={refresh} />}>
+          <LowRatingAlerts notify={toast.show} />
           <Mono style={s.section}>ANALYTICS</Mono>
           <View style={s.grid}>
             {kpis.map((x, i) => (
@@ -93,6 +96,7 @@ export default function AdminDashboard() {
               <Display style={[s.rank, i === 0 && { color: colors.brandPrimary }]}>{i + 1}</Display>
               <View style={{ flex: 1, gap: 4 }}>
                 <Display style={s.rowTitle}>{c.driver.name}</Display>
+                <Badges badges={c.badges} testIDPrefix={`scorecard-${c.driver.id}-badge`} />
                 <Mono style={s.meta}>
                   {c.on_time_rate == null ? "—" : `${c.on_time_rate}%`} ON-TIME · {c.drops_per_hour}/HR · {c.delivered} DROPS · {c.avg_rating ? `${c.avg_rating}★` : "NO RATINGS"}
                 </Mono>

@@ -24,6 +24,9 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - 2026-10-24: Labels in loading order — reverse drop order with LOAD nn tags and loading hint.
 - 2026-10-24: Customer rating — POST /api/stops/{id}/rating (1–5, once, delivered only, tags as comment); prompt appears on tracking screen as soon as the drop is delivered (WebSocket); avg rating in analytics, summary, scorecards.
 - 2026-10-24: Booking confirmation texts — Twilio SMS on window booked/changed/cleared (non-blocking, logged); sms_status returned; seeded fictional 555-01xx numbers are skipped.
+- 2026-10-24: Low rating alerts — 1–2★ ratings open a follow-up (follow_up_status/note); GET /api/alerts/low-ratings, POST /api/stops/{id}/follow-up; live push over /api/ws/admin; admin dashboard alert block + follow-up sheet (note, save, resolve).
+- 2026-10-24: Delivered proof share — customer tracking shows photo (tap to enlarge), signature and QR-scanned tile after drop-off.
+- 2026-10-24: Weekly badges — ON-TIME CHAMP, TOP RATED, FASTEST PACE, MOST DROPS (min sample, ties share) on /scorecards and driver scorecard (+ rank); shown on admin scorecard rows and driver summary.
 
 ## Backlog
 - P1: auth/roles; push notifications (on request only)

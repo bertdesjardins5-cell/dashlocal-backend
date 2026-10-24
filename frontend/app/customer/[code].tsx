@@ -8,6 +8,7 @@ import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { api, fmtDepotTime, smsNote, Tracking, windowLabel, WS_BASE } from "@/src/api";
 import WindowPicker from "@/src/components/WindowPicker";
 import RatingPrompt from "@/src/components/RatingPrompt";
+import DeliveryProof from "@/src/components/DeliveryProof";
 import RouteMap from "@/src/components/RouteMap";
 import { Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
@@ -123,6 +124,9 @@ export default function TrackOrder() {
                 </Mono>
                 <WindowPicker testIDPrefix="customer-window" date={t.stop.window_date} start={t.stop.window_start} end={t.stop.window_end} disabled={savingWin || t.stop.status === "arrived"} onSelect={requestWindow} />
               </View>
+            ) : null}
+            {delivered ? (
+              <DeliveryProof stop={t.stop} />
             ) : null}
             {delivered ? (
               <RatingPrompt
