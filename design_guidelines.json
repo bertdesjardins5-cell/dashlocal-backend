@@ -1,0 +1,158 @@
+{
+  "app_name": "MultiDrop Logistics",
+  "personality": "5 Brutalist Mobile",
+  "personality_one_liner": "A high-contrast, strictly operational interface engineered for speed, sunlight readability, and absolute clarity.",
+  "color": {
+    "surface": "#FFFFFF",
+    "onSurface": "#0A0A0A",
+    "surfaceSecondary": "#F2F2F2",
+    "onSurfaceSecondary": "#0A0A0A",
+    "surfaceTertiary": "#E5E5E5",
+    "onSurfaceTertiary": "#0A0A0A",
+    "surfaceInverse": "#0A0A0A",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#E60000",
+    "brandPrimary": "#E60000",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#CC0000",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#FFE5E5",
+    "onBrandTertiary": "#E60000",
+    "success": "#008000",
+    "onSuccess": "#FFFFFF",
+    "warning": "#FFD700",
+    "onWarning": "#0A0A0A",
+    "error": "#E60000",
+    "onError": "#FFFFFF",
+    "info": "#0A0A0A",
+    "onInfo": "#FFFFFF",
+    "border": "#0A0A0A",
+    "borderStrong": "#0A0A0A",
+    "divider": "#0A0A0A",
+    "muted": "#666666",
+    "onBrand": "#FFFFFF"
+  },
+  "typography": {
+    "displayFontFamily": "Space Grotesk",
+    "textFontFamily": "JetBrains Mono",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Intentional whitespace imbalance. Rigid grids, thick dividers, and exposed structure over soft paddings.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 0,
+    "md": 0,
+    "lg": 0,
+    "pill": 0
+  },
+  "shadow_tier": 0,
+  "navigation": "stack_only",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": false,
+    "do's": [],
+    "dont's": ["Absolutely no blur or glassmorphism. Use solid colors and 2pt borders for elevation and structure."]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "none",
+      "android": "none",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "none",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Role Picker",
+      "purpose": "Entry point to access the three different app modules.",
+      "states": {
+        "loading": "Mono font spinner, stark white screen.",
+        "empty": "N/A",
+        "error": "Signal red banner with stark white text."
+      },
+      "layout": "Edge-to-edge vertical stacked buttons. Huge Space Grotesk headers. 2pt borders for each row. Mono text for descriptions."
+    },
+    {
+      "name": "Driver Manifest",
+      "purpose": "A sequenced list of drops prioritizing sunlight readability and quick interaction.",
+      "states": {
+        "loading": "Skeleton loaders with hard edges and no border radius.",
+        "empty": "Stark typography: 'ROUTE COMPLETE'.",
+        "error": "Error block with retry button, hard black background."
+      },
+      "layout": "Hero card at the top for 'Next Stop' using the signal red (brandPrimary) background and white text. Remaining stops listed below with edge-to-edge 2pt dividers. Addresses should use JetBrains Mono for easy scanning."
+    },
+    {
+      "name": "Stop Detail (Driver)",
+      "purpose": "Execution screen for a single stop, handling Proof of Delivery and customer contact.",
+      "states": {
+        "loading": "Hard black spinner.",
+        "empty": "N/A",
+        "error": "Red error block at the top."
+      },
+      "layout": "Sticky primary CTA at the bottom ('MARK ARRIVED'). Prominent stark white boxes with 2pt black borders for 'Take Photo' and 'Signature Pad'. Call/Text buttons span 50% width each in a horizontal flex layout with thick dividers."
+    },
+    {
+      "name": "Customer Live Tracking",
+      "purpose": "Transparency view showing dynamic ETA and driver approach.",
+      "states": {
+        "loading": "Map skeleton view.",
+        "empty": "N/A",
+        "error": "Could not fetch driver location message in bottom sheet."
+      },
+      "layout": "Full-bleed map background. A bottom sheet pinned to the bottom housing the ETA in oversized Space Grotesk. A signal red contextual banner floating just above the sheet reading 'Driver is 2 stops away'."
+    },
+    {
+      "name": "Admin Dashboard",
+      "purpose": "Control center for route batching, assignment, and performance analytics.",
+      "states": {
+        "loading": "Mono text skeleton rows.",
+        "empty": "No active routes text.",
+        "error": "Hard bordered error state with mono logs."
+      },
+      "layout": "Data-dense, ERP-style layout. Analytics cards at the top (Drops/Hr, Deviation) with mono counters. A draggable list of stops below with a 2pt border enclosing the list, and thick internal dividers between rows."
+    }
+  ],
+  "images": {
+    "hero_truck": {
+      "url": "https://images.pexels.com/photos/12970764/pexels-photo-12970764.jpeg",
+      "alt": "FedEx delivery truck unloading packages on a busy city street"
+    },
+    "driver_action": {
+      "url": "https://images.unsplash.com/photo-1548345680-f5475ea5df84",
+      "alt": "Person holding smartphone displaying delivery route navigation"
+    },
+    "map_background": {
+      "url": "https://images.pexels.com/photos/11828643/pexels-photo-11828643.jpeg",
+      "alt": "Top-down aerial photo of town streets"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly follow the Brutalist Mobile LIGHT personality. Use 0px border radius across all components. Everything must be hard-edged.",
+    "Borders are a structural component here: use 2pt black borders (`#0A0A0A`) around inputs, cards, and bottom sheets to give it an industrial feel.",
+    "Shadows and glassmorphism are completely banned in this app. Rely on high contrast (stark white, hard black, signal red) and thick borders to establish hierarchy.",
+    "Use Space Grotesk for prominent UI headings and JetBrains Mono for operational data (addresses, IDs, ETAs, times, metrics). This establishes the 'command-center/execution tool' aesthetic.",
+    "Implement the 'Sticky Primary CTA' pattern for the Driver Stop Detail screen ('Mark Arrived' / 'Complete Drop'). Ensure it has a safe-area clearance at the bottom.",
+    "For the Customer tracking screen, map placeholders are provided. Layer the bottom sheet over the map with a stark 2pt border.",
+    "Ensure 'Proof of Delivery' elements (Photo box, Signature pad) are prominent, taking up significant height (e.g., 200px each) so they are easy to use in bright sunlight.",
+    "Always apply vertical gradients behind text over images to guarantee WCAG readability, even though this is brutalist, text contrast is non-negotiable."
+  ]
+}
