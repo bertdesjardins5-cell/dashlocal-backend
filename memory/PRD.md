@@ -27,6 +27,10 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - 2026-10-24: Low rating alerts — 1–2★ ratings open a follow-up (follow_up_status/note); GET /api/alerts/low-ratings, POST /api/stops/{id}/follow-up; live push over /api/ws/admin; admin dashboard alert block + follow-up sheet (note, save, resolve).
 - 2026-10-24: Delivered proof share — customer tracking shows photo (tap to enlarge), signature and QR-scanned tile after drop-off.
 - 2026-10-24: Weekly badges — ON-TIME CHAMP, TOP RATED, FASTEST PACE, MOST DROPS (min sample, ties share) on /scorecards and driver scorecard (+ rank); shown on admin scorecard rows and driver summary.
+- 2026-10-24: Badge celebrations — /api/drivers/{id}/badges/new + /badges/seen (lost badges are forgotten so re-earning celebrates again); manifest polls (15s + on focus) and shows full-screen confetti celebration.
+- 2026-10-24: Proof share link — POST /api/stops/{id}/share (delivered only, unguessable token) → public HTML page /api/proof/{token} with photo, signature, QR check; customer SHARE PROOF LINK button (native Share / web share or new tab).
+- 2026-10-24: Alert trends — GET /api/alerts/trends (7 days, by driver / by zone, low %, top reasons, daily counts); admin dashboard trends block.
+- 2026-10-24: Apology texts — 1–2★ rating generates SORRY-XXXXX 15% code and Twilio apology SMS (non-blocking; fictional numbers skipped); code shown to customer and in admin follow-up sheet with SMS status.
 
 ## Backlog
 - P1: auth/roles; push notifications (on request only)

@@ -11,6 +11,8 @@ import logging
 import uuid
 import re
 import requests
+import secrets
+import string
 import qrcode
 import qrcode.image.svg
 from xml.sax.saxutils import escape as xml_escape
@@ -246,6 +248,9 @@ class Stop(BaseModel):
     follow_up_status: Optional[str] = None  # open | resolved (only for 1-2 star ratings)
     follow_up_note: Optional[str] = None
     follow_up_at: Optional[str] = None
+    apology_code: Optional[str] = None  # discount code texted after a 1-2 star rating
+    apology_sms_status: Optional[str] = None
+    share_token: Optional[str] = None  # public proof-of-delivery link token
     fail_reason: Optional[str] = None
 
 
@@ -897,14 +902,122 @@ async def rate_delivery(stop_id: str, body: RatingIn):
     upd = {"rating": body.stars, "rating_comment": comment, "rated_at": now_iso()}
     if body.stars <= LOW_RATING:
         upd["follow_up_status"] = "open"
+        upd["apology_code"] = "SORRY-" + "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(5))
     await db.stops.update_one({"id": stop_id}, {"$set": upd})
     rated = await get_stop_or_404(stop_id)
+    if body.stars <= LOW_RATING:
+        status = await send_apology_sms(rated)
+        await db.stops.update_one({"id": stop_id}, {"$set": {"apology_sms_status": status}})
+        rated = await get_stop_or_404(stop_id)
     if body.stars <= LOW_RATING and hub.rooms.get("admin"):
         await hub.send("admin", {"type": "low_rating", "alert": await low_rating_row(rated)})
     return rated.model_dump()
 
 
 LOW_RATING = 2
+POSITIVE_TAGS = {"ON TIME", "FRIENDLY DRIVER", "CAREFUL WITH PARCEL", "EASY TO FOLLOW"}  # never counted as complaint reasons
+APOLOGY_DISCOUNT_PCT = 15
+
+
+async def send_apology_sms(stop: "Stop") -> str:
+    """Text a sorry note + discount code. Never blocks the rating: sent | skipped_fictional | not_configured | failed."""
+    if FICTIONAL_NUMBER.match(stop.customer_phone):
+        return "skipped_fictional"
+    if not (os.environ.get("TWILIO_ACCOUNT_SID") and os.environ.get("TWILIO_AUTH_TOKEN") and os.environ.get("TWILIO_PHONE_NUMBER")):
+        return "not_configured"
+    first = stop.customer_name.split(" ")[0]
+    body = (f"MultiDrop: Sorry {first}, delivery {stop.tracking_code} wasn't up to standard. "
+            f"Here's {APOLOGY_DISCOUNT_PCT}% off your next delivery with code {stop.apology_code}. Our team will follow up.")
+    try:
+        tw = TwilioClient(os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"])
+        res = await run_in_threadpool(lambda: tw.messages.create(to=stop.customer_phone, from_=twilio_number(), body=body))
+        await db.contact_logs.insert_one({"id": str(uuid.uuid4()), "stop_id": stop.id, "channel": "sms", "kind": "apology",
+                                          "message": body, "twilio_sid": res.sid, "status": res.status, "created_at": now_iso()})
+        return "sent"
+    except Exception as e:
+        logger.error(f"Apology SMS failed for {stop.tracking_code}: {e}")
+        return "failed"
+
+
+@api_router.get("/alerts/trends")
+async def alert_trends(days: int = 7):
+    """Low-rating hot spots over the last N days, by driver and by zone, with the most common reasons."""
+    days = max(1, min(days, 31))
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    docs = [Stop(**d) for d in await db.stops.find({"rating": {"$ne": None}, "rated_at": {"$gte": since}}, {"_id": 0}).to_list(5000)]
+    route_driver = {r["id"]: r.get("driver_id") for r in await db.routes.find({}, {"_id": 0, "id": 1, "driver_id": 1}).to_list(5000)}
+    names = {d["id"]: d["name"] for d in await db.drivers.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(100)}
+
+    def group(key_fn, label_fn):
+        g: Dict[str, dict] = {}
+        for st in docs:
+            k = key_fn(st)
+            if not k:
+                continue
+            row = g.setdefault(k, {"key": k, "label": label_fn(k), "ratings": 0, "low": 0, "reasons": {}})
+            row["ratings"] += 1
+            if st.rating <= LOW_RATING:
+                row["low"] += 1
+                for r in (st.rating_comment or "").split(","):
+                    r = r.strip().upper()
+                    if r and r not in POSITIVE_TAGS:
+                        row["reasons"][r] = row["reasons"].get(r, 0) + 1
+        out = []
+        for row in g.values():
+            reasons = sorted(row.pop("reasons").items(), key=lambda kv: -kv[1])
+            out.append({**row, "low_pct": round(row["low"] / row["ratings"] * 100) if row["ratings"] else 0,
+                        "top_reasons": [{"reason": r, "count": c} for r, c in reasons[:3]]})
+        return sorted(out, key=lambda x: (-x["low"], -x["low_pct"]))
+
+    today = datetime.now(TZ).date()
+    daily = []
+    for back in range(days - 1, -1, -1):
+        d = (today - timedelta(days=back)).isoformat()
+        daily.append({"date": d, "low": sum(1 for st in docs if st.rating <= LOW_RATING and datetime.fromisoformat(st.rated_at).astimezone(TZ).date().isoformat() == d)})
+    return {
+        "days": days, "total_ratings": len(docs), "total_low": sum(1 for st in docs if st.rating <= LOW_RATING),
+        "by_driver": group(lambda st: route_driver.get(st.route_id), lambda k: names.get(k, k)),
+        "by_zone": group(lambda st: st.zone, lambda k: k),
+        "daily": daily,
+    }
+
+
+# ---- public proof-of-delivery share link
+@api_router.post("/stops/{stop_id}/share")
+async def share_proof(stop_id: str):
+    stop = await get_stop_or_404(stop_id)
+    if stop.status != "delivered":
+        raise HTTPException(400, "Proof can be shared after delivery")
+    token = stop.share_token or secrets.token_urlsafe(16)
+    if not stop.share_token:
+        await db.stops.update_one({"id": stop_id}, {"$set": {"share_token": token}})
+    return {"token": token, "path": f"/api/proof/{token}"}
+
+
+@api_router.get("/proof/{token}", response_class=HTMLResponse)
+async def proof_page(token: str):
+    doc = await db.stops.find_one({"share_token": token}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Link not found")
+    st = Stop(**doc)
+    esc = xml_escape
+    when = datetime.fromisoformat(st.delivered_at).astimezone(TZ).strftime("%a %d %b %Y, %H:%M") if st.delivered_at else ""
+    photo = f'<img src="/api/files/{esc(st.pod_photo_path)}" alt="Delivery photo">' if st.pod_photo_path else ""
+    sig = (f'<svg viewBox="0 0 360 200" preserveAspectRatio="xMidYMid meet"><path d="{esc(st.pod_signature)}" stroke="#0A0A0A" stroke-width="4" '
+           f'fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>') if st.pod_signature else ""
+    qr = '<div class="ok">&#10003; PARCEL QR SCANNED AT THE DOOR</div>' if st.pod_qr_verified else ""
+    html = f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proof of delivery {esc(st.tracking_code)}</title><meta name="robots" content="noindex">
+<style>body{{font-family:'Courier New',monospace;margin:0;color:#0A0A0A;background:#fff}}
+header{{background:#0A0A0A;color:#fff;padding:20px}}h1{{font-family:Arial,sans-serif;margin:4px 0 0;font-size:28px}}
+.k{{color:#E60000;font-weight:bold;letter-spacing:2px;font-size:12px}}main{{padding:20px;max-width:560px}}
+.box{{border:2px solid #0A0A0A;margin:12px 0;padding:12px}}img{{width:100%;display:block}}svg{{width:100%;height:180px}}
+.ok{{background:#008000;color:#fff;padding:12px;font-weight:bold}}.m{{font-size:13px;margin:4px 0}}</style></head><body>
+<header><div class="k">MULTIDROP · PROOF OF DELIVERY</div><h1>{esc(st.tracking_code)}</h1></header><main>
+<p class="m"><b>{esc(st.customer_name)}</b></p><p class="m">{esc(st.address)}</p><p class="m">DELIVERED {esc(when)} (SF TIME)</p>
+{f'<div class="box">{photo}</div>' if photo else ''}{f'<div class="box"><div class="m">SIGNATURE</div>{sig}</div>' if sig else ''}{qr}
+</main></body></html>"""
+    return HTMLResponse(html)
 
 
 async def low_rating_row(st: "Stop") -> dict:
@@ -1210,6 +1323,32 @@ async def scorecard_data(driver_id: str, days: int = 7) -> dict:
             "avg_rating": round(sum(a * n for a, n in rated) / sum(n for _, n in rated), 1) if rated else None,
         },
     }
+
+
+@api_router.get("/drivers/{driver_id}/badges/new")
+async def new_badges(driver_id: str):
+    """Badges the driver currently holds but hasn't celebrated yet."""
+    doc = await db.drivers.find_one({"id": driver_id}, {"_id": 0, "seen_badges": 1})
+    if doc is None:
+        raise HTTPException(404, "Driver not found")
+    seen = set(doc.get("seen_badges") or [])
+    board = await all_scorecards(7)
+    held = next((c["badges"] for c in board if c["driver"]["id"] == driver_id), [])
+    lost = seen - {b["key"] for b in held}
+    if lost:  # badge lost this week: forget it so winning it back is celebrated again
+        await db.drivers.update_one({"id": driver_id}, {"$pull": {"seen_badges": {"$in": list(lost)}}})
+    return {"badges": [b for b in held if b["key"] not in seen]}
+
+
+class SeenIn(BaseModel):
+    keys: List[str]
+
+
+@api_router.post("/drivers/{driver_id}/badges/seen")
+async def mark_badges_seen(driver_id: str, body: SeenIn):
+    await get_driver_or_404(driver_id)
+    await db.drivers.update_one({"id": driver_id}, {"$addToSet": {"seen_badges": {"$each": body.keys}}})
+    return {"ok": True}
 
 
 @api_router.get("/scorecards")

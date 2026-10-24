@@ -27,6 +27,8 @@ export type Stop = {
   window_date: string | null;
   rating?: number | null;
   rating_comment?: string | null;
+  apology_code?: string | null;
+  apology_sms_status?: string | null;
   planned_eta?: string | null;
   late_min?: number;
   fail_reason: string | null;

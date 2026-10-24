@@ -103,6 +103,11 @@ export default function LowRatingAlerts({ notify }: { notify: (msg: string, tone
                 <Pill label={sel.stop.customer_phone} tone="light" />
               </View>
               <Mono style={s.meta}>{sel.stop.address}</Mono>
+              {sel.stop.apology_code ? (
+                <Mono style={s.apology} testID="follow-up-apology">
+                  APOLOGY TEXT {sel.stop.apology_sms_status === "sent" ? "SENT" : sel.stop.apology_sms_status === "skipped_fictional" ? "SKIPPED (DEMO NUMBER)" : (sel.stop.apology_sms_status ?? "PENDING").toUpperCase()} · CODE {sel.stop.apology_code}
+                </Mono>
+              ) : null}
               <Mono style={s.label}>FOLLOW-UP NOTE</Mono>
               <TextInput
                 testID="follow-up-note-input"
@@ -136,5 +141,6 @@ const useStyles = makeStyles((c) => ({
   sheet: { backgroundColor: c.surface, borderTopWidth: 2, borderColor: c.border, padding: spacing.lg, maxHeight: "80%" },
   close: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   label: { fontSize: 11, fontWeight: "700", letterSpacing: 1.5 },
+  apology: { fontSize: 11, fontWeight: "700", backgroundColor: c.surfaceInverse, color: c.onSurfaceInverse, padding: spacing.sm },
   input: { minHeight: 96, borderWidth: 2, borderColor: c.border, padding: spacing.md, fontFamily: fonts.mono, fontSize: 14, color: c.onSurface, textAlignVertical: "top" },
 }));

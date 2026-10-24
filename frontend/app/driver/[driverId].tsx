@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Linking, Platform, Pressable, RefreshControl, ScrollView, View } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import BadgeCelebration from "@/src/components/BadgeCelebration";
+import type { Badge } from "@/src/components/Badges";
 import { useQuery } from "@tanstack/react-query";
 import * as Location from "expo-location";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -24,6 +26,24 @@ export default function Manifest() {
   const [perm, setPerm] = useState<"ask" | "settings" | null>(null);
   const [starting, setStarting] = useState(false);
   const watchRef = useRef<Location.LocationSubscription | null>(null);
+
+  // Weekly badge celebrations: poll for badges the driver hasn't seen yet, and re-check on focus (e.g. after a drop).
+  const badgesQ = useQuery({
+    queryKey: ["new-badges", driverId],
+    queryFn: () => api<{ badges: Badge[] }>(`/drivers/${driverId}/badges/new`),
+    refetchInterval: 15000,
+  });
+  const [dismissed, setDismissed] = useState<string[]>([]);
+  const celebrate = (badgesQ.data?.badges ?? []).filter((b) => !dismissed.includes(b.key));
+  const refetchBadges = badgesQ.refetch;
+  useFocusEffect(useCallback(() => { refetchBadges(); }, [refetchBadges]));
+  const dismissCelebration = async () => {
+    const keys = celebrate.map((b) => b.key);
+    setDismissed((d) => [...d, ...keys]); // hide immediately, even if offline
+    try {
+      await api(`/drivers/${driverId}/badges/seen`, { method: "POST", body: { keys } });
+    } catch {}
+  };
 
   const q = useQuery({
     queryKey: ["driver-route", driverId],
@@ -230,6 +250,7 @@ export default function Manifest() {
         </ScrollView>
       )}
       {toast.node}
+      {celebrate.length ? <BadgeCelebration badges={celebrate} onDone={dismissCelebration} /> : null}
     </View>
   );
 }
