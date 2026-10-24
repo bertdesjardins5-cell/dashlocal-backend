@@ -140,6 +140,8 @@ class TestAdminAccounts:
 # ---------------- Report CSV with a full delivered + rated order
 @pytest.fixture(scope="module")
 def delivered(toks):
+    # reset first so leftover active routes from other suites don't block batching / free drivers
+    assert requests.post(f"{API}/admin/reset", headers=H(toks["admin"])).status_code == 200
     h = H(toks["m1"])
     r = requests.post(f"{API}/merchants/mer-1/import", headers=h,
                       files={"file": ("r.csv", b"customer_name,phone,address\nTEST_Report,4155550188,1 Market St\n", "text/csv")})

@@ -1,4 +1,5 @@
 import os
+import re
 import requests
 import pytest
 from dotenv import load_dotenv
@@ -17,11 +18,17 @@ def _admin_token(base: str) -> str:
     return _token[base]
 
 
+# Endpoints that became admin-only; older suites call them without a login.
+ADMIN_PATHS = re.compile(r"/api/(admin/reset|analytics|routes|zones|scorecards|routes/batch|routes/[^/]+/(sequence|optimize|labels-link)"
+                         r"|alerts/(trends|low-ratings)|stops/[^/]+/follow-up|codes/(apology|redeem)|drivers/[^/]+/coaching|digest)(\?.*)?$")
+
+
 def _request(self, method, url, *args, **kwargs):
-    # /api/admin/reset needs the admin login; older suites call it without one
-    if str(url).endswith("/api/admin/reset"):
+    u = str(url)
+    coaching_read = method.upper() == "GET" and "/coaching" in u  # driver reads own notes: open
+    if ADMIN_PATHS.search(u) and not coaching_read and not (kwargs.get("headers") or {}).get("Authorization"):
         headers = dict(kwargs.get("headers") or {})
-        headers.setdefault("Authorization", f"Bearer {_admin_token(str(url).rsplit('/api/', 1)[0])}")
+        headers["Authorization"] = f"Bearer {_admin_token(u.split('/api/', 1)[0])}"
         kwargs["headers"] = headers
     return _orig_request(self, method, url, *args, **kwargs)
 

@@ -181,8 +181,16 @@ def test_summary_future_date_empty(api):
 
 
 # --- Labels
+def _labels_url(api, rid):
+    # labels.html now needs a short-lived token from the admin-only labels-link endpoint
+    lk = api.post(f"{API}/routes/{rid}/labels-link")
+    assert lk.status_code == 200, lk.text
+    return f"{BASE_URL}{lk.json()['path']}"
+
+
 def test_labels_html(api, r101):
-    r = api.get(f"{API}/routes/{r101['id']}/labels.html")
+    url = _labels_url(api, r101['id'])
+    r = api.get(url)
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/html")
     assert "<svg" in r.text
@@ -191,5 +199,6 @@ def test_labels_html(api, r101):
         assert x["tracking_code"] in r.text
     assert r.text.count('class="label"') == len(open_)
     assert "window.print" not in r.text
-    assert "window.print" in api.get(f"{API}/routes/{r101['id']}/labels.html", params={"autoprint": 1}).text
-    assert api.get(f"{API}/routes/nope/labels.html").status_code == 404
+    assert "window.print" in api.get(url, params={"autoprint": 1}).text
+    assert api.get(f"{API}/routes/nope/labels.html").status_code == 401  # no token
+    assert api.post(f"{API}/routes/nope/labels-link").status_code == 404

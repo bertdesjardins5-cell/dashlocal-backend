@@ -103,7 +103,8 @@ class TestRatingCreatesAlert:
         assert st["pod_signature"] and st["pod_qr_verified"] and st["delivered_at"]
 
         async def run():
-            async with websockets.connect(WS) as ws:
+            from conftest import _admin_token  # ws/admin needs ?token=<admin session>
+            async with websockets.connect(f"{WS}?token={_admin_token(BASE_URL)}") as ws:
                 await asyncio.sleep(0.5)
                 r = await asyncio.to_thread(api.post, f"{API}/stops/{a['id']}/rating", json={"stars": 2, "comment": "TEST_ late"})
                 assert r.status_code == 200

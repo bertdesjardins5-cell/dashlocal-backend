@@ -8,7 +8,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from "react-native-draggable-flatlist";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
-import { api, API, dayLabel, depotToday, fmtDepotTime, RouteDetail, smsNote, Stop, windowLabel } from "@/src/api";
+import { api, BACKEND_URL, dayLabel, depotToday, fmtDepotTime, RouteDetail, smsNote, Stop, windowLabel } from "@/src/api";
 import RouteMap from "@/src/components/RouteMap";
 import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
@@ -31,16 +31,20 @@ export default function AdminRoute() {
   const [sel, setSel] = useState<Stop | null>(null);
 
   const printLabels = async () => {
-    const url = `${API}/routes/${id}/labels.html`;
+    const popup = Platform.OS === "web" ? window.open("", "_blank") : null; // open inside the tap so Safari allows it
     setBusy("print");
     try {
+      const { path } = await api<{ path: string }>(`/routes/${id}/labels-link`, { method: "POST" });
+      const url = `${BACKEND_URL}${path}`;
       if (Platform.OS === "web") {
-        window.open(`${url}?autoprint=1`, "_blank");
+        if (popup) popup.location.href = `${url}&autoprint=1`;
+        else window.open(`${url}&autoprint=1`, "_blank");
       } else {
         const html = await (await fetch(url)).text();
         await Print.printAsync({ html });
       }
     } catch (e: any) {
+      popup?.close();
       toast.show(e.message ?? "Could not print labels", "red");
     } finally {
       setBusy(null);

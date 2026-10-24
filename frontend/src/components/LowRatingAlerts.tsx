@@ -5,6 +5,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { api, dayLabel, DEPOT_TZ, fmtDepotTime, Stop, WS_BASE } from "@/src/api";
+import { getToken } from "@/src/session";
 import { Btn, Display, Mono, Pill } from "@/src/ui";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
@@ -26,7 +27,7 @@ export default function LowRatingAlerts({ notify }: { notify: (msg: string, tone
     let ws: WebSocket | null = null;
     let retry: ReturnType<typeof setTimeout>;
     const connect = () => {
-      ws = new WebSocket(`${WS_BASE}/admin`);
+      ws = new WebSocket(`${WS_BASE}/admin?token=${encodeURIComponent(getToken() ?? "")}`);
       ws.onmessage = (e) => {
         try {
           const m = JSON.parse(e.data);

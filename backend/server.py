@@ -8,6 +8,10 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.errors import DuplicateKeyError
 import os
+import ipaddress
+from html import escape
+from html.parser import HTMLParser
+from urllib.parse import urlparse
 import io
 import csv
 import time
@@ -53,6 +57,14 @@ async def health():
 
 
 api_router = APIRouter(prefix="/api")
+
+
+async def require_admin(request: Request):
+    """Route dependency: dispatch admin sign-in (functions resolve at call time)."""
+    return await admin_user(await current_user(request))
+
+
+ADMIN_ONLY = [Depends(require_admin)]
 
 # ---------------------------------------------------------------- constants
 GEOFENCE_M = 50
@@ -688,6 +700,7 @@ async def startup():
     for m in MERCHANTS:
         await db.merchants.update_one({"id": m["id"]}, {"$setOnInsert": m}, upsert=True)
     await seed_users()
+    spawn(weekly_scheduler())
     # imports interrupted by a restart: send unfinished rows back to the queue
     for j in await db.import_jobs.find({"status": "running"}, {"_id": 0, "id": 1}).to_list(100):
         spawn(process_import(j["id"]))
@@ -783,7 +796,7 @@ async def simulate_step(driver_id: str, meters: float = 180):
     return {**res, "waiting": False}
 
 
-@api_router.get("/zones")
+@api_router.get("/zones", dependencies=ADMIN_ONLY)
 async def zones(date: Optional[str] = None):
     docs = await db.stops.find(eligible_query(check_service_date(date)), {"_id": 0}).to_list(1000)
     groups: Dict[str, dict] = {}
@@ -794,14 +807,14 @@ async def zones(date: Optional[str] = None):
     return sorted(groups.values(), key=lambda g: -g["count"])
 
 
-@api_router.post("/routes/batch")
+@api_router.post("/routes/batch", dependencies=ADMIN_ONLY)
 async def batch(body: BatchIn):
     await get_driver_or_404(body.driver_id)
     route = await create_batch(body.zone, body.driver_id, service_date=body.service_date)
     return await route_detail(route)
 
 
-@api_router.get("/routes")
+@api_router.get("/routes", dependencies=ADMIN_ONLY)
 async def list_routes():
     docs = await db.routes.find({"service_date": {"$gte": today_str()}}, {"_id": 0}).sort("created_at", -1).to_list(200)
     out = []
@@ -817,7 +830,7 @@ async def get_route(route_id: str):
     return await route_detail(await get_route_or_404(route_id))
 
 
-@api_router.post("/routes/{route_id}/optimize")
+@api_router.post("/routes/{route_id}/optimize", dependencies=ADMIN_ONLY)
 async def optimize(route_id: str):
     route = await get_route_or_404(route_id)
     stops = await get_stops(route_id)
@@ -835,7 +848,7 @@ async def optimize(route_id: str):
     return await route_detail(await get_route_or_404(route_id))
 
 
-@api_router.put("/routes/{route_id}/sequence")
+@api_router.put("/routes/{route_id}/sequence", dependencies=ADMIN_ONLY)
 async def resequence(route_id: str, body: SequenceIn):
     route = await get_route_or_404(route_id)
     stops = await get_stops(route_id)
@@ -1054,7 +1067,7 @@ async def send_apology_sms(stop: "Stop") -> str:
         return "failed"
 
 
-@api_router.get("/alerts/trends")
+@api_router.get("/alerts/trends", dependencies=ADMIN_ONLY)
 async def alert_trends(days: int = 7):
     """Low-rating hot spots over the last N days, by driver and by zone, with the most common reasons."""
     days = max(1, min(days, 31))
@@ -1103,7 +1116,7 @@ class RedeemIn(BaseModel):
     order_ref: Optional[str] = None
 
 
-@api_router.post("/codes/redeem")
+@api_router.post("/codes/redeem", dependencies=ADMIN_ONLY)
 async def redeem_code(body: RedeemIn):
     """Record an apology code being used on a new order (called by checkout, or entered by an admin)."""
     code = body.code.strip().upper()
@@ -1124,7 +1137,7 @@ async def redeem_code(body: RedeemIn):
     return rec
 
 
-@api_router.get("/codes/apology")
+@api_router.get("/codes/apology", dependencies=ADMIN_ONLY)
 async def apology_codes():
     """Every apology code issued, whether it was used, and what those customers spent afterwards."""
     stops = [Stop(**d) for d in await db.stops.find({"apology_code": {"$ne": None}}, {"_id": 0}).sort("rated_at", -1).to_list(1000)]
@@ -1147,7 +1160,7 @@ class CoachingIn(BaseModel):
     reason: Optional[str] = None
 
 
-@api_router.post("/drivers/{driver_id}/coaching")
+@api_router.post("/drivers/{driver_id}/coaching", dependencies=ADMIN_ONLY)
 async def send_coaching(driver_id: str, body: CoachingIn):
     await get_driver_or_404(driver_id)
     note = body.note.strip()
@@ -1232,7 +1245,7 @@ async def low_rating_row(st: "Stop") -> dict:
     return {"stop": st.model_dump(), "driver": driver, "route_name": route_name}
 
 
-@api_router.get("/alerts/low-ratings")
+@api_router.get("/alerts/low-ratings", dependencies=ADMIN_ONLY)
 async def low_ratings(status: str = "open"):
     """1-2 star deliveries for admin follow-up. status: open | resolved | all."""
     q = {"rating": {"$lte": LOW_RATING, "$gte": 1}}
@@ -1249,7 +1262,7 @@ class FollowUpIn(BaseModel):
     resolved: bool = True
 
 
-@api_router.post("/stops/{stop_id}/follow-up")
+@api_router.post("/stops/{stop_id}/follow-up", dependencies=ADMIN_ONLY)
 async def follow_up(stop_id: str, body: FollowUpIn):
     stop = await get_stop_or_404(stop_id)
     if not stop.rating or stop.rating > LOW_RATING:
@@ -1261,7 +1274,15 @@ async def follow_up(stop_id: str, body: FollowUpIn):
 
 
 @api_router.websocket("/ws/admin")
-async def ws_admin(ws: WebSocket):
+async def ws_admin(ws: WebSocket, token: str = ""):
+    try:
+        p = decode_token(token, "session")
+        u = await db.users.find_one({"id": p["sub"], "role": "admin", "disabled": {"$ne": True}}, {"_id": 0, "id": 1})
+    except HTTPException:
+        u = None
+    if not u:
+        await ws.close(code=4401)
+        return
     await hub.join("admin", ws)
     try:
         while True:
@@ -1556,7 +1577,7 @@ async def mark_badges_seen(driver_id: str, body: SeenIn):
     return {"ok": True}
 
 
-@api_router.get("/scorecards")
+@api_router.get("/scorecards", dependencies=ADMIN_ONLY)
 async def all_scorecards(days: int = 7):
     """Week totals for every driver, best on-time rate first (admin dashboard)."""
     out = []
@@ -1595,10 +1616,20 @@ def qr_svg(data: str) -> str:
     return img.to_string(encoding="unicode")
 
 
+@api_router.post("/routes/{route_id}/labels-link", dependencies=ADMIN_ONLY)
+async def labels_link(route_id: str):
+    """Short-lived (10 min) print link so the label sheet can open in a new tab / print dialog."""
+    await get_route_or_404(route_id)
+    tok = issue_token("labels", "admin", purpose="labels", minutes=10, rid=route_id)
+    return {"path": f"/api/routes/{route_id}/labels.html?token={tok}"}
+
+
 @api_router.get("/routes/{route_id}/labels.html", response_class=HTMLResponse)
-async def route_labels(route_id: str, autoprint: int = 0):
+async def route_labels(route_id: str, token: str = "", autoprint: int = 0):
     """Printable A4 sheet: one QR parcel label per open stop, 8 per page, in LOADING order
     (reverse drop order) so the first delivery is loaded last and sits by the door."""
+    if decode_token(token, "labels").get("rid") != route_id:
+        raise HTTPException(403, "This print link is for a different route")
     route = await get_route_or_404(route_id)
     stops = [x for x in await get_stops(route_id) if x.status not in ("delivered", "failed")][::-1]
     esc = xml_escape
@@ -1639,7 +1670,7 @@ h1 {{ font-family: Arial, sans-serif; font-size: 16px; margin: 0 0 6px; }}
     return HTMLResponse(html)
 
 
-@api_router.get("/analytics")
+@api_router.get("/analytics", dependencies=ADMIN_ONLY)
 async def analytics():
     """Today's operations (history routes are excluded; see /scorecards for the week)."""
     routes = [Route(**d) for d in await db.routes.find({"service_date": today_str()}, {"_id": 0}).to_list(500)]
@@ -1945,6 +1976,7 @@ async def login(body: LoginIn, request: Request):
             await db.login_attempts.update_one({"key": key}, {"$set": upd}, upsert=True)
         raise HTTPException(401, "Wrong email or password")
     await db.login_attempts.delete_many({"key": {"$in": [k for k, _ in limits]}})
+    await remember_public_base(request)
     user = {k: v for k, v in u.items() if k != "password_hash"}
     if user.get("merchant_id"):
         user["merchant_name"] = (await get_merchant_or_404(user["merchant_id"]))["name"]
@@ -2018,7 +2050,7 @@ async def reset_merchant_password(user_id: str, body: PasswordIn, _: dict = Depe
 
 
 # ---------------------------------------------------------------- merchant delivery report (CSV)
-REPORT_RANGES = {"today": 0, "7d": 6, "30d": 29, "all": None}
+REPORT_RANGES = {"today": 0, "7d": 6, "30d": 29, "all": None, "lastweek": "lastweek"}
 REPORT_COLUMNS = ["tracking_code", "customer_name", "customer_phone", "address", "zone", "status", "order_created", "delivery_day",
                   "window", "driver", "arrived_at", "delivered_at", "on_time", "fail_reason", "proof_types", "proof_link",
                   "rating", "rating_comment"]
@@ -2029,17 +2061,36 @@ class ReportIn(BaseModel):
 
 
 @api_router.post("/merchants/{merchant_id}/report-link")
-async def report_link(merchant_id: str, body: ReportIn, u: dict = Depends(merchant_access)):
+async def report_link(merchant_id: str, body: ReportIn, request: Request, u: dict = Depends(merchant_access)):
     """Short-lived download link (5 min) so the CSV can open in a browser tab without a sign-in header."""
     await get_merchant_or_404(merchant_id)
     if body.range not in REPORT_RANGES:
         raise HTTPException(400, f"range must be one of {', '.join(REPORT_RANGES)}")
     tok = issue_token(u["id"], u["role"], purpose="report", minutes=5, mid=merchant_id, rng=body.range)
+    await remember_public_base(request)
     return {"path": f"/api/merchants/{merchant_id}/report.csv?token={tok}", "expires_in": 300}
 
 
 def local_fmt(iso: Optional[str]) -> str:
     return datetime.fromisoformat(iso).astimezone(TZ).strftime("%Y-%m-%d %H:%M") if iso else ""
+
+
+def report_window(rng: Optional[str]):
+    """(since, until) depot-local YYYY-MM-DD bounds for a report range; None = open-ended."""
+    today = datetime.now(TZ).date()
+    if rng == "lastweek":  # previous Monday..Sunday
+        start = today - timedelta(days=today.weekday() + 7)
+        return start.isoformat(), (start + timedelta(days=6)).isoformat()
+    back = REPORT_RANGES.get(rng, 6)
+    return ((today - timedelta(days=back)).isoformat() if back is not None else None), None
+
+
+async def remember_public_base(request: Request):
+    """Scheduled emails have no request to read the app's public URL from, so keep the latest one."""
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+    if host and not host.startswith(("localhost", "127.", "0.0.0.0")):
+        proto = request.headers.get("x-forwarded-proto") or "https"
+        await db.settings.update_one({"key": "public_base"}, {"$set": {"key": "public_base", "value": f"{proto}://{host}"}}, upsert=True)
 
 
 def csv_safe(v) -> str:
@@ -2054,8 +2105,7 @@ async def report_csv(merchant_id: str, token: str, request: Request):
     if p.get("mid") != merchant_id:
         raise HTTPException(403, "This link is for a different store")
     m = await get_merchant_or_404(merchant_id)
-    back = REPORT_RANGES.get(p.get("rng"), 6)
-    since = (datetime.now(TZ).date() - timedelta(days=back)).isoformat() if back is not None else None
+    since, until = report_window(p.get("rng"))
     host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
     proto = request.headers.get("x-forwarded-proto") or ("http" if host.startswith(("localhost", "127.")) else "https")
     base = f"{proto}://{host}"
@@ -2068,7 +2118,8 @@ async def report_csv(merchant_id: str, token: str, request: Request):
         st = Stop(**d)
         activity = st.delivered_at or st.created_at
         unfinished = st.status in ("pending", "arrived")  # open orders always appear, whatever the range
-        if since and not unfinished and (not activity or datetime.fromisoformat(activity).astimezone(TZ).date().isoformat() < since):
+        act_day = datetime.fromisoformat(activity).astimezone(TZ).date().isoformat() if activity else None
+        if since and not unfinished and (not act_day or act_day < since or (until and act_day > until)):
             continue
         r = routes.get(st.route_id) if st.route_id else None
         link = ""
@@ -2210,7 +2261,253 @@ async def dismiss_import_row(row_id: str, u: dict = Depends(current_user)):
     return {"ok": True}
 
 
-@api_router.get("/digest")
+# ---------------------------------------------------------------- weekly merchant report emails (Emergent managed Resend)
+EMAIL_BASE_URL = "https://integrations.emergentagent.com"  # constant on purpose: survives deployment
+EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY", "")
+EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "MultiDrop")
+EMAIL_REPLY_TO = os.environ.get("EMAIL_REPLY_TO")
+TEST_INBOX = "delivered@resend.dev"  # seeded demo store logins are not real inboxes
+WEEKLY_SEND_HOUR = 8  # Monday 08:00 depot (SF) time
+WEEKLY_LINK_DAYS = 7
+SEND_NOW_COOLDOWN_MIN = 5
+
+_SHORTENERS = ("bit.ly", "tinyurl.com", "t.co", "is.gd", "cutt.ly", "goo.gl", "rebrand.ly")
+_CRED_ASK = ("reply with your password", "reply with the code", "send your password", "cvv",
+             "send us your password", "enter your password below", "confirm your card number",
+             "your full card number", "seed phrase", "recovery phrase", "verify your card",
+             "social security number", "confirm your bank details")
+_HOSTISH = re.compile(r"\b(?:https?://)?((?:[a-z0-9-]+\.)+[a-z]{2,})", re.I)
+
+
+def _host_ok(host: str) -> bool:
+    if not host or "xn--" in host:
+        return False
+    try:
+        ipaddress.ip_address(host)
+        return False
+    except ValueError:
+        pass
+    return not any(host == s or host.endswith("." + s) for s in _SHORTENERS)
+
+
+def _same_site(shown: str, real: str) -> bool:
+    return shown == real or real.endswith("." + shown) or shown.endswith("." + real)
+
+
+class _EmailScan(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.tags, self.urls, self.anchors = set(), [], []
+        self._href, self._text = None, []
+
+    def handle_starttag(self, tag, attrs):
+        self.tags.add(tag.lower())
+        self.urls += [v for k, v in attrs if k.lower() in ("href", "src") and v]
+        if tag.lower() == "a":
+            self._href = dict((k.lower(), v) for k, v in attrs).get("href")
+            self._text = []
+
+    def handle_data(self, data):
+        if self._href is not None:
+            self._text.append(data)
+
+    def handle_endtag(self, tag):
+        if tag.lower() == "a" and self._href is not None:
+            self.anchors.append((self._href, "".join(self._text)))
+            self._href, self._text = None, []
+
+
+def _assert_safe_email(subject: str, html: str) -> None:
+    scan = _EmailScan()
+    scan.feed(html)
+    if scan.tags & {"form", "input", "textarea", "select"}:
+        raise ValueError("No forms or input fields in email (G2)")
+    body = f"{subject}\n{html}".lower()
+    for p in _CRED_ASK:
+        if p in body:
+            raise ValueError(f"Email asks the recipient for credentials: {p!r} (G2)")
+    for url in scan.urls:
+        low = url.strip().lower()
+        if low.startswith(("mailto:", "tel:", "cid:", "#")):
+            continue
+        if not low.startswith("https://"):
+            raise ValueError(f"Email links/assets must be absolute https: {url!r} (G3)")
+        host = urlparse(low).hostname or ""
+        if not _host_ok(host) or urlparse(low).username is not None:
+            raise ValueError(f"Shortened, numeric-host or credential-bearing URL: {url!r} (G3)")
+    for href, text in scan.anchors:
+        real = urlparse(href.strip().lower()).hostname or ""
+        if not real:
+            continue
+        for m in _HOSTISH.finditer(text):
+            if not _same_site(m.group(1).lower(), real):
+                raise ValueError(f"Anchor text {m.group(1)!r} ≠ real link host {real!r} (G3)")
+
+
+async def send_email(*, to: str, subject: str, html: str) -> str:
+    """Returns the provider id; raises RuntimeError with a short reason on failure."""
+    _assert_safe_email(subject, html)
+    payload = {"to": [to], "subject": subject, "html": html, "from_name": EMAIL_FROM_NAME}
+    if EMAIL_REPLY_TO:
+        payload["contact_email"] = EMAIL_REPLY_TO
+    try:
+        async with httpx.AsyncClient(timeout=30) as c:
+            resp = await c.post(f"{EMAIL_BASE_URL}/api/v1/email/send", headers={"X-Email-Key": EMAIL_KEY}, json=payload)
+        resp.raise_for_status()
+        return resp.json().get("id") or ""
+    except httpx.HTTPStatusError as e:
+        try:
+            j = e.response.json()
+        except ValueError:
+            j = {}
+        if j.get("code") in ("insufficient_credits", "integration_disabled", "daily_limit_reached"):
+            logger.warning(f"Email paused: {j.get('code')} ({e.response.status_code}): {j.get('message', '')}")
+            raise RuntimeError(f"Email paused: {j.get('code')}")
+        logger.error(f"Email send failed: {e.response.status_code} {e.response.text[:300]}")
+        raise RuntimeError(f"Email provider error {e.response.status_code}")
+    except httpx.HTTPError as e:
+        logger.error(f"Email send error: {e}")
+        raise RuntimeError("Email service unreachable")
+
+
+async def weekly_summary(merchant_id: str, since: str, until: str) -> dict:
+    rows = [Stop(**d) for d in await db.stops.find({"merchant_id": merchant_id}, {"_id": 0}).to_list(5000)]
+
+    def in_week(st: Stop) -> bool:
+        a = st.delivered_at or st.created_at
+        return bool(a) and since <= datetime.fromisoformat(a).astimezone(TZ).date().isoformat() <= until
+
+    week = [x for x in rows if in_week(x)]
+    delivered = [x for x in week if x.status == "delivered"]
+    windowed = [x for x in delivered if x.window_end]
+    rated = [x.rating for x in delivered if x.rating]
+    return {"orders": len([x for x in week if x.created_at and since <= datetime.fromisoformat(x.created_at).astimezone(TZ).date().isoformat() <= until]),
+            "delivered": len(delivered), "failed": sum(1 for x in week if x.status == "failed"),
+            "open": sum(1 for x in rows if x.status in ("pending", "arrived")),
+            "on_time_rate": round(sum(1 for x in windowed if delivered_on_time(x)) / len(windowed) * 100) if windowed else None,
+            "avg_rating": avg(rated), "complaints": sum(1 for r in rated if r <= 2)}
+
+
+def weekly_email_html(store: str, since: str, until: str, s: dict, link: str) -> str:
+    e = escape
+    rng = f"{nice_date(since)} – {nice_date(until)}"
+    cells = [("Delivered", s["delivered"]), ("Failed", s["failed"]),
+             ("On time", "—" if s["on_time_rate"] is None else f"{s['on_time_rate']}%"),
+             ("Avg rating", "—" if s["avg_rating"] is None else f"{s['avg_rating']} / 5"),
+             ("Complaints (1–2★)", s["complaints"]), ("New orders", s["orders"]), ("Still open", s["open"])]
+    rows = "".join(f'<tr><td style="padding:8px 0;border-bottom:1px solid #e5e5e5;color:#555">{e(k)}</td>'
+                   f'<td style="padding:8px 0;border-bottom:1px solid #e5e5e5;text-align:right;font-weight:bold">{e(str(v))}</td></tr>' for k, v in cells)
+    return (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f4"><tr><td align="center" style="padding:24px">'
+            f'<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border:2px solid #0a0a0a;font-family:Arial,sans-serif;color:#0a0a0a">'
+            f'<tr><td style="background:#0a0a0a;color:#ffffff;padding:20px 24px;font-size:20px;font-weight:bold;letter-spacing:1px">{e(EMAIL_FROM_NAME.upper())} · WEEKLY DELIVERY REPORT</td></tr>'
+            f'<tr><td style="padding:24px">'
+            f'<p style="margin:0 0 4px;font-size:18px;font-weight:bold">{e(store)}</p>'
+            f'<p style="margin:0 0 16px;color:#555">Week of {e(rng)} (San Francisco time)</p>'
+            f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">{rows}</table>'
+            f'<p style="margin:24px 0 8px"><a href="{e(link, quote=True)}" style="display:inline-block;background:#e11d1d;color:#ffffff;padding:12px 20px;text-decoration:none;font-weight:bold">Download the full CSV report</a></p>'
+            f'<p style="margin:0;color:#777;font-size:12px">The download link works for {WEEKLY_LINK_DAYS} days. It lists every drop with status, times, proof-of-delivery links and ratings.</p>'
+            f'</td></tr><tr><td style="padding:16px 24px;border-top:1px solid #e5e5e5;color:#888;font-size:12px">'
+            f'Sent by {e(EMAIL_FROM_NAME)} every Monday morning. Turn this email off from the Merchant console. We never ask for your password by email.'
+            f'</td></tr></table></td></tr></table>')
+
+
+async def send_weekly_report(merchant_id: str, trigger: str) -> dict:
+    """Email last week's summary + a 7-day CSV link to every login of the store. Logged in db.report_emails."""
+    m = await get_merchant_or_404(merchant_id)
+    since, until = report_window("lastweek")
+    log = {"id": str(uuid.uuid4()), "merchant_id": merchant_id, "trigger": trigger, "week_start": since, "week_end": until,
+           "created_at": now_iso(), "recipients": [], "status": "sent", "error": None}
+    base = (await db.settings.find_one({"key": "public_base"}, {"_id": 0}) or {}).get("value")
+    users = await db.users.find({"merchant_id": merchant_id, "role": "merchant", "disabled": {"$ne": True}}, {"_id": 0}).to_list(20)
+    if not base:
+        log.update(status="failed", error="App address unknown yet — sign in once so links can be built")
+    elif not users:
+        log.update(status="failed", error="Store has no login email")
+    else:
+        tok = issue_token(f"weekly:{merchant_id}", "merchant", purpose="report", minutes=WEEKLY_LINK_DAYS * 24 * 60, mid=merchant_id, rng="lastweek")
+        link = f"{base}/api/merchants/{merchant_id}/report.csv?token={tok}"
+        summary = await weekly_summary(merchant_id, since, until)
+        html = weekly_email_html(m["name"], since, until, summary, link)
+        subject = f"{m['name']}: your weekly delivery report ({nice_date(since)} – {nice_date(until)})"
+        errors = []
+        for u in users:
+            to = TEST_INBOX if u.get("email") in {em for _, em, _ in DEMO_MERCHANT_USERS} else u["email"]
+            try:
+                eid = await send_email(to=to, subject=subject, html=html)
+                log["recipients"].append({"login": u["email"], "to": to, "email_id": eid, "status": "sent"})
+            except Exception as ex:
+                errors.append(str(ex))
+                log["recipients"].append({"login": u["email"], "to": to, "email_id": None, "status": "failed"})
+        if errors:
+            log.update(status="failed" if len(errors) == len(users) else "partial", error=errors[0])
+        log["summary"] = summary
+    await db.report_emails.insert_one(dict(log))
+    return log
+
+
+def next_weekly_send(now: Optional[datetime] = None) -> datetime:
+    now = now or datetime.now(TZ)
+    d = now.date() + timedelta(days=(7 - now.weekday()) % 7)
+    at = datetime.combine(d, time_cls(WEEKLY_SEND_HOUR, 0), TZ)
+    return at if at > now else at + timedelta(days=7)
+
+
+async def weekly_scheduler():
+    """Every minute: on Monday from 08:00 SF, send each opted-in store's report once per ISO week."""
+    while True:
+        try:
+            now = datetime.now(TZ)
+            if now.weekday() == 0 and now.hour >= WEEKLY_SEND_HOUR:
+                wk = f"{now.isocalendar()[0]}-W{now.isocalendar()[1]:02d}"
+                for m in await db.merchants.find({"weekly_email": {"$ne": False}}, {"_id": 0, "id": 1}).to_list(500):
+                    claimed = await db.merchants.update_one({"id": m["id"], "weekly_sent_week": {"$ne": wk}}, {"$set": {"weekly_sent_week": wk}})
+                    if claimed.modified_count:
+                        log = await send_weekly_report(m["id"], "scheduled")
+                        tries = await db.report_emails.count_documents({"merchant_id": m["id"], "trigger": "scheduled", "week_start": log["week_start"]})
+                        if log["status"] == "failed" and tries < 3:  # retry next minute, at most 3 tries a week
+                            await db.merchants.update_one({"id": m["id"]}, {"$unset": {"weekly_sent_week": ""}})
+        except Exception as e:
+            logger.error(f"Weekly report scheduler error: {e}")
+        await asyncio.sleep(60)
+
+
+class WeeklyEmailIn(BaseModel):
+    enabled: bool
+
+
+async def weekly_email_status(merchant_id: str) -> dict:
+    m = await get_merchant_or_404(merchant_id)
+    users = await db.users.find({"merchant_id": merchant_id, "role": "merchant", "disabled": {"$ne": True}}, {"_id": 0, "email": 1}).to_list(20)
+    last = await db.report_emails.find({"merchant_id": merchant_id}, {"_id": 0}).sort("created_at", -1).to_list(1)
+    return {"enabled": m.get("weekly_email", True), "recipients": [u["email"] for u in users],
+            "next_send": next_weekly_send().isoformat(), "last": last[0] if last else None}
+
+
+@api_router.get("/merchants/{merchant_id}/weekly-email")
+async def get_weekly_email(merchant_id: str, _: dict = Depends(merchant_access)):
+    return await weekly_email_status(merchant_id)
+
+
+@api_router.put("/merchants/{merchant_id}/weekly-email")
+async def set_weekly_email(merchant_id: str, body: WeeklyEmailIn, _: dict = Depends(merchant_access)):
+    await get_merchant_or_404(merchant_id)
+    await db.merchants.update_one({"id": merchant_id}, {"$set": {"weekly_email": body.enabled}})
+    return await weekly_email_status(merchant_id)
+
+
+@api_router.post("/merchants/{merchant_id}/weekly-email/send-now")
+async def send_weekly_now(merchant_id: str, request: Request, _: dict = Depends(merchant_access)):
+    """Send last week's report right away to the store's own login emails (rate-limited)."""
+    await remember_public_base(request)
+    recent = await db.report_emails.find_one({"merchant_id": merchant_id, "trigger": "manual", "status": {"$ne": "failed"},
+                                              "created_at": {"$gt": (datetime.now(timezone.utc) - timedelta(minutes=SEND_NOW_COOLDOWN_MIN)).isoformat()}})
+    if recent:
+        raise HTTPException(429, f"A report was just sent — try again in a few minutes")
+    log = await send_weekly_report(merchant_id, "manual")
+    return {**(await weekly_email_status(merchant_id)), "sent": log}
+
+
+@api_router.get("/digest", dependencies=ADMIN_ONLY)
 async def daily_digest(date: Optional[str] = None):
     """End-of-day ops digest for one depot day: pace, deliveries by hour, late drops, failures and complaints."""
     day = date or today_str()

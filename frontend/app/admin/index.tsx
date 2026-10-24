@@ -9,6 +9,7 @@ import LowRatingAlerts from "@/src/components/LowRatingAlerts";
 import AlertTrends from "@/src/components/AlertTrends";
 import ApologyCodes from "@/src/components/ApologyCodes";
 import DailyDigest from "@/src/components/DailyDigest";
+import { clearSession } from "@/src/session";
 import Badges, { Badge } from "@/src/components/Badges";
 import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
@@ -65,7 +66,7 @@ export default function AdminDashboard() {
       toast.show("DEMO DATA RESET");
       refresh();
     } catch (e: any) {
-      toast.show(`${e.message} · SIGN IN VIA MERCHANT ACCOUNTS`, "red");
+      toast.show(e.message, "red");
     }
   };
 
@@ -82,7 +83,10 @@ export default function AdminDashboard() {
   return (
     <View style={s.root} testID="admin-dashboard-screen">
       <Header title="CONTROL CENTER" subtitle="Dispatch · Batching · Analytics" right={
-        <Pressable testID="admin-reset-button" onPress={reset} style={s.iconBtn}><Ionicons name="refresh" size={22} color={colors.onSurfaceInverse} /></Pressable>
+        <View style={{ flexDirection: "row", gap: spacing.sm }}>
+          <Pressable testID="admin-reset-button" onPress={reset} style={s.iconBtn}><Ionicons name="refresh" size={22} color={colors.onSurfaceInverse} /></Pressable>
+          <Pressable testID="admin-sign-out-button" onPress={() => clearSession()} style={s.iconBtn}><Ionicons name="log-out" size={22} color={colors.onSurfaceInverse} /></Pressable>
+        </View>
       } />
       {an.isLoading ? <Loading /> : an.error ? <ErrorBlock message={(an.error as Error).message} onRetry={refresh} /> : (
         <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }} refreshControl={<RefreshControl refreshing={false} onRefresh={refresh} />}>

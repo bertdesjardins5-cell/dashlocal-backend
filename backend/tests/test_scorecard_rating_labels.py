@@ -110,7 +110,9 @@ class TestLabels:
     def test_labels_reverse_order(self, api, route1):
         rid = route1["id"]
         open_stops = [s for s in stops_of(api, rid) if s["status"] not in ("delivered", "failed")]
-        r = api.get(f"{API}/routes/{rid}/labels.html")
+        lk = api.post(f"{API}/routes/{rid}/labels-link")  # token-gated print link (admin)
+        assert lk.status_code == 200, lk.text
+        r = api.get(f"{BASE_URL}{lk.json()['path']}")
         assert r.status_code == 200 and "text/html" in r.headers["content-type"]
         html = r.text
         loads = re.findall(r"LOAD (\d{2})</span><span class=\"seq\">DROP #(\d{2})", html)
@@ -120,8 +122,9 @@ class TestLabels:
         assert drops == sorted(drops, reverse=True)
         assert drops[0] == max(s["seq"] for s in open_stops)  # LOAD 01 = last drop
 
-    def test_labels_404(self, api):
-        assert api.get(f"{API}/routes/nope/labels.html").status_code == 404
+    def test_labels_unknown_route(self, api):
+        assert api.get(f"{API}/routes/nope/labels.html").status_code == 401  # no token
+        assert api.post(f"{API}/routes/nope/labels-link").status_code == 404
 
 
 # --- Booking SMS status (seeded fictional numbers only)
