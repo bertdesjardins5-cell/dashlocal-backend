@@ -13,6 +13,7 @@ const ROLES = [
   { key: "driver", n: "01", title: "DRIVER", desc: "Manifest, next stop, geofenced arrival, proof of delivery.", icon: "car-sport" as const, href: "/driver" },
   { key: "customer", n: "02", title: "CUSTOMER", desc: "Live tracking, dynamic ETA, stops-away alerts.", icon: "location" as const, href: "/customer" },
   { key: "admin", n: "03", title: "ADMIN", desc: "Batch by zone, re-sequence drops, route analytics.", icon: "grid" as const, href: "/admin" },
+  { key: "merchant", n: "04", title: "MERCHANT", desc: "Upload orders from a CSV, fix flagged rows, follow every drop.", icon: "storefront" as const, href: "/merchant" },
 ];
 
 export default function RolePicker() {

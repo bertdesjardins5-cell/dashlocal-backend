@@ -75,7 +75,7 @@ export default function AdminRoute() {
       const r = await api<RouteDetail>(`/routes/${id}/sequence`, { method: "PUT", body: { stop_ids: ordered } });
       qc.setQueryData(["route", id], r);
       qc.invalidateQueries({ queryKey: ["routes"] });
-      toast.show(`MANUAL OVERRIDE · ${label}`, "green");
+      toast.show(`MANUAL OVERRIDE · ${label}${r.driver_id && r.status !== "completed" ? " · DRIVER NOTIFIED" : ""}`, "green");
     } catch (e: any) {
       toast.show(e.message, "red");
       q.refetch();
@@ -220,7 +220,7 @@ const useStyles = makeStyles((c) => ({
   seq: { fontSize: 22, width: 32 },
   name: { fontSize: 16 },
   meta: { fontSize: 11, color: c.muted },
-  arrow: { width: 44, height: 36, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: c.border, marginVertical: 1 },
+  arrow: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: c.border, marginVertical: 1 },
   lateBanner: { backgroundColor: c.brandPrimary, padding: spacing.md, borderBottomWidth: 2, borderColor: c.border },
   lateText: { color: c.onBrandPrimary, fontSize: 12, fontWeight: "700" },
   backdrop: { flex: 1, backgroundColor: c.surfaceInverse, opacity: 0.5 },

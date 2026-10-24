@@ -30,6 +30,7 @@ export type Stop = {
   apology_code?: string | null;
   apology_sms_status?: string | null;
   planned_eta?: string | null;
+  nearby_sms_status?: string | null;
   late_min?: number;
   fail_reason: string | null;
 };
@@ -47,6 +48,8 @@ export type RouteDetail = {
   service_date: string;
   actual_distance_m: number;
   started_at: string | null;
+  resequenced_at?: string | null;
+  resequence_seen?: boolean;
   driver: Driver | null;
   stops: Stop[];
   total: number;

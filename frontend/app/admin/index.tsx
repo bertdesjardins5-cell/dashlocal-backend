@@ -8,6 +8,7 @@ import { addDays, api, dayLabel, depotToday, Driver } from "@/src/api";
 import LowRatingAlerts from "@/src/components/LowRatingAlerts";
 import AlertTrends from "@/src/components/AlertTrends";
 import ApologyCodes from "@/src/components/ApologyCodes";
+import DailyDigest from "@/src/components/DailyDigest";
 import Badges, { Badge } from "@/src/components/Badges";
 import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
@@ -81,6 +82,8 @@ export default function AdminDashboard() {
       } />
       {an.isLoading ? <Loading /> : an.error ? <ErrorBlock message={(an.error as Error).message} onRetry={refresh} /> : (
         <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }} refreshControl={<RefreshControl refreshing={false} onRefresh={refresh} />}>
+          <Mono style={s.section}>DAILY OPS DIGEST</Mono>
+          <DailyDigest />
           <LowRatingAlerts notify={toast.show} />
           <Mono style={s.section}>LOW RATING TRENDS · 7 DAYS</Mono>
           <AlertTrends notify={toast.show} />

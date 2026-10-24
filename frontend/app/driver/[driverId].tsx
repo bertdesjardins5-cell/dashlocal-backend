@@ -65,9 +65,18 @@ export default function Manifest() {
   const q = useQuery({
     queryKey: ["driver-route", driverId],
     queryFn: () => api<{ route: RouteDetail | null }>(`/drivers/${driverId}/route`),
-    refetchInterval: mode === "off" ? false : 3000,
+    refetchInterval: mode === "off" ? 8000 : 3000,
   });
   const route = q.data?.route;
+  const ackUpdate = async () => {
+    if (!route) return;
+    try {
+      await api(`/routes/${route.id}/update-seen`, { method: "POST" });
+    } catch (e: any) {
+      toast.show(`COULD NOT CONFIRM: ${e.message}`, "red");
+    }
+    q.refetch();
+  };
   const next = route?.stops.find((st) => st.id === route.next_stop_id);
   const remaining = route?.stops.filter((st) => st.id !== route.next_stop_id) ?? [];
 
@@ -170,6 +179,18 @@ export default function Manifest() {
             <Mono style={s.coachText} testID="coaching-note-text">{coachNote.note}</Mono>
           </View>
           <Pressable testID="coaching-ack-button" onPress={ackCoaching} style={s.coachAck}>
+            <Mono style={s.coachAckText}>GOT IT</Mono>
+          </Pressable>
+        </View>
+      ) : null}
+      {route && route.resequenced_at && route.resequence_seen === false ? (
+        <View style={s.updateBox} testID="route-updated-banner">
+          <Ionicons name="swap-vertical" size={20} color={colors.onBrandPrimary} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <Mono style={s.updateKicker}>ROUTE UPDATED BY DISPATCH · {fmtDepotTime(route.resequenced_at)}</Mono>
+            <Mono style={s.updateText}>Your stop order changed. Next up: {route.stops.find((x) => x.id === route.next_stop_id)?.customer_name ?? "—"}.</Mono>
+          </View>
+          <Pressable testID="route-updated-ack-button" onPress={ackUpdate} style={s.coachAck}>
             <Mono style={s.coachAckText}>GOT IT</Mono>
           </Pressable>
         </View>
@@ -292,6 +313,9 @@ const useStyles = makeStyles((c) => ({
   coachText: { fontSize: 13, color: c.onWarning },
   coachAck: { minHeight: 44, paddingHorizontal: spacing.md, justifyContent: "center", backgroundColor: c.surfaceInverse },
   coachAckText: { fontSize: 11, fontWeight: "700", color: c.onSurfaceInverse },
+  updateBox: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md, backgroundColor: c.brandPrimary, borderBottomWidth: 2, borderColor: c.border },
+  updateKicker: { fontSize: 10, fontWeight: "700", letterSpacing: 1, color: c.onBrandPrimary },
+  updateText: { fontSize: 13, color: c.onBrandPrimary },
   empty: { padding: spacing.xl, gap: spacing.sm, borderBottomWidth: 2, borderColor: c.border },
   emptyTitle: { fontSize: 40, lineHeight: 42, letterSpacing: -1 },
   meta: { fontSize: 12, color: c.muted },

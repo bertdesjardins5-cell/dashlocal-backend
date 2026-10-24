@@ -6,6 +6,11 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.errors import DuplicateKeyError
 import os
+import io
+import csv
+import time
+import asyncio
+import httpx
 import math
 import random
 import logging
@@ -253,6 +258,10 @@ class Stop(BaseModel):
     apology_sms_status: Optional[str] = None
     share_token: Optional[str] = None  # public proof-of-delivery link token
     share_created_at: Optional[str] = None  # links expire PROOF_LINK_DAYS after creation
+    nearby_sms_status: Optional[str] = None  # "driver is 2 stops away" text: sending | sent | skipped_fictional | not_configured | failed
+    nearby_sms_at: Optional[str] = None
+    merchant_id: Optional[str] = None  # set when the order came from a merchant CSV import
+    created_at: Optional[str] = None
     fail_reason: Optional[str] = None
 
 
@@ -266,6 +275,8 @@ class Route(BaseModel):
     actual_distance_m: float = 0
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
+    resequenced_at: Optional[str] = None  # last manual re-order by dispatch
+    resequence_seen: bool = True  # driver acknowledged the latest re-order
     service_date: str = Field(default_factory=lambda: datetime.now(TZ).date().isoformat())
     created_at: str = Field(default_factory=now_iso)
 
@@ -426,9 +437,66 @@ async def tracking_payload(code: str) -> dict:
     return out
 
 
+NEARBY_STOPS = 2  # text the customer once when the driver is this many stops away (or closer)
+
+
+async def send_nearby_sms(stop: Stop, stops_away: int, driver_name: str):
+    status = "failed"
+    try:
+        status = await _send_nearby_sms(stop, stops_away, driver_name)
+    finally:  # never leave a stop stuck in "sending"
+        await db.stops.update_one({"id": stop.id}, {"$set": {"nearby_sms_status": status, "nearby_sms_at": now_iso()}})
+    if hub.rooms.get(f"track:{stop.tracking_code}"):
+        await hub.send(f"track:{stop.tracking_code}", await tracking_payload(stop.tracking_code))
+
+
+_bg_tasks: Set[asyncio.Task] = set()
+
+
+def spawn(coro):
+    """Keep a reference to fire-and-forget tasks so they are not garbage-collected mid-run."""
+    t = asyncio.create_task(coro)
+    _bg_tasks.add(t)
+    t.add_done_callback(_bg_tasks.discard)
+
+
+async def _send_nearby_sms(stop: Stop, stops_away: int, driver_name: str) -> str:
+    if FICTIONAL_NUMBER.match(stop.customer_phone):
+        return "skipped_fictional"
+    if not (os.environ.get("TWILIO_ACCOUNT_SID") and os.environ.get("TWILIO_AUTH_TOKEN") and os.environ.get("TWILIO_PHONE_NUMBER")):
+        return "not_configured"
+    where = "you're next" if stops_away == 0 else f"{stops_away} stop{'s' if stops_away > 1 else ''} away"
+    body = f"MultiDrop: {driver_name.split(' ')[0]} is {where} with your delivery {stop.tracking_code}. Track live in the app."
+    try:
+        tw = TwilioClient(os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"])
+        res = await run_in_threadpool(lambda: tw.messages.create(to=stop.customer_phone, from_=twilio_number(), body=body))
+        await db.contact_logs.insert_one({"id": str(uuid.uuid4()), "stop_id": stop.id, "channel": "sms", "kind": "nearby",
+                                          "message": body, "twilio_sid": res.sid, "status": res.status, "created_at": now_iso()})
+        return "sent"
+    except Exception as e:
+        logger.error(f"Nearby SMS failed for {stop.tracking_code}: {e}")
+        return "failed"
+
+
+async def maybe_nearby_sms(route: Route, stops: List[Stop]):
+    """Once per stop: text the customer when the driver on an active route is NEARBY_STOPS or fewer stops away."""
+    if route.status != "active" or route.service_date != today_str() or not route.driver_id:
+        return
+    d = await db.drivers.find_one({"id": route.driver_id}, {"_id": 0, "name": 1})
+    open_ = [s for s in stops if s.status in ("pending", "arrived")]
+    for i, s in enumerate(open_[:NEARBY_STOPS + 1]):
+        if s.status != "pending" or s.nearby_sms_status:
+            continue
+        # claim atomically so concurrent location pings never double-send
+        claimed = await db.stops.update_one({"id": s.id, "nearby_sms_status": None}, {"$set": {"nearby_sms_status": "sending"}})
+        if claimed.modified_count:
+            spawn(send_nearby_sms(s, i, d["name"] if d else "Your driver"))
+
+
 async def broadcast_route(route_id: str):
     route = Route(**(await db.routes.find_one({"id": route_id}, {"_id": 0})))
     stops = await get_stops(route_id)
+    await maybe_nearby_sms(route, stops)
     for s in stops:
         if hub.rooms.get(f"track:{s.tracking_code}"):
             await hub.send(f"track:{s.tracking_code}", await tracking_payload(s.tracking_code))
@@ -460,6 +528,8 @@ async def seed(force: bool = False):
     await db.drivers.delete_many({})
     await db.code_redemptions.delete_many({})
     await db.coaching_notes.delete_many({})
+    await db.import_jobs.delete_many({})
+    await db.import_rows.delete_many({})
     await db.stops.delete_many({})
     await db.routes.delete_many({})
     rnd = random.Random(42)
@@ -610,7 +680,14 @@ async def create_batch(zone: str, driver_id: str, start: bool = False, service_d
 @app.on_event("startup")
 async def startup():
     await db.code_redemptions.create_index("code", unique=True)  # a code can only ever be redeemed once
+    await db.geocodes.create_index("key", unique=True)
+    await db.stops.update_many({"nearby_sms_status": "sending"}, {"$set": {"nearby_sms_status": None}})  # interrupted by a restart: retry
     await seed()
+    for m in MERCHANTS:
+        await db.merchants.update_one({"id": m["id"]}, {"$setOnInsert": m}, upsert=True)
+    # imports interrupted by a restart: send unfinished rows back to the queue
+    for j in await db.import_jobs.find({"status": "running"}, {"_id": 0, "id": 1}).to_list(100):
+        spawn(process_import(j["id"]))
     try:
         await run_in_threadpool(init_storage)
     except Exception as e:
@@ -760,11 +837,28 @@ async def resequence(route_id: str, body: SequenceIn):
     stops = await get_stops(route_id)
     if set(body.stop_ids) != {s.id for s in stops}:
         raise HTTPException(400, "stop_ids must contain every stop of the route exactly once")
+    if route.status == "completed":
+        raise HTTPException(400, "Route is already completed")
+    done = [s.id for s in stops if s.status in ("delivered", "failed")]
+    if body.stop_ids[:len(done)] != done:
+        raise HTTPException(400, "Finished stops stay where they are — only reorder stops not done yet")
+    if body.stop_ids == [s.id for s in stops]:
+        return await route_detail(route)  # nothing changed
     await apply_sequence(route_id, body.stop_ids)
+    upd = {"resequenced_at": now_iso(), "resequence_seen": False}
     if route.status == "planned":
         by_id = {s.id: s.model_dump() for s in stops}
-        await db.routes.update_one({"id": route_id}, {"$set": {"planned_distance_m": round(path_length_m(DEPOT, [by_id[i] for i in body.stop_ids]))}})
+        upd["planned_distance_m"] = round(path_length_m(DEPOT, [by_id[i] for i in body.stop_ids]))
+    await db.routes.update_one({"id": route_id}, {"$set": upd})
     await broadcast_route(route_id)
+    return await route_detail(await get_route_or_404(route_id))
+
+
+@api_router.post("/routes/{route_id}/update-seen")
+async def route_update_seen(route_id: str):
+    """Driver acknowledged the dispatcher's latest re-order."""
+    await get_route_or_404(route_id)
+    await db.routes.update_one({"id": route_id}, {"$set": {"resequence_seen": True}})
     return await route_detail(await get_route_or_404(route_id))
 
 
@@ -1279,8 +1373,13 @@ async def set_customer_phone(stop_id: str, body: PhoneIn):
     phone = re.sub(r"[\s\-()]", "", body.phone)
     if not E164.match(phone):
         raise HTTPException(400, "Use +countrycode format, e.g. +14155550123")
-    await get_stop_or_404(stop_id)
-    await db.stops.update_one({"id": stop_id}, {"$set": {"customer_phone": phone}})
+    stop = await get_stop_or_404(stop_id)
+    upd = {"customer_phone": phone}
+    if phone != stop.customer_phone and stop.nearby_sms_status in ("skipped_fictional", "not_configured", "failed"):
+        upd["nearby_sms_status"] = None  # new number: allow the "2 stops away" text again
+    await db.stops.update_one({"id": stop_id}, {"$set": upd})
+    if stop.route_id and "nearby_sms_status" in upd:
+        await broadcast_route(stop.route_id)
     return (await get_stop_or_404(stop_id)).model_dump()
 
 
@@ -1576,6 +1675,340 @@ async def analytics():
         "active_routes": sum(1 for r in routes if r.status == "active"),
         "avg_rating": round(sum(rated) / len(rated), 1) if rated else None,
         "routes": per_route,
+    }
+
+
+# ---------------------------------------------------------------- merchants & CSV order import
+MERCHANTS = [{"id": "mer-1", "name": "Mission Bakery Co.", "contact": "orders@missionbakery.example"},
+             {"id": "mer-2", "name": "Bay Books", "contact": "hello@baybooks.example"}]
+NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+NOMINATIM_UA = os.environ.get("NOMINATIM_USER_AGENT", "multidrop-merchant-import/1.0 (ops@multidrop.app)")
+SF_VIEWBOX = "-122.53,37.83,-122.35,37.70"  # lookups are bounded to San Francisco
+IMPORT_MAX_ROWS = 200
+FLAGGED = ("invalid", "not_found", "lookup_failed")
+COLUMNS = {
+    "customer_name": {"customer_name", "name", "customer", "recipient", "full_name"},
+    "phone": {"phone", "customer_phone", "phone_number", "mobile", "tel"},
+    "address": {"address", "street", "street_address", "delivery_address", "address_line"},
+    "notes": {"notes", "note", "instructions", "delivery_notes"},
+    "window_date": {"window_date", "date", "delivery_date"},
+    "window_start": {"window_start", "from", "start", "window_from"},
+    "window_end": {"window_end", "to", "end", "window_to"},
+}
+TEMPLATE_CSV = ("customer_name,phone,address,notes,window_date,window_start,window_end\n"
+                "Jane Doe,415 555 0123,1 Market St,Leave at reception,,,\n"
+                "Sam Lee,+14155550188,450 Golden Gate Ave,Ring twice,,14:00,16:00\n")
+_geo_lock = asyncio.Lock()
+_geo_last = [0.0]
+
+
+async def geocode(address: str) -> Optional[dict]:
+    """OpenStreetMap Nominatim lookup (cached, max 1 request/second). Raises on network/HTTP errors."""
+    key = re.sub(r"\s+", " ", address.strip().lower())
+    cached = await db.geocodes.find_one({"key": key}, {"_id": 0})
+    if cached:
+        return cached["result"]
+    async with _geo_lock:
+        wait = 1.05 - (time.monotonic() - _geo_last[0])
+        if wait > 0:
+            await asyncio.sleep(wait)
+        try:
+            async with httpx.AsyncClient(timeout=15, headers={"User-Agent": NOMINATIM_UA}) as c:
+                r = await c.get(NOMINATIM_URL, params={"q": f"{address}, San Francisco, CA, USA", "format": "jsonv2", "limit": 1,
+                                                       "addressdetails": 1, "countrycodes": "us", "viewbox": SF_VIEWBOX, "bounded": 1})
+        finally:
+            _geo_last[0] = time.monotonic()
+    r.raise_for_status()
+    rows = r.json()
+    result = None
+    if rows:
+        a = rows[0].get("address", {})
+        result = {"lat": float(rows[0]["lat"]), "lng": float(rows[0]["lon"]), "postcode": a.get("postcode"),
+                  "display_name": rows[0].get("display_name")}
+    await db.geocodes.update_one({"key": key}, {"$set": {"key": key, "result": result, "cached_at": now_iso()}}, upsert=True)
+    return result
+
+
+def normalize_phone(p: str) -> Optional[str]:
+    p = p.strip()
+    digits = re.sub(r"\D", "", p)
+    if p.startswith("+") and 8 <= len(digits) <= 15:
+        return f"+{digits}"
+    if len(digits) == 10:
+        return f"+1{digits}"
+    if len(digits) == 11 and digits.startswith("1"):
+        return f"+{digits}"
+    return None
+
+
+def validate_row(d: dict) -> Optional[str]:
+    """Returns an error message, or None when the row is usable. Normalises phone in place."""
+    missing = [k.replace("customer_", "") for k in ("customer_name", "phone", "address") if not d.get(k)]
+    if missing:
+        return f"Missing {', '.join(missing)}"
+    phone = normalize_phone(d["phone"])
+    if not phone:
+        return f"Invalid phone number '{d['phone'][:20]}'"
+    d["phone"] = phone
+    ws, we, wd = d.get("window_start"), d.get("window_end"), d.get("window_date")
+    if bool(ws) != bool(we):
+        return "Give both window_start and window_end, or neither"
+    if ws and (not HHMM.match(ws) or not HHMM.match(we) or ws >= we):
+        return "Window must be HH:MM to HH:MM, start before end"
+    if wd:
+        if not ISO_DATE.match(wd):
+            return "window_date must be YYYY-MM-DD"
+        if wd < today_str():
+            return "window_date is in the past"
+    return None
+
+
+async def new_tracking_code() -> str:
+    while True:
+        code = f"MC{secrets.randbelow(90000) + 10000}"
+        if not await db.stops.find_one({"tracking_code": code}, {"_id": 1}):
+            return code
+
+
+async def process_row(row: dict) -> dict:
+    d = row["data"]
+    upd = {"error": None, "stop_id": None, "tracking_code": None}
+    err = validate_row(d)
+    if err:
+        upd.update(status="invalid", error=err)
+    else:
+        try:
+            geo = await geocode(d["address"])
+        except Exception as e:
+            logger.error(f"Geocode failed for import row {row['id']}: {e}")
+            geo, upd["status"], upd["error"] = None, "lookup_failed", "Address lookup is unavailable right now — retry shortly"
+        if geo is None and "status" not in upd:
+            upd.update(status="not_found", error="Address not found in San Francisco — check the street and number")
+        elif geo:
+            zone = min(ZONES, key=lambda z: haversine_m({"lat": geo["lat"], "lng": geo["lng"]}, {"lat": ZONES[z]["center"][0], "lng": ZONES[z]["center"][1]}))
+            stop = Stop(id=str(uuid.uuid4()), customer_name=d["customer_name"], customer_phone=d["phone"],
+                        address=d["address"] if "san francisco" in d["address"].lower() else f"{d['address']}, San Francisco",
+                        postal_code=geo.get("postcode") or ZONES[zone]["postal"], zone=zone, lat=geo["lat"], lng=geo["lng"],
+                        tracking_code=await new_tracking_code(), notes=d.get("notes") or "",
+                        window_start=d.get("window_start") or None, window_end=d.get("window_end") or None,
+                        window_date=d.get("window_date") or None, merchant_id=row["merchant_id"], created_at=now_iso())
+            await db.stops.insert_one(stop.model_dump())
+            upd.update(status="created", stop_id=stop.id, tracking_code=stop.tracking_code)
+    await db.import_rows.update_one({"id": row["id"]}, {"$set": upd})
+    return {**row, **upd}
+
+
+async def refresh_job(job_id: str, finished: bool = False):
+    rows = await db.import_rows.find({"job_id": job_id}, {"_id": 0, "status": 1}).to_list(IMPORT_MAX_ROWS + 1)
+    upd = {"processed": sum(1 for r in rows if r["status"] != "queued"),
+           "created": sum(1 for r in rows if r["status"] == "created"),
+           "flagged": sum(1 for r in rows if r["status"] in FLAGGED)}
+    if finished:
+        upd.update(status="done", finished_at=now_iso())
+    await db.import_jobs.update_one({"id": job_id}, {"$set": upd})
+
+
+async def process_import(job_id: str):
+    try:
+        for row in await db.import_rows.find({"job_id": job_id, "status": "queued"}, {"_id": 0}).sort("line", 1).to_list(IMPORT_MAX_ROWS + 1):
+            await process_row(row)
+            await refresh_job(job_id)
+    except Exception as e:
+        logger.error(f"Import {job_id} crashed: {e}")
+    await refresh_job(job_id, finished=True)
+
+
+async def get_merchant_or_404(merchant_id: str) -> dict:
+    m = await db.merchants.find_one({"id": merchant_id}, {"_id": 0})
+    if not m:
+        raise HTTPException(404, "Merchant not found")
+    return m
+
+
+@api_router.get("/merchant-template.csv")
+async def merchant_template():
+    return Response(TEMPLATE_CSV, media_type="text/csv", headers={"Content-Disposition": 'attachment; filename="multidrop-orders-template.csv"'})
+
+
+@api_router.get("/merchants")
+async def list_merchants():
+    out = []
+    for m in await db.merchants.find({}, {"_id": 0}).sort("id", 1).to_list(100):
+        out.append({**m, "orders": await db.stops.count_documents({"merchant_id": m["id"]}),
+                    "delivered": await db.stops.count_documents({"merchant_id": m["id"], "status": "delivered"}),
+                    "flagged": await db.import_rows.count_documents({"merchant_id": m["id"], "status": {"$in": list(FLAGGED)}})})
+    return out
+
+
+@api_router.get("/merchants/{merchant_id}")
+async def merchant_detail(merchant_id: str):
+    m = await get_merchant_or_404(merchant_id)
+    orders = await db.stops.find({"merchant_id": merchant_id}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    flagged = await db.import_rows.find({"merchant_id": merchant_id, "status": {"$in": list(FLAGGED)}}, {"_id": 0}).sort([("created_at", -1), ("line", 1)]).to_list(500)
+    jobs = await db.import_jobs.find({"merchant_id": merchant_id}, {"_id": 0}).sort("created_at", -1).to_list(5)
+    return {**m, "orders": [Stop(**o).model_dump() for o in orders], "flagged": flagged, "jobs": jobs,
+            "counts": {"orders": len(orders), "pending": sum(1 for o in orders if o["status"] in ("pending", "arrived")),
+                       "delivered": sum(1 for o in orders if o["status"] == "delivered"), "failed": sum(1 for o in orders if o["status"] == "failed"),
+                       "flagged": len(flagged)}}
+
+
+@api_router.post("/merchants/{merchant_id}/import")
+async def import_orders(merchant_id: str, file: UploadFile = File(...)):
+    """Upload a CSV of orders. Rows are validated now and geocoded in the background (about 1 per second)."""
+    await get_merchant_or_404(merchant_id)
+    raw = await file.read()
+    if len(raw) > 2 * 1024 * 1024:
+        raise HTTPException(413, "CSV is larger than 2 MB")
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        try:
+            text = raw.decode("latin-1")
+        except UnicodeDecodeError:
+            raise HTTPException(400, "Could not read the file — save it as CSV (UTF-8)")
+    try:
+        reader = csv.DictReader(io.StringIO(text))
+        headers = {h: re.sub(r"[^a-z_]", "", (h or "").strip().lower().replace(" ", "_")) for h in (reader.fieldnames or [])}
+        mapping = {}
+        for h, norm in headers.items():
+            for k, aliases in COLUMNS.items():
+                if norm in aliases and k not in mapping.values():
+                    mapping[h] = k
+        need = [k for k in ("customer_name", "phone", "address") if k not in mapping.values()]
+        if need:
+            raise HTTPException(400, f"CSV needs columns: customer_name, phone, address (missing {', '.join(need)}). Download the template for the format.")
+        rows = []
+        for r in reader:
+            d = {k: "" for k in COLUMNS}
+            for h, k in mapping.items():
+                d[k] = (r.get(h) or "").strip()
+            if any(d.values()):
+                rows.append(d)
+    except csv.Error as e:
+        raise HTTPException(400, f"Could not read the CSV: {e}")
+    if not rows:
+        raise HTTPException(400, "The CSV has no order rows")
+    if len(rows) > IMPORT_MAX_ROWS:
+        raise HTTPException(400, f"Up to {IMPORT_MAX_ROWS} orders per file — split it into smaller files")
+    job = {"id": str(uuid.uuid4()), "merchant_id": merchant_id, "filename": file.filename or "orders.csv", "total": len(rows),
+           "processed": 0, "created": 0, "flagged": 0, "status": "running", "created_at": now_iso(), "finished_at": None}
+    await db.import_jobs.insert_one(dict(job))
+    await db.import_rows.insert_many([{"id": str(uuid.uuid4()), "job_id": job["id"], "merchant_id": merchant_id, "line": i + 2, "data": d,
+                                       "status": "queued", "error": None, "stop_id": None, "tracking_code": None, "created_at": job["created_at"]}
+                                      for i, d in enumerate(rows)])
+    spawn(process_import(job["id"]))
+    return job
+
+
+@api_router.get("/imports/{job_id}")
+async def import_status(job_id: str):
+    job = await db.import_jobs.find_one({"id": job_id}, {"_id": 0})
+    if not job:
+        raise HTTPException(404, "Import not found")
+    return job
+
+
+class RowFixIn(BaseModel):
+    customer_name: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    notes: Optional[str] = None
+    window_date: Optional[str] = None
+    window_start: Optional[str] = None
+    window_end: Optional[str] = None
+
+
+@api_router.put("/import-rows/{row_id}")
+async def fix_import_row(row_id: str, body: RowFixIn):
+    """Edit a flagged row and try it again straight away."""
+    row = await db.import_rows.find_one({"id": row_id}, {"_id": 0})
+    if not row:
+        raise HTTPException(404, "Row not found")
+    if row["status"] not in FLAGGED:
+        raise HTTPException(400, f"Row is already {row['status']}")
+    data = {**row["data"], **{k: v.strip() for k, v in body.model_dump().items() if v is not None}}
+    await db.import_rows.update_one({"id": row_id}, {"$set": {"data": data}})
+    out = await process_row({**row, "data": data})
+    await refresh_job(row["job_id"], finished=(await db.import_jobs.find_one({"id": row["job_id"]}, {"_id": 0, "status": 1}))["status"] == "done")
+    return out
+
+
+@api_router.delete("/import-rows/{row_id}")
+async def dismiss_import_row(row_id: str):
+    row = await db.import_rows.find_one({"id": row_id}, {"_id": 0})
+    if not row:
+        raise HTTPException(404, "Row not found")
+    if row["status"] not in FLAGGED:
+        raise HTTPException(400, f"Row is already {row['status']}")
+    await db.import_rows.update_one({"id": row_id}, {"$set": {"status": "dismissed"}})
+    await refresh_job(row["job_id"])
+    return {"ok": True}
+
+
+@api_router.get("/digest")
+async def daily_digest(date: Optional[str] = None):
+    """End-of-day ops digest for one depot day: pace, deliveries by hour, late drops, failures and complaints."""
+    day = date or today_str()
+    try:
+        date_cls.fromisoformat(day)
+    except ValueError:
+        raise HTTPException(400, "date must be YYYY-MM-DD")
+    routes = [Route(**d) for d in await db.routes.find({"service_date": day, "started_at": {"$ne": None}}, {"_id": 0}).to_list(500)]
+    drivers = {d["id"]: d["name"] for d in await db.drivers.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(100)}
+    hours, all_stops, per_driver = 0.0, [], {}
+    for r in routes:
+        end = datetime.fromisoformat(r.completed_at) if r.completed_at else datetime.now(timezone.utc)
+        h = max((end - datetime.fromisoformat(r.started_at)).total_seconds() / 3600, MIN_PACE_HOURS)
+        hours += h
+        stops = await get_stops(r.id)
+        name = drivers.get(r.driver_id, "Unassigned")
+        pd = per_driver.setdefault(r.driver_id or "-", {"driver_id": r.driver_id, "name": name, "delivered": 0, "failed": 0, "late": 0, "complaints": 0, "hours": 0.0})
+        pd["hours"] += h
+        for s in stops:
+            all_stops.append((s, name, pd))
+
+    def late_min(s: Stop) -> int:
+        local = datetime.fromisoformat(s.delivered_at).astimezone(TZ)
+        hh, mm = map(int, s.window_end.split(":"))
+        wday = date_cls.fromisoformat(s.window_date) if s.window_date else local.date()
+        return max(1, round((local - datetime.combine(wday, time_cls(hh, mm), TZ)).total_seconds() / 60))
+
+    by_hour: Dict[int, int] = {}
+    late, failed, complaints, ratings = [], [], [], []
+    delivered = 0
+    for s, name, pd in all_stops:
+        if s.status == "delivered":
+            delivered += 1
+            pd["delivered"] += 1
+            hr = datetime.fromisoformat(s.delivered_at).astimezone(TZ).hour
+            by_hour[hr] = by_hour.get(hr, 0) + 1
+            if delivered_on_time(s) is False:
+                pd["late"] += 1
+                late.append({"stop_id": s.id, "tracking_code": s.tracking_code, "customer_name": s.customer_name, "driver": name,
+                             "window": f"{s.window_start}-{s.window_end}", "delivered_at": s.delivered_at, "late_min": late_min(s)})
+            if s.rating:
+                ratings.append(s.rating)
+                if s.rating <= 2:
+                    pd["complaints"] += 1
+                    complaints.append({"stop_id": s.id, "tracking_code": s.tracking_code, "customer_name": s.customer_name, "driver": name,
+                                       "rating": s.rating, "comment": s.rating_comment, "follow_up_status": s.follow_up_status})
+        elif s.status == "failed":
+            pd["failed"] += 1
+            failed.append({"stop_id": s.id, "tracking_code": s.tracking_code, "customer_name": s.customer_name, "driver": name, "reason": s.fail_reason})
+    hourly = [{"hour": h, "count": by_hour.get(h, 0)} for h in range(min(by_hour), max(by_hour) + 1)] if by_hour else []
+    windowed = sum(1 for s, _, _ in all_stops if s.status == "delivered" and s.window_end)
+    drivers_out = sorted(
+        [{**p, "hours": round(p["hours"], 2), "drops_per_hour": round(p["delivered"] / p["hours"], 1) if p["hours"] else 0} for p in per_driver.values()],
+        key=lambda p: -p["drops_per_hour"])
+    return {
+        "date": day, "routes": len(routes), "total_stops": len(all_stops), "delivered": delivered, "failed": len(failed),
+        "remaining": len(all_stops) - delivered - len(failed), "hours": round(hours, 2),
+        "drops_per_hour": round(delivered / hours, 1) if hours else 0,
+        "late_count": len(late), "windowed_delivered": windowed,
+        "on_time_rate": round((windowed - len(late)) / windowed * 100) if windowed else None,
+        "complaint_count": len(complaints), "avg_rating": avg(ratings), "ratings": len(ratings),
+        "hourly": hourly, "late": sorted(late, key=lambda x: -x["late_min"]), "failed_stops": failed,
+        "complaints": sorted(complaints, key=lambda x: x["rating"]), "drivers": drivers_out,
     }
 
 

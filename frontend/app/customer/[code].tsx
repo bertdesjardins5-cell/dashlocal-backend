@@ -91,7 +91,10 @@ export default function TrackOrder() {
             {t.alert ? (
               <Animated.View key={t.alert} entering={FadeInDown} style={[s.banner, (t.stops_away ?? 9) <= 2 || delivered ? { backgroundColor: colors.brandPrimary } : null]} testID="tracking-alert-banner">
                 <Ionicons name={delivered ? "checkmark-circle" : "notifications"} size={20} color={colors.onBrandPrimary} />
-                <Mono style={s.bannerText}>{t.alert.toUpperCase()}</Mono>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Mono style={s.bannerText}>{t.alert.toUpperCase()}</Mono>
+                  {!delivered && t.stop.nearby_sms_status === "sent" ? <Mono style={s.bannerSub} testID="tracking-nearby-sms">WE'VE TEXTED YOU TOO</Mono> : null}
+                </View>
               </Animated.View>
             ) : null}
           </View>
@@ -149,7 +152,8 @@ export default function TrackOrder() {
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   banner: { position: "absolute", left: spacing.lg, right: spacing.lg, bottom: spacing.lg, flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.md, backgroundColor: c.surfaceInverse, borderWidth: 2, borderColor: c.border },
-  bannerText: { color: c.onBrandPrimary, fontWeight: "700", fontSize: 13, flex: 1 },
+  bannerText: { color: c.onBrandPrimary, fontWeight: "700", fontSize: 13 },
+  bannerSub: { color: c.onBrandPrimary, fontSize: 11 },
   sheet: { borderTopWidth: 2, borderColor: c.border, backgroundColor: c.surface, padding: spacing.lg, gap: spacing.sm },
   sheetTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   label: { fontSize: 11, fontWeight: "700", letterSpacing: 1.5 },
