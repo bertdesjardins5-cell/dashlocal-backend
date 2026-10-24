@@ -7,7 +7,7 @@ import { Image } from "expo-image";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
-import { api, API, fileUrl, RouteDetail, Stop } from "@/src/api";
+import { api, API, fileUrl, RouteDetail, Stop, windowLabel } from "@/src/api";
 import { uploadForm } from "@/src/utils/upload";
 import SignaturePad from "@/src/components/SignaturePad";
 import Svg, { Path } from "react-native-svg";
@@ -136,7 +136,7 @@ export default function StopDetail() {
   };
 
   const closed = stop && (stop.status === "delivered" || stop.status === "failed");
-  const canComplete = !!(photo?.path || signature) && !uploading;
+  const canComplete = !!(photo?.path || signature || stop?.pod_qr_verified) && !uploading;
 
   return (
     <View style={s.root} testID="stop-detail-screen">
@@ -150,6 +150,7 @@ export default function StopDetail() {
               <Mono style={s.meta}>{stop.postal_code} · ZONE {stop.zone.toUpperCase()}</Mono>
               {stop.notes ? <Mono style={s.note}>NOTE: {stop.notes}</Mono> : null}
               {stop.arrival_method ? <Mono style={s.meta} testID="stop-arrival-method">ARRIVED VIA {stop.arrival_method.toUpperCase()}</Mono> : null}
+              {windowLabel(stop) ? <Mono style={s.windowTag} testID="stop-window">DELIVER {windowLabel(stop)}</Mono> : null}
             </View>
 
             <View style={s.commRow}>
@@ -192,6 +193,7 @@ export default function StopDetail() {
               <View style={s.section} testID="pod-summary">
                 <Display style={s.h2}>{stop.status === "delivered" ? "PROOF OF DELIVERY" : `FAILED: ${stop.fail_reason}`}</Display>
                 {stop.pod_photo_path ? <Image testID="pod-photo-saved" source={fileUrl(stop.pod_photo_path)} style={s.photoImg} contentFit="cover" /> : null}
+                {stop.pod_qr_verified ? <Mono style={s.qrOk} testID="pod-qr-saved">✓ PARCEL QR VERIFIED</Mono> : null}
                 {stop.pod_signature ? <SignaturePreview d={stop.pod_signature} /> : null}
               </View>
             ) : (
@@ -219,6 +221,15 @@ export default function StopDetail() {
                       <Display style={s.commText}>TAKE PHOTO</Display>
                     </>
                   )}
+                </Pressable>
+                <Pressable
+                  testID="scan-parcel-qr-button"
+                  disabled={stop.pod_qr_verified}
+                  onPress={() => router.push({ pathname: "/driver/scan/[stopId]", params: { stopId: stop.id, code: stop.tracking_code } })}
+                  style={({ pressed }) => [s.qrBox, stop.pod_qr_verified && { backgroundColor: colors.success }, pressed && { backgroundColor: colors.surfaceTertiary }]}
+                >
+                  <Ionicons name={stop.pod_qr_verified ? "checkmark-circle" : "qr-code"} size={28} color={stop.pod_qr_verified ? colors.onSuccess : colors.onSurface} />
+                  <Display style={[s.commText, stop.pod_qr_verified && { color: colors.onSuccess }]}>{stop.pod_qr_verified ? "PARCEL QR VERIFIED" : "SCAN PARCEL QR"}</Display>
                 </Pressable>
                 <SignaturePad value={signature} onChange={setSignature} />
                 <Pressable testID="toggle-fail-button" onPress={() => setShowFail((v) => !v)} style={{ minHeight: 44, justifyContent: "center" }}>
@@ -279,6 +290,9 @@ const useStyles = makeStyles((c) => ({
   h2: { fontSize: 20 },
   permBox: { padding: spacing.lg, gap: spacing.md, backgroundColor: c.warning, borderWidth: 2, borderColor: c.border },
   photoBox: { height: 200, borderWidth: 2, borderColor: c.border, alignItems: "center", justifyContent: "center", gap: spacing.sm, overflow: "hidden" },
+  qrBox: { minHeight: 72, borderWidth: 2, borderColor: c.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.md },
+  qrOk: { fontSize: 14, fontWeight: "700", backgroundColor: c.success, color: c.onSuccess, padding: spacing.md },
+  windowTag: { fontSize: 13, fontWeight: "700", backgroundColor: c.surfaceInverse, color: c.onSurfaceInverse, paddingHorizontal: spacing.sm, paddingVertical: 2, alignSelf: "flex-start", marginTop: spacing.xs },
   photoImg: { width: "100%", height: 200 },
   photoBadge: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: c.surfaceInverse, padding: spacing.sm },
   photoBadgeText: { color: c.onSurfaceInverse, fontSize: 12, fontWeight: "700" },

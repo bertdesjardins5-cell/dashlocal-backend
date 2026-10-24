@@ -12,7 +12,7 @@
       "bundleIdentifier": "com.emergent.arrivewise.ue3on3",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Share live location so customers track deliveries",
-        "NSCameraUsageDescription": "Photograph parcels as proof of delivery",
+        "NSCameraUsageDescription": "Scan parcel labels and photograph deliveries",
         "NSPhotoLibraryUsageDescription": "Attach delivery photos from your gallery"
       }
     },
@@ -60,6 +60,12 @@
         "expo-image-picker",
         {
           "cameraPermission": "Photograph parcels as proof of delivery"
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Scan parcel labels and photograph deliveries"
         }
       ]
     ],

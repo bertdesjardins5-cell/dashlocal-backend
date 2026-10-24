@@ -5,9 +5,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
-import { api, Tracking, WS_BASE } from "@/src/api";
+import { api, fmtDepotTime, Tracking, windowLabel, WS_BASE } from "@/src/api";
+import WindowPicker from "@/src/components/WindowPicker";
 import RouteMap from "@/src/components/RouteMap";
-import { Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone } from "@/src/ui";
+import { Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
 
 export default function TrackOrder() {
@@ -51,7 +52,23 @@ export default function TrackOrder() {
   }, [code]);
 
   const t = live ?? q.data;
-  const eta = t?.eta_time ? new Date(t.eta_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : null;
+  const toast = useToast();
+  const [savingWin, setSavingWin] = useState(false);
+  const requestWindow = async (start: string | null, end: string | null) => {
+    if (!t) return;
+    setSavingWin(true);
+    try {
+      const st = await api<Tracking["stop"]>(`/stops/${t.stop.id}/window`, { method: "PUT", body: { start, end } });
+      setLive({ ...t, stop: st });
+      q.refetch();
+      toast.show(start ? `WINDOW ${start}–${end} REQUESTED` : "WINDOW CLEARED", "green");
+    } catch (e: any) {
+      toast.show(e.message, "red");
+    } finally {
+      setSavingWin(false);
+    }
+  };
+  const eta = t?.eta_time ? fmtDepotTime(t.eta_time) : null;
   const delivered = t?.stop.status === "delivered";
 
   return (
@@ -82,7 +99,7 @@ export default function TrackOrder() {
               <Pill label={t.stop.status} tone={statusTone(t.stop.status)} />
             </View>
             <Display style={s.eta} testID="tracking-eta">
-              {delivered ? new Date(t.stop.delivered_at!).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : t.stop.status === "arrived" ? "HERE NOW" : eta ?? "—"}
+              {delivered ? fmtDepotTime(t.stop.delivered_at) : t.stop.status === "arrived" ? "HERE NOW" : eta ?? "—"}
             </Display>
             {!delivered && t.eta_minutes != null && t.stop.status !== "arrived" ? <Mono style={s.meta} testID="tracking-eta-minutes">~{t.eta_minutes} MIN</Mono> : null}
             <View style={s.stats}>
@@ -97,9 +114,19 @@ export default function TrackOrder() {
               </View>
             </View>
             <Mono style={s.meta} numberOfLines={1}>TO: {t.stop.address}</Mono>
+            {!delivered && t.stop.status !== "failed" ? (
+              <View style={{ marginHorizontal: -spacing.lg, gap: spacing.xs }} testID="customer-window-section">
+                <Mono style={[s.label, { paddingHorizontal: spacing.lg }]}>
+                  {windowLabel(t.stop) ? `YOUR WINDOW ${windowLabel(t.stop)} (SF TIME)` : "REQUEST A DELIVERY WINDOW"}
+                  {t.late_min ? ` · MAY RUN ${t.late_min}M LATE` : ""}
+                </Mono>
+                <WindowPicker testIDPrefix="customer-window" start={t.stop.window_start} end={t.stop.window_end} disabled={savingWin} onSelect={requestWindow} />
+              </View>
+            ) : null}
           </View>
         </View>
       )}
+      {toast.node}
     </View>
   );
 }

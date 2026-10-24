@@ -6,7 +6,7 @@ import * as Location from "expo-location";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
-import { api, RouteDetail } from "@/src/api";
+import { api, fmtDepotTime, RouteDetail, windowLabel } from "@/src/api";
 import RouteMap from "@/src/components/RouteMap";
 import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
@@ -177,6 +177,11 @@ export default function Manifest() {
                 <Mono style={s.heroAddr}>{next.address}</Mono>
                 <Mono style={s.heroAddr}>{next.postal_code} · {next.tracking_code}</Mono>
                 {next.notes ? <Mono style={s.heroNote}>NOTE: {next.notes}</Mono> : null}
+                {windowLabel(next) ? (
+                  <Mono style={s.heroWindow} testID="next-stop-window">
+                    WINDOW {windowLabel(next)} · ETA {fmtDepotTime(next.planned_eta)}{next.late_min ? ` · LATE ${next.late_min}M` : ""}
+                  </Mono>
+                ) : null}
                 <View style={s.heroActions}>
                   <Pressable testID="next-stop-navigate-button" onPress={navigate} style={s.heroBtn}>
                     <Ionicons name="navigate" size={20} color={colors.onBrandPrimary} />
@@ -203,6 +208,11 @@ export default function Manifest() {
               <View style={{ flex: 1, gap: 2 }}>
                 <Display style={s.rowName}>{st.customer_name}</Display>
                 <Mono style={s.meta} numberOfLines={1}>{st.address}</Mono>
+                {windowLabel(st) && st.status === "pending" ? (
+                  <Mono style={[s.meta, { color: st.late_min ? colors.brandPrimary : colors.onSurface, fontWeight: "700" }]}>
+                    WINDOW {windowLabel(st)}{st.late_min ? ` · LATE ${st.late_min}M` : ""}
+                  </Mono>
+                ) : null}
               </View>
               <Pill label={st.status} tone={statusTone(st.status)} />
             </Pressable>
@@ -230,6 +240,7 @@ const useStyles = makeStyles((c) => ({
   heroName: { color: c.onBrandPrimary, fontSize: 34, letterSpacing: -1, lineHeight: 38 },
   heroAddr: { color: c.onBrandPrimary, fontSize: 15, fontWeight: "700" },
   heroNote: { color: c.onBrandPrimary, fontSize: 13, backgroundColor: c.brandSecondary, padding: spacing.sm, marginTop: spacing.xs },
+  heroWindow: { color: c.onSurfaceInverse, fontSize: 13, fontWeight: "700", backgroundColor: c.surfaceInverse, padding: spacing.sm },
   heroActions: { flexDirection: "row", borderWidth: 2, borderColor: c.onBrandPrimary, marginTop: spacing.md },
   heroBtn: { flex: 1, minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm },
   heroBtnText: { color: c.onBrandPrimary, fontWeight: "700", fontSize: 14 },

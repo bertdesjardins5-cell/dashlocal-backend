@@ -21,6 +21,11 @@ export type Stop = {
   delivered_at: string | null;
   pod_photo_path: string | null;
   pod_signature: string | null;
+  pod_qr_verified: boolean;
+  window_start: string | null;
+  window_end: string | null;
+  planned_eta?: string | null;
+  late_min?: number;
   fail_reason: string | null;
 };
 
@@ -40,6 +45,7 @@ export type RouteDetail = {
   stops: Stop[];
   total: number;
   completed: number;
+  late_stops: number;
   next_stop_id: string | null;
   depot: LatLng & { name: string };
 };
@@ -53,6 +59,7 @@ export type Tracking = {
   eta_time: string | null;
   path: LatLng[];
   alert: string | null;
+  late_min?: number;
   depot: LatLng;
 };
 
@@ -74,3 +81,17 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
 }
 
 export const fileUrl = (path: string) => `${API}/files/${path}`;
+
+// Delivery windows and ETAs are shown in the depot's timezone so they line up with customer windows.
+export const DEPOT_TZ = "America/Los_Angeles";
+export function fmtDepotTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  try {
+    return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: DEPOT_TZ });
+  } catch {
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+}
+export const windowLabel = (s: { window_start: string | null; window_end: string | null }) =>
+  s.window_start && s.window_end ? `${s.window_start}–${s.window_end}` : null;

@@ -18,6 +18,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Set
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -46,6 +47,8 @@ GEOFENCE_M = 50
 AVG_SPEED_KMH = 25.0
 SERVICE_MIN = 4.0
 DEPOT = {"lat": 37.7749, "lng": -122.4194, "name": "SF Central Depot"}
+TZ = ZoneInfo("America/Los_Angeles")  # depot timezone for customer delivery windows
+OPT_BUFFER_MIN = 10  # optimizer aims to arrive at least this long before a window closes
 
 # ---------------------------------------------------------------- object storage
 STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
@@ -97,24 +100,87 @@ def path_length_m(start, pts) -> float:
     return total
 
 
+def window_minutes(s: dict, now_local: datetime):
+    """Customer time window as (start, end) minutes from now, or None. Windows are HH:MM in the depot timezone, today."""
+    if not s.get("window_start") or not s.get("window_end"):
+        return None
+    def mins(hhmm):
+        h, m = map(int, hhmm.split(":"))
+        return (now_local.replace(hour=h, minute=m, second=0, microsecond=0) - now_local).total_seconds() / 60
+    return mins(s["window_start"]), mins(s["window_end"])
+
+
+def schedule(start, ordered: list, now_local: Optional[datetime] = None, buffer_min: float = 0.0) -> list:
+    """Simulate the run: travel at AVG_SPEED_KMH, wait if early, SERVICE_MIN per drop.
+    Returns per stop {arrive_min, late_min} (minutes from now)."""
+    now_local = now_local or datetime.now(TZ)
+    t, cur, out = 0.0, start, []
+    for s in ordered:
+        t += haversine_m(cur, s) / 1000 / AVG_SPEED_KMH * 60
+        w = window_minutes(s, now_local)
+        late = 0.0
+        if w:
+            if t < w[0]:
+                t = w[0]
+            late = max(0.0, t - (w[1] - buffer_min))
+        out.append({"arrive_min": t, "late_min": late})
+        t += SERVICE_MIN
+        cur = s
+    return out
+
+
+def route_cost(start, ordered, now_local):
+    """(total lateness, finish time incl. waiting, distance) — compared lexicographically."""
+    sch = schedule(start, ordered, now_local, buffer_min=OPT_BUFFER_MIN)
+    finish = sch[-1]["arrive_min"] if sch else 0.0
+    return (round(sum(x["late_min"] for x in sch), 1), round(finish, 1), path_length_m(start, ordered))
+
+
+def better(c, best) -> bool:
+    if c[0] != best[0]:
+        return c[0] < best[0] - 0.05
+    if c[1] != best[1]:
+        return c[1] < best[1] - 0.1
+    return c[2] + 0.5 < best[2]
+
+
 def optimize_sequence(start, stops: list) -> list:
-    """Nearest-neighbour seed + 2-opt improvement on haversine distance."""
+    """Time-window aware: urgency-weighted nearest-neighbour seed, then 2-opt + relocate moves
+    minimising (total lateness, distance) lexicographically."""
+    now_local = datetime.now(TZ)
     remaining = stops[:]
-    order, cur = [], start
+    order, cur, t = [], start, 0.0
     while remaining:
-        nxt = min(remaining, key=lambda s: haversine_m(cur, s))
+        def score(s):
+            arr = t + haversine_m(cur, s) / 1000 / AVG_SPEED_KMH * 60
+            w = window_minutes(s, now_local)
+            if not w:
+                return arr + 0.3 * 240
+            wait = max(0.0, w[0] - arr)
+            return arr + wait * 1.5 + 0.3 * max(0.0, w[1] - arr) + max(0.0, arr - w[1]) * 10
+        nxt = min(remaining, key=score)
+        t += haversine_m(cur, nxt) / 1000 / AVG_SPEED_KMH * 60
+        w = window_minutes(nxt, now_local)
+        if w and t < w[0]:
+            t = w[0]
+        t += SERVICE_MIN
         order.append(nxt)
         remaining.remove(nxt)
         cur = nxt
+    best = route_cost(start, order, now_local)
     improved = True
-    while improved and len(order) > 3:
+    while improved and len(order) > 2:
         improved = False
-        for i in range(0, len(order) - 1):
-            for j in range(i + 2, len(order) + 1):
-                cand = order[:i] + order[i:j][::-1] + order[j:]
-                if path_length_m(start, cand) + 0.5 < path_length_m(start, order):
-                    order = cand
-                    improved = True
+        n = len(order)
+        cands = [order[:i] + order[i:j][::-1] + order[j:] for i in range(n - 1) for j in range(i + 2, n + 1)]
+        for i in range(n):
+            rest = order[:i] + order[i + 1:]
+            cands += [rest[:k] + [order[i]] + rest[k:] for k in range(n) if k != i]
+        for cand in cands:
+            c = route_cost(start, cand, now_local)
+            if better(c, best):
+                order, best, improved = cand, c, True
+                break
     return order
 
 
@@ -152,6 +218,9 @@ class Stop(BaseModel):
     delivered_at: Optional[str] = None
     pod_photo_path: Optional[str] = None
     pod_signature: Optional[str] = None
+    pod_qr_verified: bool = False
+    window_start: Optional[str] = None  # "HH:MM" depot local time
+    window_end: Optional[str] = None
     fail_reason: Optional[str] = None
 
 
@@ -227,12 +296,24 @@ async def route_detail(route: Route) -> dict:
         d = await db.drivers.find_one({"id": route.driver_id}, {"_id": 0})
         driver = Driver(**d).model_dump() if d else None
     done = [s for s in stops if s.status in ("delivered", "failed")]
+    open_ = [s.model_dump() for s in stops if s.status not in ("delivered", "failed")]
+    start = {"lat": driver["lat"], "lng": driver["lng"]} if driver and route.status == "active" else DEPOT
+    now = datetime.now(timezone.utc)
+    plan = {s["id"]: x for s, x in zip(open_, schedule(start, open_))}
+    out_stops = []
+    for s in stops:
+        d = s.model_dump()
+        p = plan.get(s.id)
+        d["planned_eta"] = (now + timedelta(minutes=round(p["arrive_min"]))).isoformat() if p else None
+        d["late_min"] = round(p["late_min"]) if p else 0
+        out_stops.append(d)
     return {
         **route.model_dump(),
         "driver": driver,
-        "stops": [s.model_dump() for s in stops],
+        "stops": out_stops,
         "total": len(stops),
         "completed": len(done),
+        "late_stops": sum(1 for d in out_stops if d["late_min"] > 0),
         "next_stop_id": next((s.id for s in stops if s.status in ("pending", "arrived")), None),
         "depot": DEPOT,
     }
@@ -267,7 +348,7 @@ async def tracking_payload(code: str) -> dict:
         raise HTTPException(404, "Tracking code not found")
     stop = Stop(**sdoc)
     out = {"stop": stop.model_dump(), "route_status": None, "driver": None, "stops_away": None,
-           "eta_minutes": None, "eta_time": None, "path": [], "alert": None, "depot": DEPOT}
+           "eta_minutes": None, "eta_time": None, "late_min": 0, "path": [], "alert": None, "depot": DEPOT}
     if not stop.route_id:
         out["alert"] = "Order received — awaiting dispatch"
         return out
@@ -290,11 +371,13 @@ async def tracking_payload(code: str) -> dict:
     open_before = [s for s in stops if s.seq < stop.seq and s.status in ("pending", "arrived")]
     out["stops_away"] = len(open_before)
     start = {"lat": driver.lat, "lng": driver.lng} if driver else DEPOT
-    pts = [{"lat": s.lat, "lng": s.lng} for s in open_before] + [{"lat": stop.lat, "lng": stop.lng}]
-    dist = path_length_m(start, pts)
-    eta = dist / 1000 / AVG_SPEED_KMH * 60 + SERVICE_MIN * len(open_before)
+    seq_stops = [s.model_dump() for s in open_before] + [stop.model_dump()]
+    pts = [{"lat": s["lat"], "lng": s["lng"]} for s in seq_stops]
+    target = schedule(start, seq_stops)[-1]
+    eta = target["arrive_min"]
     out["eta_minutes"] = round(eta)
-    out["eta_time"] = (datetime.now(timezone.utc) + timedelta(minutes=eta)).isoformat()
+    out["eta_time"] = (datetime.now(timezone.utc) + timedelta(minutes=round(eta))).isoformat()
+    out["late_min"] = round(target["late_min"])
     out["path"] = [start] + pts
     if route.status != "active":
         out["alert"] = "Route planned — driver not yet on the road"
@@ -356,6 +439,11 @@ async def seed(force: bool = False):
                               zone=zone, lat=lat, lng=lng, tracking_code=f"MD{1001 + n}",
                               notes=rnd.choice(["", "Leave at door", "Ring bell twice", "Fragile", "Call on arrival"])))
             n += 1
+    # demo delivery windows relative to the current depot-local hour
+    h = datetime.now(TZ).hour
+    for idx, (a, b) in {5: (0, 1), 1: (2, 3), 8: (1, 2)}.items():
+        if h + b <= 23:
+            stops[idx].window_start, stops[idx].window_end = f"{h + a:02d}:00", f"{h + b:02d}:00"
     await db.stops.insert_many([s.model_dump() for s in stops])
     # one route pre-batched & started for the demo
     await create_batch("Mission", "drv-1", start=True)
@@ -559,6 +647,50 @@ async def get_stop(stop_id: str):
     return (await get_stop_or_404(stop_id)).model_dump()
 
 
+class QrIn(BaseModel):
+    code: str
+
+
+@api_router.post("/stops/{stop_id}/verify-qr")
+async def verify_qr(stop_id: str, body: QrIn):
+    """Parcel label QR encodes the tracking code; scanning the right parcel at the door is proof of delivery."""
+    stop = await get_stop_or_404(stop_id)
+    if stop.status in ("delivered", "failed"):
+        raise HTTPException(400, f"Stop is already {stop.status}")
+    scanned = body.code.strip().upper()
+    if scanned.startswith("MULTIDROP:"):
+        scanned = scanned.split(":", 1)[1]
+    if scanned != stop.tracking_code:
+        raise HTTPException(400, f"Wrong parcel — scanned {scanned[:20]}, expected {stop.tracking_code}")
+    await db.stops.update_one({"id": stop_id}, {"$set": {"pod_qr_verified": True}})
+    return (await get_stop_or_404(stop_id)).model_dump()
+
+
+HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+class WindowIn(BaseModel):
+    start: Optional[str] = None
+    end: Optional[str] = None
+
+
+@api_router.put("/stops/{stop_id}/window")
+async def set_window(stop_id: str, body: WindowIn):
+    """Set (or clear with nulls) the customer's requested delivery window, HH:MM depot local time."""
+    stop = await get_stop_or_404(stop_id)
+    if stop.status in ("delivered", "failed"):
+        raise HTTPException(400, f"Stop is already {stop.status}")
+    if body.start or body.end:
+        if not (body.start and body.end and HHMM.match(body.start) and HHMM.match(body.end)) or body.start >= body.end:
+            raise HTTPException(400, "Window needs start and end in HH:MM with start before end")
+        if body.end <= datetime.now(TZ).strftime("%H:%M"):
+            raise HTTPException(400, "That window has already passed today")
+    await db.stops.update_one({"id": stop_id}, {"$set": {"window_start": body.start or None, "window_end": body.end or None}})
+    if stop.route_id:
+        await broadcast_route(stop.route_id)
+    return (await get_stop_or_404(stop_id)).model_dump()
+
+
 @api_router.post("/stops/{stop_id}/arrive")
 async def arrive(stop_id: str):
     stop = await get_stop_or_404(stop_id)
@@ -575,8 +707,8 @@ async def deliver(stop_id: str, body: DeliverIn):
     stop = await get_stop_or_404(stop_id)
     if stop.status in ("delivered", "failed"):
         raise HTTPException(400, f"Stop is already {stop.status}")
-    if not body.photo_path and not body.signature:
-        raise HTTPException(400, "Proof of delivery requires a photo or signature")
+    if not body.photo_path and not body.signature and not stop.pod_qr_verified:
+        raise HTTPException(400, "Proof of delivery requires a photo, signature or parcel QR scan")
     upd = {"status": "delivered", "delivered_at": now_iso(), "pod_photo_path": body.photo_path, "pod_signature": body.signature}
     if not stop.arrived_at:
         upd.update({"arrived_at": now_iso(), "arrival_method": "manual"})

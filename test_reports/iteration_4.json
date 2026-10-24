@@ -1,0 +1,47 @@
+{
+  "summary": "Iteration 4 tested Parcel QR proof of delivery and delivery time windows, with a time-window-aware optimizer. Backend: 15/15 new pytest cases pass (tests/test_qr_windows.py) and 15/15 regression tests pass (backend_test.py). Twilio tests were NOT run and no SMS or calls were sent. Frontend (375x667 web preview), all requested flows pass. (1) Driver: drv-1 -> OPEN DROP -> scan-parcel-qr-button -> scan-parcel-screen showing 'EXPECTING MD1001'. On web the camera fallback 'CAMERA NEEDED' box shows. A wrong manual code shows the red 'WRONG PARCEL — SCANNED MD9999, EXPECTED MD1001' toast. The correct code shows 'PARCEL VERIFIED' and returns to the stop detail, which shows 'PARCEL QR VERIFIED'. complete-drop-button becomes enabled with no photo or signature, and completing the drop moved the route to 1/6. (2) Admin R-101: route-late-banner '1 STOP WILL MISS THEIR WINDOW' appeared with a 'LATE 15M' pill. RE-OPTIMIZE moved MD1005 from #5 to #2 and removed the banner. The stop sheet shows the parcel-label QR (MULTIDROP:MD1004 as SVG) and 8 admin-window-slot chips. Selecting 16-18 showed the toast and the row shows the '⏱ 16:00–18:00' pill. (3) Customer MD1003: selecting the 14-16 slot showed 'WINDOW 14:00–16:00 REQUESTED', the label updated and the value survived a reload. ANY TIME clears it. (4) A signature-only drop works in the UI and API. Deprecated packages detected: none (uses expo-camera; no expo-av or expo-barcode-scanner). Minor issues are listed below. Data was reset at the end.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/routes/{id} planned_eta", "issue": "When a driver waits for a window start, planned_eta = now + float minutes gives values like 22:59:59.999 UTC. The UI truncates this, so a stop waiting for its 16:00 window shows 'ETA 15:59'. Seen live for MD1004 and also MD1002 at 21:59:59.999997. Fix: round planned_eta (and eta_time) to the nearest second or minute, or use the window datetime directly when waiting."},
+      {"endpoint": "PUT /api/stops/{id}/window", "issue": "Windows that have already passed are accepted (for example 08:00-10:00 at 13:30 SF time). That stop becomes permanently late, RE-OPTIMIZE can never clear route-late-banner, and the customer sees 'MAY RUN xM LATE'. Windows also have no date, so a window set yesterday is applied to today."},
+      {"endpoint": "optimizer", "issue": "Zero slack: after re-optimize MD1005 was planned at exactly its window end (13:37). One minute later, with the driver paused, it showed LATE 1M and the banner came back. Consider a small buffer."},
+      {"endpoint": "GET /api/track/{code}", "issue": "late_min is only included when the stop is pending. It is missing for arrived, delivered and unrouted stops, so the response shape changes."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Admin stop-options-sheet toast", "issue": "toast.node is rendered outside the <Modal>. On web the 'WINDOW … SET · RE-OPTIMIZE TO APPLY' toast is dimmed behind the backdrop. On native it will be completely hidden behind the Modal. Render the toast inside the Modal while the sheet is open. Reference: /app/frontend/app/admin/route/[id].tsx:184", "testID": "stop-options-sheet", "priority": "MEDIUM"},
+      {"component": "WindowPicker (customer and admin)", "issue": "Past slots (08-10 and 10-12 at 13:xx SF time) can be selected and create windows that are always late. Disable past slots.", "testID": "customer-window-slot-0800", "priority": "MEDIUM"},
+      {"component": "Scan screen manual entry", "issue": "After a wrong code, verify() stays locked for 2s. If the driver submits the correct code within that time, nothing happens and no feedback is shown. Unlock immediately for manual entry and keep the lock for camera scans only. Reference: /app/frontend/app/driver/scan/[stopId].tsx:41", "testID": "qr-manual-submit-button", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "WindowPicker", "issues": ["Slot chips are 36px tall, below the 44px minimum touch target (WindowPicker.tsx:46)"]},
+      {"screen": "Stop detail", "issues": ["'COMPLETE DROP' and 'MARK ARRIVED' labels wrap onto 2 lines at 375px width"]},
+      {"screen": "Customer tracking", "issues": ["The window picker is still shown when the stop is 'arrived', so a customer can change the window after the driver is at the door"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_qr_windows.py", "/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_iter4.xml"],
+  "action_items": [
+    "Render the toast inside the admin stop-options Modal so window-set feedback is visible on native (admin/route/[id].tsx)",
+    "Disable or hide past window slots in WindowPicker, and optionally reject windows that have already ended in PUT /stops/{id}/window",
+    "Round planned_eta / eta_time so a stop waiting for its window shows e.g. 16:00 instead of 15:59",
+    "Increase WindowPicker chip height to at least 44px",
+    "Scan screen: do not block manual re-entry for 2s after a wrong code",
+    "Optional: add a few minutes of slack in the optimizer; always return late_min in /track"
+  ],
+  "critical_code_review_comments": [
+    "server.py is about 919 lines; consider splitting it into routers (stops, routes, tracking) and an optimizer module",
+    "route_detail uses DEPOT as the start for planned routes, but tracking_payload always uses the driver location. ETAs can differ between the admin and customer views for planned routes",
+    "window_minutes assumes windows are 'today' and do not cross midnight. The validation start<end enforces this, but stale windows from earlier days are not handled"
+  ],
+  "updated_files": ["/app/backend/tests/test_qr_windows.py"],
+  "success_rate": {"backend": "100% (30/30)", "frontend": "100% of requested flows (driver QR, admin window/optimize/banner, customer window, signature regression)"},
+  "seed_data_creation": "None. Used POST /api/admin/reset; reset again at the end.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the backend tests with export EXPO_PUBLIC_BACKEND_URL from frontend/.env. pytest.ini uses xdist (-n), so do not pass -p no:xdist. Do NOT run test_twilio_contact.py (real paid SMS/calls). Late-banner testing: set a tight window via API on a late-sequence stop (start=current SF hour:00, end=now+6min), then GET the route to confirm late_stops>=1. On web the camera is unavailable, so use qr-manual-input. The driver stop is reached via the 'OPEN DROP' text in next-stop-card.",
+  "rca_of_issue": "ETA 15:59 vs window 16:00: schedule() sets t=w[0], where w[0] = (window_dt - now).total_seconds()/60. Converting back with now + timedelta(minutes=t) loses float precision, giving xx:59:59.999. fmtDepotTime truncates the seconds, so the minute shown is one too low."
+}

@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Modal, Pressable, View } from "react-native";
+import QRCode from "react-native-qrcode-svg";
+import WindowPicker from "@/src/components/WindowPicker";
 import { useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from "react-native-draggable-flatlist";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
-import { api, RouteDetail, Stop } from "@/src/api";
+import { api, fmtDepotTime, RouteDetail, Stop, windowLabel } from "@/src/api";
 import RouteMap from "@/src/components/RouteMap";
 import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
@@ -25,6 +27,22 @@ export default function AdminRoute() {
   useEffect(() => { if (route) setStops(route.stops); }, [route]);
 
   const locked = (st: Stop) => st.status === "delivered" || st.status === "failed";
+  const [sel, setSel] = useState<Stop | null>(null);
+
+  const setWindow = async (start: string | null, end: string | null) => {
+    if (!sel) return;
+    setBusy("win");
+    try {
+      const st = await api<Stop>(`/stops/${sel.id}/window`, { method: "PUT", body: { start, end } });
+      setSel({ ...sel, ...st });
+      await q.refetch();
+      toast.show(start ? `WINDOW ${start}–${end} SET · RE-OPTIMIZE TO APPLY` : "WINDOW CLEARED", "green");
+    } catch (e: any) {
+      toast.show(e.message, "red");
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const save = async (next: Stop[], label = "SEQUENCE SAVED") => {
     const lockedIds = next.filter(locked).map((x) => x.id);
@@ -74,6 +92,7 @@ export default function AdminRoute() {
         <Pressable
           testID={`seq-row-${item.tracking_code}`}
           onLongPress={lock ? undefined : drag}
+          onPress={() => setSel(item)}
           delayLongPress={150}
           style={[s.row, isActive && { backgroundColor: colors.brandTertiary }, lock && { opacity: 0.5 }]}
         >
@@ -84,7 +103,12 @@ export default function AdminRoute() {
           <View style={{ flex: 1, gap: 2 }}>
             <Display style={s.name} numberOfLines={1}>{item.customer_name}</Display>
             <Mono style={s.meta} numberOfLines={1}>{item.address}</Mono>
-            <Pill label={item.status} tone={statusTone(item.status)} />
+            <View style={{ flexDirection: "row", gap: spacing.xs, flexWrap: "wrap" }}>
+              <Pill label={item.status} tone={statusTone(item.status)} />
+              {windowLabel(item) ? <Pill label={`⏱ ${windowLabel(item)}`} tone="dark" /> : null}
+              {!lock && item.planned_eta ? <Pill label={`ETA ${fmtDepotTime(item.planned_eta)}`} tone="light" /> : null}
+              {item.late_min ? <Pill label={`LATE ${item.late_min}M`} tone="red" /> : null}
+            </View>
           </View>
           <View>
             <Pressable testID={`move-up-${item.tracking_code}`} onPress={() => move(idx, -1)} style={s.arrow}><Ionicons name="chevron-up" size={20} color={colors.onSurface} /></Pressable>
@@ -120,11 +144,44 @@ export default function AdminRoute() {
                   <Btn testID="route-start-button" label="DISPATCH" icon="play" loading={busy === "start"} onPress={() => run("start", `/routes/${id}/start`, "ROUTE DISPATCHED")} style={{ flex: 1 }} />
                 ) : null}
               </View>
-              <Mono style={s.section}>DRAG ≡ OR USE ARROWS TO RE-SEQUENCE {busy === "seq" ? "· SAVING…" : ""}</Mono>
+              <Mono style={s.section}>DRAG ≡ OR USE ARROWS TO RE-SEQUENCE · TAP A STOP FOR LABEL & WINDOW {busy === "seq" ? "· SAVING…" : ""}</Mono>
+              {route.late_stops > 0 ? (
+                <View style={s.lateBanner} testID="route-late-banner">
+                  <Mono style={s.lateText}>{route.late_stops} STOP{route.late_stops > 1 ? "S" : ""} WILL MISS THEIR WINDOW — TAP RE-OPTIMIZE</Mono>
+                </View>
+              ) : null}
             </View>
           }
         />
       )}
+      {sel ? (
+        <Modal transparent animationType="slide" visible onRequestClose={() => setSel(null)}>
+          <Pressable style={s.backdrop} onPress={() => setSel(null)} testID="stop-options-backdrop" />
+          <View style={[s.sheet, { paddingBottom: insets.bottom + spacing.lg }]} testID="stop-options-sheet">
+            <View style={s.sheetHead}>
+              <View style={{ flex: 1 }}>
+                <Display style={{ fontSize: 20 }}>{sel.customer_name}</Display>
+                <Mono style={s.meta}>{sel.address}</Mono>
+              </View>
+              <Pressable testID="stop-options-close" onPress={() => setSel(null)} style={s.handle}>
+                <Ionicons name="close" size={26} color={colors.onSurface} />
+              </Pressable>
+            </View>
+            <View style={s.label} testID="parcel-label">
+              <QRCode value={`MULTIDROP:${sel.tracking_code}`} size={150} color={colors.onSurface} backgroundColor={colors.surface} />
+              <View style={{ flex: 1, gap: spacing.xs }}>
+                <Mono style={s.meta}>PARCEL LABEL</Mono>
+                <Display style={{ fontSize: 26 }}>{sel.tracking_code}</Display>
+                <Mono style={s.meta}>{sel.postal_code} · {sel.zone.toUpperCase()}</Mono>
+                <Mono style={s.meta}>Driver scans this at the door as proof of delivery.</Mono>
+              </View>
+            </View>
+            <Mono style={[s.meta, { paddingHorizontal: spacing.lg, fontWeight: "700" }]}>DELIVERY WINDOW (SF TIME)</Mono>
+            <WindowPicker testIDPrefix="admin-window" start={sel.window_start} end={sel.window_end} disabled={locked(sel) || busy === "win"} onSelect={setWindow} />
+          </View>
+          {toast.node}
+        </Modal>
+      ) : null}
       {toast.node}
     </View>
   );
@@ -140,4 +197,10 @@ const useStyles = makeStyles((c) => ({
   name: { fontSize: 16 },
   meta: { fontSize: 11, color: c.muted },
   arrow: { width: 44, height: 36, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: c.border, marginVertical: 1 },
+  lateBanner: { backgroundColor: c.brandPrimary, padding: spacing.md, borderBottomWidth: 2, borderColor: c.border },
+  lateText: { color: c.onBrandPrimary, fontSize: 12, fontWeight: "700" },
+  backdrop: { flex: 1, backgroundColor: c.surfaceInverse, opacity: 0.5 },
+  sheet: { backgroundColor: c.surface, borderTopWidth: 2, borderColor: c.border, gap: spacing.md, paddingTop: spacing.lg },
+  sheetHead: { flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.lg, gap: spacing.md },
+  label: { flexDirection: "row", gap: spacing.lg, alignItems: "center", marginHorizontal: spacing.lg, padding: spacing.md, borderWidth: 2, borderColor: c.border },
 }));
