@@ -1,4 +1,6 @@
-from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect, Query
+from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect, Query, Depends, Request
+import bcrypt
+import jwt as pyjwt
 from fastapi.responses import Response, HTMLResponse
 from fastapi.concurrency import run_in_threadpool
 from dotenv import load_dotenv
@@ -685,6 +687,7 @@ async def startup():
     await seed()
     for m in MERCHANTS:
         await db.merchants.update_one({"id": m["id"]}, {"$setOnInsert": m}, upsert=True)
+    await seed_users()
     # imports interrupted by a restart: send unfinished rows back to the queue
     for j in await db.import_jobs.find({"status": "running"}, {"_id": 0, "id": 1}).to_list(100):
         spawn(process_import(j["id"]))
@@ -701,7 +704,8 @@ async def root():
 
 
 @api_router.post("/admin/reset")
-async def reset():
+async def reset(request: Request):
+    await admin_user(await current_user(request))  # wipes all data incl. merchant orders: admin only
     await seed(force=True)
     return {"ok": True}
 
@@ -1825,13 +1829,271 @@ async def get_merchant_or_404(merchant_id: str) -> dict:
     return m
 
 
+# ---------------------------------------------------------------- auth (admin + merchant accounts, JWT bearer)
+JWT_SECRET = os.environ["JWT_SECRET"]
+JWT_ALG = "HS256"
+SESSION_HOURS = 12
+LOGIN_MAX_FAILS = 5
+LOGIN_LOCK_MIN = 15
+DEMO_MERCHANT_USERS = [("mer-1", "bakery@multidrop.app", "Bakery2026"), ("mer-2", "books@multidrop.app", "Books2026")]
+
+
+def hash_pw(p: str) -> str:
+    return bcrypt.hashpw(p.encode(), bcrypt.gensalt(12)).decode()
+
+
+def check_pw(p: str, h: str) -> bool:
+    try:
+        return bcrypt.checkpw(p.encode(), h.encode())
+    except ValueError:
+        return False
+
+
+DUMMY_HASH = hash_pw(secrets.token_hex(8))  # equalises timing for unknown emails
+
+
+def issue_token(sub: str, role: str, purpose: str = "session", minutes: int = SESSION_HOURS * 60, **extra) -> str:
+    now = datetime.now(timezone.utc)
+    return pyjwt.encode({"sub": sub, "role": role, "purpose": purpose, "iat": now, "exp": now + timedelta(minutes=minutes), **extra},
+                        JWT_SECRET, algorithm=JWT_ALG)
+
+
+def decode_token(token: str, purpose: str) -> dict:
+    try:
+        p = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG], options={"require": ["exp", "iat", "sub", "role", "purpose"]})
+    except pyjwt.ExpiredSignatureError:
+        raise HTTPException(401, "Session expired — sign in again")
+    except pyjwt.InvalidTokenError:
+        raise HTTPException(401, "Invalid sign-in token")
+    if p["purpose"] != purpose:
+        raise HTTPException(401, "Invalid sign-in token")
+    return p
+
+
+async def current_user(request: Request) -> dict:
+    h = request.headers.get("authorization", "")
+    if not h.lower().startswith("bearer ") or not h[7:].strip():
+        raise HTTPException(401, "Sign in required")
+    p = decode_token(h[7:].strip(), "session")
+    u = await db.users.find_one({"id": p["sub"], "disabled": {"$ne": True}}, {"_id": 0, "password_hash": 0})
+    if not u or u["role"] != p["role"]:
+        raise HTTPException(401, "Sign in required")
+    return u
+
+
+async def admin_user(u: dict = Depends(current_user)) -> dict:
+    if u["role"] != "admin":
+        raise HTTPException(403, "Admin sign-in required")
+    return u
+
+
+def check_merchant_access(u: dict, merchant_id: str):
+    if u["role"] != "admin" and u.get("merchant_id") != merchant_id:
+        raise HTTPException(403, "You can only see your own store")
+
+
+async def merchant_access(merchant_id: str, u: dict = Depends(current_user)) -> dict:
+    check_merchant_access(u, merchant_id)
+    return u
+
+
+async def seed_users():
+    await db.users.create_index("email", unique=True)
+    email, pw = os.environ["ADMIN_EMAIL"].strip().lower(), os.environ["ADMIN_PASSWORD"]
+    admin = await db.users.find_one({"email": email})
+    if not admin:
+        await db.users.insert_one({"id": str(uuid.uuid4()), "email": email, "password_hash": hash_pw(pw), "role": "admin",
+                                   "name": "Dispatch Admin", "merchant_id": None, "disabled": False, "created_at": now_iso()})
+    elif not check_pw(pw, admin["password_hash"]):
+        await db.users.update_one({"email": email}, {"$set": {"password_hash": hash_pw(pw)}})  # .env is the source of truth
+    for mid, em, p in DEMO_MERCHANT_USERS:
+        if not await db.users.find_one({"email": em}):
+            await db.users.insert_one({"id": str(uuid.uuid4()), "email": em, "password_hash": hash_pw(p), "role": "merchant",
+                                       "name": None, "merchant_id": mid, "disabled": False, "created_at": now_iso()})
+
+
+class LoginIn(BaseModel):
+    email: str
+    password: str
+
+
+@api_router.post("/auth/login")
+async def login(body: LoginIn, request: Request):
+    email = body.email.strip().lower()
+    # the ingress appends the real client IP as the LAST X-Forwarded-For hop; earlier hops are client-controlled
+    ip = (request.headers.get("x-forwarded-for", "").split(",")[-1].strip() or (request.client.host if request.client else "-"))
+    # per email+IP (5 tries) and per email from anywhere (20 tries), so rotating IPs cannot brute-force one account
+    limits = [(f"{email}:{ip}", LOGIN_MAX_FAILS), (f"{email}:*", LOGIN_MAX_FAILS * 4)]
+    now = datetime.now(timezone.utc)
+    atts = {}
+    for key, _ in limits:
+        att = await db.login_attempts.find_one({"key": key}, {"_id": 0})
+        if att and att.get("locked_until") and datetime.fromisoformat(att["locked_until"]) > now:
+            mins = max(1, math.ceil((datetime.fromisoformat(att["locked_until"]) - now).total_seconds() / 60))
+            raise HTTPException(429, f"Too many attempts — try again in {mins} min")
+        if att and datetime.fromisoformat(att["updated_at"]) < now - timedelta(minutes=LOGIN_LOCK_MIN):
+            att = None  # old failures expire
+        atts[key] = att
+    u = await db.users.find_one({"email": email}, {"_id": 0})
+    ok = check_pw(body.password, u["password_hash"] if u else DUMMY_HASH)
+    if not u or not ok or u.get("disabled"):
+        for key, cap in limits:
+            fails = (atts[key] or {}).get("fails", 0) + 1
+            upd = {"key": key, "fails": fails, "updated_at": now.isoformat(), "locked_until": None}
+            if fails >= cap:
+                upd.update(fails=0, locked_until=(now + timedelta(minutes=LOGIN_LOCK_MIN)).isoformat())
+            await db.login_attempts.update_one({"key": key}, {"$set": upd}, upsert=True)
+        raise HTTPException(401, "Wrong email or password")
+    await db.login_attempts.delete_many({"key": {"$in": [k for k, _ in limits]}})
+    user = {k: v for k, v in u.items() if k != "password_hash"}
+    if user.get("merchant_id"):
+        user["merchant_name"] = (await get_merchant_or_404(user["merchant_id"]))["name"]
+    return {"token": issue_token(u["id"], u["role"]), "user": user}
+
+
+@api_router.get("/auth/me")
+async def auth_me(u: dict = Depends(current_user)):
+    if u.get("merchant_id"):
+        m = await db.merchants.find_one({"id": u["merchant_id"]}, {"_id": 0})
+        u["merchant_name"] = m["name"] if m else None
+    return u
+
+
+class MerchantAccountIn(BaseModel):
+    store_name: str
+    email: str
+    password: str
+
+
+class PasswordIn(BaseModel):
+    password: str
+
+
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def check_password(p: str):
+    if len(p) < 8 or len(p.encode()) > 72:
+        raise HTTPException(400, "Password must be 8–72 characters")
+
+
+@api_router.get("/admin/merchant-accounts")
+async def merchant_accounts(_: dict = Depends(admin_user)):
+    users = await db.users.find({"role": "merchant"}, {"_id": 0, "password_hash": 0}).to_list(500)
+    out = []
+    for m in await db.merchants.find({}, {"_id": 0}).sort("id", 1).to_list(500):
+        out.append({**m, "accounts": [x for x in users if x["merchant_id"] == m["id"]],
+                    "orders": await db.stops.count_documents({"merchant_id": m["id"]})})
+    return out
+
+
+@api_router.post("/admin/merchant-accounts")
+async def create_merchant_account(body: MerchantAccountIn, _: dict = Depends(admin_user)):
+    name, email = body.store_name.strip(), body.email.strip().lower()
+    if not name:
+        raise HTTPException(400, "Store name is required")
+    if not EMAIL_RE.match(email):
+        raise HTTPException(400, "Enter a valid email")
+    check_password(body.password)
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(409, "An account with this email already exists")
+    m = {"id": f"mer-{uuid.uuid4().hex[:8]}", "name": name, "contact": email}
+    await db.merchants.insert_one(dict(m))
+    user = {"id": str(uuid.uuid4()), "email": email, "role": "merchant", "name": None, "merchant_id": m["id"], "disabled": False, "created_at": now_iso()}
+    try:
+        await db.users.insert_one({**user, "password_hash": hash_pw(body.password)})
+    except DuplicateKeyError:
+        await db.merchants.delete_one({"id": m["id"]})
+        raise HTTPException(409, "An account with this email already exists")
+    return {**m, "accounts": [user], "orders": 0}
+
+
+@api_router.put("/admin/merchant-accounts/{user_id}/password")
+async def reset_merchant_password(user_id: str, body: PasswordIn, _: dict = Depends(admin_user)):
+    check_password(body.password)
+    res = await db.users.update_one({"id": user_id, "role": "merchant"}, {"$set": {"password_hash": hash_pw(body.password)}})
+    if not res.matched_count:
+        raise HTTPException(404, "Merchant account not found")
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- merchant delivery report (CSV)
+REPORT_RANGES = {"today": 0, "7d": 6, "30d": 29, "all": None}
+REPORT_COLUMNS = ["tracking_code", "customer_name", "customer_phone", "address", "zone", "status", "order_created", "delivery_day",
+                  "window", "driver", "arrived_at", "delivered_at", "on_time", "fail_reason", "proof_types", "proof_link",
+                  "rating", "rating_comment"]
+
+
+class ReportIn(BaseModel):
+    range: str = "7d"
+
+
+@api_router.post("/merchants/{merchant_id}/report-link")
+async def report_link(merchant_id: str, body: ReportIn, u: dict = Depends(merchant_access)):
+    """Short-lived download link (5 min) so the CSV can open in a browser tab without a sign-in header."""
+    await get_merchant_or_404(merchant_id)
+    if body.range not in REPORT_RANGES:
+        raise HTTPException(400, f"range must be one of {', '.join(REPORT_RANGES)}")
+    tok = issue_token(u["id"], u["role"], purpose="report", minutes=5, mid=merchant_id, rng=body.range)
+    return {"path": f"/api/merchants/{merchant_id}/report.csv?token={tok}", "expires_in": 300}
+
+
+def local_fmt(iso: Optional[str]) -> str:
+    return datetime.fromisoformat(iso).astimezone(TZ).strftime("%Y-%m-%d %H:%M") if iso else ""
+
+
+def csv_safe(v) -> str:
+    """Stop spreadsheet formula injection from customer-written text."""
+    v = "" if v is None else str(v)
+    return f"'{v}" if v[:1] in ("=", "+", "-", "@", "\t", "\r") else v
+
+
+@api_router.get("/merchants/{merchant_id}/report.csv")
+async def report_csv(merchant_id: str, token: str, request: Request):
+    p = decode_token(token, "report")
+    if p.get("mid") != merchant_id:
+        raise HTTPException(403, "This link is for a different store")
+    m = await get_merchant_or_404(merchant_id)
+    back = REPORT_RANGES.get(p.get("rng"), 6)
+    since = (datetime.now(TZ).date() - timedelta(days=back)).isoformat() if back is not None else None
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+    proto = request.headers.get("x-forwarded-proto") or ("http" if host.startswith(("localhost", "127.")) else "https")
+    base = f"{proto}://{host}"
+    routes = {r["id"]: r for r in await db.routes.find({}, {"_id": 0, "id": 1, "driver_id": 1, "service_date": 1}).to_list(2000)}
+    drivers = {d["id"]: d["name"] for d in await db.drivers.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(100)}
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(REPORT_COLUMNS)
+    for d in await db.stops.find({"merchant_id": merchant_id}, {"_id": 0}).sort("created_at", 1).to_list(5000):
+        st = Stop(**d)
+        activity = st.delivered_at or st.created_at
+        unfinished = st.status in ("pending", "arrived")  # open orders always appear, whatever the range
+        if since and not unfinished and (not activity or datetime.fromisoformat(activity).astimezone(TZ).date().isoformat() < since):
+            continue
+        r = routes.get(st.route_id) if st.route_id else None
+        link = ""
+        if st.status == "delivered":
+            link = base + (await share_proof(st.id))["path"]
+        on_time = delivered_on_time(st)
+        proofs = [k for k, v in (("photo", st.pod_photo_path), ("signature", st.pod_signature), ("qr", st.pod_qr_verified)) if v]
+        status = st.status if st.route_id else ("scheduled" if st.window_date and st.window_date > today_str() else "awaiting dispatch")
+        w.writerow([st.tracking_code, csv_safe(st.customer_name), st.customer_phone, csv_safe(st.address), st.zone, status, local_fmt(st.created_at),
+                    (r or {}).get("service_date") or st.window_date or "", f"{st.window_start}-{st.window_end}" if st.window_end else "",
+                    drivers.get((r or {}).get("driver_id"), ""), local_fmt(st.arrived_at), local_fmt(st.delivered_at),
+                    "" if on_time is None else ("yes" if on_time else "no"), csv_safe(st.fail_reason), "+".join(proofs), link,
+                    st.rating or "", csv_safe(st.rating_comment)])
+    slug = re.sub(r"[^a-z0-9]+", "-", m["name"].lower()).strip("-")
+    fname = f"{slug}-deliveries-{p.get('rng')}-{today_str()}.csv"
+    return Response("\ufeff" + buf.getvalue(), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
 @api_router.get("/merchant-template.csv")
 async def merchant_template():
     return Response(TEMPLATE_CSV, media_type="text/csv", headers={"Content-Disposition": 'attachment; filename="multidrop-orders-template.csv"'})
 
 
 @api_router.get("/merchants")
-async def list_merchants():
+async def list_merchants(_: dict = Depends(admin_user)):
     out = []
     for m in await db.merchants.find({}, {"_id": 0}).sort("id", 1).to_list(100):
         out.append({**m, "orders": await db.stops.count_documents({"merchant_id": m["id"]}),
@@ -1841,7 +2103,7 @@ async def list_merchants():
 
 
 @api_router.get("/merchants/{merchant_id}")
-async def merchant_detail(merchant_id: str):
+async def merchant_detail(merchant_id: str, _: dict = Depends(merchant_access)):
     m = await get_merchant_or_404(merchant_id)
     orders = await db.stops.find({"merchant_id": merchant_id}, {"_id": 0}).sort("created_at", -1).to_list(500)
     flagged = await db.import_rows.find({"merchant_id": merchant_id, "status": {"$in": list(FLAGGED)}}, {"_id": 0}).sort([("created_at", -1), ("line", 1)]).to_list(500)
@@ -1853,7 +2115,7 @@ async def merchant_detail(merchant_id: str):
 
 
 @api_router.post("/merchants/{merchant_id}/import")
-async def import_orders(merchant_id: str, file: UploadFile = File(...)):
+async def import_orders(merchant_id: str, file: UploadFile = File(...), _: dict = Depends(merchant_access)):
     """Upload a CSV of orders. Rows are validated now and geocoded in the background (about 1 per second)."""
     await get_merchant_or_404(merchant_id)
     raw = await file.read()
@@ -1901,10 +2163,11 @@ async def import_orders(merchant_id: str, file: UploadFile = File(...)):
 
 
 @api_router.get("/imports/{job_id}")
-async def import_status(job_id: str):
+async def import_status(job_id: str, u: dict = Depends(current_user)):
     job = await db.import_jobs.find_one({"id": job_id}, {"_id": 0})
     if not job:
         raise HTTPException(404, "Import not found")
+    check_merchant_access(u, job["merchant_id"])
     return job
 
 
@@ -1919,11 +2182,12 @@ class RowFixIn(BaseModel):
 
 
 @api_router.put("/import-rows/{row_id}")
-async def fix_import_row(row_id: str, body: RowFixIn):
+async def fix_import_row(row_id: str, body: RowFixIn, u: dict = Depends(current_user)):
     """Edit a flagged row and try it again straight away."""
     row = await db.import_rows.find_one({"id": row_id}, {"_id": 0})
     if not row:
         raise HTTPException(404, "Row not found")
+    check_merchant_access(u, row["merchant_id"])
     if row["status"] not in FLAGGED:
         raise HTTPException(400, f"Row is already {row['status']}")
     data = {**row["data"], **{k: v.strip() for k, v in body.model_dump().items() if v is not None}}
@@ -1934,10 +2198,11 @@ async def fix_import_row(row_id: str, body: RowFixIn):
 
 
 @api_router.delete("/import-rows/{row_id}")
-async def dismiss_import_row(row_id: str):
+async def dismiss_import_row(row_id: str, u: dict = Depends(current_user)):
     row = await db.import_rows.find_one({"id": row_id}, {"_id": 0})
     if not row:
         raise HTTPException(404, "Row not found")
+    check_merchant_access(u, row["merchant_id"])
     if row["status"] not in FLAGGED:
         raise HTTPException(400, f"Row is already {row['status']}")
     await db.import_rows.update_one({"id": row_id}, {"$set": {"status": "dismissed"}})

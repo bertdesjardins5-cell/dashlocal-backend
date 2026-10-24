@@ -1,3 +1,5 @@
+import { clearSession, getToken } from "@/src/session";
+
 export const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL as string;
 export const API = `${BACKEND_URL}/api`;
 export const WS_BASE = `${BACKEND_URL.replace(/^http/, "ws")}/api/ws`;
@@ -73,12 +75,17 @@ export type Tracking = {
 };
 
 export async function api<T = any>(path: string, opts: { method?: string; body?: any } = {}): Promise<T> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (opts.body) headers["Content-Type"] = "application/json";
+  if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(`${API}${path}`, {
     method: opts.method ?? "GET",
-    headers: opts.body ? { "Content-Type": "application/json" } : undefined,
+    headers,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
   if (!res.ok) {
+    if (res.status === 401 && token && !path.startsWith("/auth/login")) clearSession(); // expired or revoked: back to sign-in
     let msg = `Request failed (${res.status})`;
     try {
       const j = await res.json();

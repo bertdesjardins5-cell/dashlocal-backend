@@ -1,0 +1,55 @@
+{
+  "summary": "Tested merchant login (JWT), access control, admin merchant accounts, the merchant delivery report CSV and the UI flows at 390x844. Backend: 15 of 16 new tests pass, and all 19 tests in the updated iteration-10 regression file pass. The one failure is a security issue: the 5-fails lockout can be bypassed by sending a spoofed X-Forwarded-For header. The full report flow was verified end to end: import for mer-1, batch, start, deliver with signature, rate 4 stars. The CSV row has status=delivered, delivered_at, proof_types=signature, a working https proof_link (200) and rating=4 with its comment. Store-A token on the store-B URL returns 403, a bad token or a session token returns 401, and an invalid range returns 400. UI: all requested flows pass (sign-in errors, redirect to own store, mer-2 to mer-1 redirect, session kept after reload, sign-out, report range chips, download calling window.open with a valid report URL, admin sign-in rejecting merchant credentials, create account, reset password, admin all-stores list, CSV upload, fix-row sheet). Driver, customer and admin consoles still open without login. Deprecated packages detected: none.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/auth/login", "issue": "The lockout can be bypassed. The key is email + the FIRST X-Forwarded-For entry, which the client controls (the ingress appends the real IP after it). After 5 fails, a request with 'X-Forwarded-For: 9.9.9.9' returns 401 instead of 429, so rotating that header gives unlimited guesses. Fix: use the LAST (ingress-appended) XFF entry, or X-Real-IP, or also keep a per-email counter. Reference: server.py:1922", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/merchants/{id}/report.csv", "issue": "CSV/formula injection. Customer-controlled cells (rating_comment, customer_name, address, notes) are written raw, so a comment like '=HYPERLINK(...)' runs as a formula in Excel or Sheets. Prefix cells that start with = + - @ \\t \\r with a single quote; phone numbers like +1415... need care. Reference: server.py:2063-2067"},
+      {"endpoint": "GET /api/merchants/{id}/report.csv", "issue": "This GET has side effects and N+1 queries: share_proof() runs per delivered stop and may write or rotate share tokens. Downloading a report re-issues expired proof links, which silently kills the old links. Reference: server.py:2058-2059"},
+      {"endpoint": "POST /api/admin/reset", "issue": "No authentication, and it wipes all stops, imports and routes, including merchant orders. Now that merchants have accounts, anyone can erase their data. Consider requiring admin_user. Reference: server.py:706"},
+      {"endpoint": "GET /api/merchants/{id}/report.csv", "issue": "The range filter uses delivered_at or created_at. A still-pending order created more than 7 days ago, or one scheduled for today but created earlier, drops out of the today/7d reports. Consider also using the service date or window_date."},
+      {"endpoint": "POST /api/auth/login", "issue": "The failure counter never expires (no rolling window). 5 typos spread over weeks still trigger a 15-minute lock."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Report download (web)", "issue": "window.open() is called after an awaited fetch, so the user gesture is gone. Chromium allowed it in testing, but Safari/iOS web usually blocks such popups. Fix: open a blank window synchronously in onPress, then set its location, or use an anchor download. Reference: src/components/ReportDownload.tsx:26", "affected_testIDs": ["report-download-button"]}
+    ],
+    "design_issues": [
+      {"screen": "Merchant fix-row sheet", "issues": ["At 390x844 the REMOVE / SAVE & RETRY buttons are below the fold when the sheet opens, so the user has to scroll inside the sheet to reach them. Consider a sticky footer."]},
+      {"screen": "Home role picker", "issues": ["The hero image shows a FedEx-branded truck, which is a third-party trademark in a MultiDrop app. Use an unbranded van image.", "The red 'MULTIDROP / OPS V1' kicker over the dark photo has low contrast."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_auth_merchant_report.py",
+    "/app/backend/tests/test_digest_reorder_nearby_merchant.py",
+    "/app/test_reports/pytest/iteration_11_auth.xml",
+    "/app/test_reports/pytest/iteration_11_regression.xml"
+  ],
+  "action_items": [
+    "HIGH: Fix the login lockout bypass via spoofed X-Forwarded-For (server.py:1922). Use the trusted last hop or X-Real-IP, and/or add a per-email limit.",
+    "Escape formula-leading characters (= + - @ tab CR) in report CSV cells to prevent CSV injection (server.py:2063).",
+    "Protect POST /api/admin/reset with admin_user, since it wipes merchant orders.",
+    "ReportDownload: open the window synchronously in the press handler so Safari/iOS web doesn't block the popup.",
+    "Optional: stop rotating proof share tokens inside the report GET; consider a sticky action footer in FixRowSheet; replace the FedEx-branded hero image."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 2298 lines (more than 700) and should be split into modules (auth, merchants/import, report, routes, stops).",
+    "Report token lives in the URL query (5 min, purpose=report). That's acceptable, but it isn't re-checked against a disabled or deleted user.",
+    "Session is stored in AsyncStorage (localStorage) on web. That's fine for a preview, but note the XSS exposure.",
+    "Login correctly uses a dummy bcrypt hash for unknown emails (timing equalised), returns a generic 401, and strips password_hash and _id from responses."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_digest_reorder_nearby_merchant.py (api fixture now signs in as admin and sends a Bearer token)",
+    "/app/backend/tests/test_auth_merchant_report.py (new)"
+  ],
+  "success_rate": {"backend": "97% (34/35; the failure is the XFF lockout bypass)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "Created TEST_ merchant accounts, throwaway lockout emails, and TEST_Report / TEST_UIFix orders for mer-1. TEST_ users, merchants and login_attempts were deleted from Mongo afterwards. The regression file calls /api/admin/reset, which reseeds stops and routes. Real accounts were never locked.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n 0 and EXPO_PUBLIC_BACKEND_URL exported from frontend/.env. test_auth_merchant_report.py::test_lockout_xff_spoof is expected to fail until the XFF fix lands. Report download on web opens a popup that headless Chromium treats as a download (page url ':'), so check the window.open URL instead. The FixRowSheet retry button needs a mouse wheel scroll inside the sheet before clicking. Viewport 390x844.",
+  "rca_of_issue": "Lockout bypass: login() builds its key from request.headers['x-forwarded-for'].split(',')[0]. Kubernetes ingress appends the real client IP, so index 0 is whatever the client sent. Reproduce: 5 bad logins for a throwaway email, then a 6th with the header X-Forwarded-For: 9.9.9.9 returns 401 instead of 429. Mitigation: take the last XFF entry (trusted proxy hop) or X-Real-IP, and add a per-email counter that ignores IP."
+}

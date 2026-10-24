@@ -67,7 +67,7 @@ export default function FixRowSheet({ row, onClose, onDone, notify }: {
     <Modal transparent animationType="slide" visible onRequestClose={onClose}>
       <Pressable style={s.backdrop} onPress={onClose} testID="fix-row-backdrop" />
       <View style={[s.sheet, { paddingBottom: insets.bottom + spacing.lg }]} testID="fix-row-sheet">
-        <KeyboardAwareScrollView contentContainerStyle={{ gap: spacing.sm }} keyboardShouldPersistTaps="handled" bottomOffset={24}>
+        <KeyboardAwareScrollView style={{ flexShrink: 1 }} contentContainerStyle={{ gap: spacing.sm }} keyboardShouldPersistTaps="handled" bottomOffset={24}>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <Display style={{ fontSize: 22, flex: 1 }} numberOfLines={2}>FIX ROW {row.line}</Display>
             <Pressable testID="fix-row-close" onPress={onClose} style={s.close}><Ionicons name="close" size={24} color={colors.onSurface} /></Pressable>
@@ -89,11 +89,11 @@ export default function FixRowSheet({ row, onClose, onDone, notify }: {
               />
             </View>
           ))}
-          <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm }}>
-            <Btn testID="fix-row-drop-button" label="REMOVE" icon="trash" variant="outline" loading={busy === "drop"} onPress={drop} style={{ flex: 1 }} />
-            <Btn testID="fix-row-retry-button" label="SAVE & RETRY" icon="refresh" loading={busy === "retry"} onPress={retry} style={{ flex: 2 }} />
-          </View>
         </KeyboardAwareScrollView>
+        <View style={{ flexDirection: "row", gap: spacing.sm, paddingTop: spacing.md }}>
+          <Btn testID="fix-row-drop-button" label="REMOVE" icon="trash" variant="outline" loading={busy === "drop"} onPress={drop} style={{ flex: 1 }} />
+          <Btn testID="fix-row-retry-button" label="SAVE & RETRY" icon="refresh" loading={busy === "retry"} onPress={retry} style={{ flex: 2 }} />
+        </View>
       </View>
     </Modal>
   );

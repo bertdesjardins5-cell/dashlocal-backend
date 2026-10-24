@@ -1,10 +1,12 @@
 import React, { useState } from "react";
 import { Linking, Platform, Pressable, RefreshControl, ScrollView, View } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import * as DocumentPicker from "expo-document-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
+import { clearSession, getToken, useSession } from "@/src/session";
+import ReportDownload from "@/src/components/ReportDownload";
 import { api, API, dayLabel, Stop, windowLabel } from "@/src/api";
 import { uploadForm } from "@/src/utils/upload";
 import FixRowSheet, { ImportRow } from "@/src/components/FixRowSheet";
@@ -24,12 +26,15 @@ export default function MerchantHome() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const toast = useToast();
+  const { ready, user } = useSession();
+  const allowed = !!user && (user.role === "admin" || user.merchant_id === merchantId);
   const [uploading, setUploading] = useState(false);
   const [fix, setFix] = useState<ImportRow | null>(null);
 
   const q = useQuery({
     queryKey: ["merchant", merchantId],
     queryFn: () => api<Detail>(`/merchants/${merchantId}`),
+    enabled: allowed,
     refetchInterval: (query) => (query.state.data?.jobs.some((j) => j.status === "running") ? 2000 : 20000),
   });
   const d = q.data;
@@ -46,7 +51,10 @@ export default function MerchantHome() {
       const a = picked.assets[0];
       if (!a.name.toLowerCase().endsWith(".csv")) return toast.show("PICK A .CSV FILE", "red");
       setUploading(true);
-      const res = await uploadForm(`${API}/merchants/${merchantId}/import`, { files: { file: { uri: a.uri, name: a.name, mimeType: "text/csv" } } });
+      const res = await uploadForm(`${API}/merchants/${merchantId}/import`, {
+        files: { file: { uri: a.uri, name: a.name, mimeType: "text/csv" } },
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
       const j = await res.json();
       if (!res.ok) throw new Error(typeof j.detail === "string" ? j.detail : `Upload failed (${res.status})`);
       toast.show(`${j.total} ROWS RECEIVED · LOOKING UP ADDRESSES`, "green");
@@ -64,9 +72,19 @@ export default function MerchantHome() {
     else Linking.openURL(url);
   };
 
+  if (!ready) return <View style={s.root}><Header title="MERCHANT" /><Loading /></View>;
+  if (!allowed) return <Redirect href="/merchant" />;
+
+  const signOut = async () => {
+    await clearSession();
+    router.replace("/merchant");
+  };
+
   return (
     <View style={s.root} testID="merchant-screen">
-      <Header title={d?.name ?? "MERCHANT"} subtitle="Orders · CSV import" />
+      <Header title={d?.name ?? "MERCHANT"} subtitle={user?.role === "admin" ? "Admin view · orders · CSV import" : `${user?.email} · orders · CSV import`} right={
+        <Pressable testID="sign-out-button" onPress={signOut} style={s.iconBtn}><Ionicons name="log-out" size={22} color={colors.onSurfaceInverse} /></Pressable>
+      } />
       {q.isLoading ? <Loading /> : q.error || !d ? <ErrorBlock message={(q.error as Error)?.message ?? "Not found"} onRetry={q.refetch} /> : (
         <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }} refreshControl={<RefreshControl refreshing={false} onRefresh={() => q.refetch()} />}>
           <View style={s.totals}>
@@ -122,6 +140,9 @@ export default function MerchantHome() {
             </>
           ) : null}
 
+          <Mono style={s.section}>DELIVERY REPORT</Mono>
+          <ReportDownload merchantId={merchantId} notify={toast.show} />
+
           <Mono style={s.section}>ORDERS</Mono>
           {d.orders.length === 0 ? <Mono style={s.empty} testID="merchant-orders-empty">NO ORDERS YET · UPLOAD A CSV TO GET STARTED</Mono> : null}
           {d.orders.map((o) => (
@@ -148,6 +169,7 @@ export default function MerchantHome() {
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
+  iconBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: c.onSurfaceInverse },
   totals: { flexDirection: "row", borderBottomWidth: 2, borderColor: c.border },
   cell: { flex: 1, padding: spacing.md, alignItems: "center", gap: 2 },
   cellVal: { fontSize: 24 },

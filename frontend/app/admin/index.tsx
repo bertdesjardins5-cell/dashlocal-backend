@@ -60,9 +60,13 @@ export default function AdminDashboard() {
   };
 
   const reset = async () => {
-    await api("/admin/reset", { method: "POST" });
-    toast.show("DEMO DATA RESET");
-    refresh();
+    try {
+      await api("/admin/reset", { method: "POST" });
+      toast.show("DEMO DATA RESET");
+      refresh();
+    } catch (e: any) {
+      toast.show(`${e.message} · SIGN IN VIA MERCHANT ACCOUNTS`, "red");
+    }
   };
 
   const kpis = an.data ? [
@@ -82,6 +86,14 @@ export default function AdminDashboard() {
       } />
       {an.isLoading ? <Loading /> : an.error ? <ErrorBlock message={(an.error as Error).message} onRetry={refresh} /> : (
         <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }} refreshControl={<RefreshControl refreshing={false} onRefresh={refresh} />}>
+          <Pressable testID="admin-merchant-accounts-link" onPress={() => router.push("/admin/merchants")} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
+            <Ionicons name="storefront" size={24} color={colors.onSurface} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Display style={s.rowTitle}>MERCHANT ACCOUNTS</Display>
+              <Mono style={s.meta}>Create store logins · reset passwords · admin sign-in</Mono>
+            </View>
+            <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />
+          </Pressable>
           <Mono style={s.section}>DAILY OPS DIGEST</Mono>
           <DailyDigest />
           <LowRatingAlerts notify={toast.show} />
