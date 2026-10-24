@@ -126,7 +126,7 @@ export default function TrackOrder() {
               </View>
             ) : null}
             {delivered ? (
-              <DeliveryProof stop={t.stop} onShared={() => toast.show("PROOF LINK READY", "green")} onError={(m) => toast.show(m, "red")} />
+              <DeliveryProof stop={t.stop} onShared={() => toast.show("PROOF LINK READY · VALID 30 DAYS", "green")} onError={(m) => toast.show(m, "red")} />
             ) : null}
             {delivered ? (
               <RatingPrompt

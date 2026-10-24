@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import { ActivityIndicator, Pressable, View } from "react-native";
+import CoachSheet, { CoachTarget } from "@/src/components/CoachSheet";
 import { useQuery } from "@tanstack/react-query";
 import { api, dayLabel } from "@/src/api";
 import { Display, Mono } from "@/src/ui";
@@ -9,9 +10,10 @@ type Group = { key: string; label: string; ratings: number; low: number; low_pct
 type Trends = { days: number; total_ratings: number; total_low: number; by_driver: Group[]; by_zone: Group[]; daily: { date: string; low: number }[] };
 
 // Admin coaching view: where low ratings cluster this week (drivers, zones, reasons).
-export default function AlertTrends() {
+export default function AlertTrends({ notify }: { notify: (m: string, tone?: "dark" | "red" | "green") => void }) {
   const s = useStyles();
   const { colors } = useTheme();
+  const [coach, setCoach] = useState<CoachTarget | null>(null);
   const q = useQuery({ queryKey: ["alert-trends"], queryFn: () => api<Trends>("/alerts/trends?days=7"), refetchInterval: 30000 });
   const t = q.data;
   if (!t) {
@@ -35,8 +37,13 @@ export default function AlertTrends() {
         {rows.map((r, i) => (
           <View key={r.key} style={s.row} testID={`trends-${id}-${r.key}`}>
             <View style={s.rowTop}>
-              <Display style={[s.name, i === 0 && r.low > 0 && { color: colors.brandPrimary }]} numberOfLines={1}>{r.label}</Display>
+              <Display style={[s.name, { minWidth: 0 }, i === 0 && r.low > 0 && { color: colors.brandPrimary }]} numberOfLines={1}>{r.label}</Display>
               <Mono style={s.count}>{r.low} LOW / {r.ratings} · {r.low_pct}%</Mono>
+              {id === "driver" && r.low > 0 ? (
+                <Pressable testID={`trends-coach-${r.key}`} onPress={() => setCoach({ driverId: r.key, name: r.label, reasons: r.top_reasons.map((x) => x.reason) })} style={s.coachBtn}>
+                  <Mono style={s.coachText}>COACH</Mono>
+                </Pressable>
+              ) : null}
             </View>
             <View style={s.track}>
               <View style={[s.bar, { width: `${(r.low / max) * 100}%`, backgroundColor: i === 0 && r.low > 0 ? colors.brandPrimary : colors.surfaceInverse }]} />
@@ -64,6 +71,7 @@ export default function AlertTrends() {
       </View>
       {table("BY DRIVER", t.by_driver, "driver")}
       {table("BY ZONE", t.by_zone, "zone")}
+      {coach ? <CoachSheet target={coach} onClose={() => setCoach(null)} notify={notify} /> : null}
     </View>
   );
 }
@@ -72,15 +80,17 @@ const useStyles = makeStyles((c) => ({
   summary: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.lg, borderBottomWidth: 2, borderColor: c.border },
   big: { fontSize: 36, color: c.brandPrimary },
   summaryText: { flex: 1, fontSize: 11, fontWeight: "700" },
-  spark: { flexDirection: "row", alignItems: "flex-end", gap: 3 },
-  sparkBar: { width: 8, backgroundColor: c.brandPrimary },
+  spark: { flexDirection: "row", alignItems: "flex-end", gap: 6 },
+  sparkBar: { width: 10, backgroundColor: c.brandPrimary },
   sparkLabel: { fontSize: 10, fontWeight: "700", color: c.onSurface },
   block: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: spacing.sm, borderBottomWidth: 2, borderColor: c.border },
   blockTitle: { fontSize: 11, fontWeight: "700", letterSpacing: 1.5, color: c.muted },
   row: { gap: 4 },
   rowTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.sm },
   name: { fontSize: 15, flex: 1 },
-  count: { fontSize: 11, fontWeight: "700" },
+  count: { fontSize: 11, fontWeight: "700", flexShrink: 1, textAlign: "right" },
+  coachBtn: { minHeight: 44, minWidth: 64, flexShrink: 0, paddingHorizontal: spacing.sm, borderWidth: 2, borderColor: c.border, justifyContent: "center", alignItems: "center" },
+  coachText: { fontSize: 10, fontWeight: "700" },
   track: { height: 8, backgroundColor: c.surfaceSecondary },
   bar: { height: 8 },
   reasons: { fontSize: 10, color: c.muted },

@@ -7,6 +7,7 @@ import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { addDays, api, dayLabel, depotToday, Driver } from "@/src/api";
 import LowRatingAlerts from "@/src/components/LowRatingAlerts";
 import AlertTrends from "@/src/components/AlertTrends";
+import ApologyCodes from "@/src/components/ApologyCodes";
 import Badges, { Badge } from "@/src/components/Badges";
 import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
@@ -82,7 +83,9 @@ export default function AdminDashboard() {
         <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }} refreshControl={<RefreshControl refreshing={false} onRefresh={refresh} />}>
           <LowRatingAlerts notify={toast.show} />
           <Mono style={s.section}>LOW RATING TRENDS · 7 DAYS</Mono>
-          <AlertTrends />
+          <AlertTrends notify={toast.show} />
+          <Mono style={s.section}>APOLOGY CODES · USAGE & SPEND</Mono>
+          <ApologyCodes notify={toast.show} />
           <Mono style={s.section}>ANALYTICS</Mono>
           <View style={s.grid}>
             {kpis.map((x, i) => (

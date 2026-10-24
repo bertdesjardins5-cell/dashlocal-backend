@@ -31,6 +31,10 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - 2026-10-24: Proof share link — POST /api/stops/{id}/share (delivered only, unguessable token) → public HTML page /api/proof/{token} with photo, signature, QR check; customer SHARE PROOF LINK button (native Share / web share or new tab).
 - 2026-10-24: Alert trends — GET /api/alerts/trends (7 days, by driver / by zone, low %, top reasons, daily counts); admin dashboard trends block.
 - 2026-10-24: Apology texts — 1–2★ rating generates SORRY-XXXXX 15% code and Twilio apology SMS (non-blocking; fictional numbers skipped); code shown to customer and in admin follow-up sheet with SMS status.
+- 2026-10-24: Apology code tracking — POST /api/codes/redeem (single use, order value, ref), GET /api/codes/apology (issued/used/rate/revenue/discount/net/avg + rows); admin section with RECORD USE sheet; seed history issues codes, ~half redeemed.
+- 2026-06: Admin polish — 44pt coaching chips, long codes/names wrap on small screens, whole-dollar code totals, wider trend bars, coach rows no longer squeeze.
+- 2026-10-24: Driver coaching notes — POST/GET /api/drivers/{id}/coaching, POST /api/coaching/{id}/read; COACH button on alert-trends driver rows opens sheet with complaint-reason chips + templates; driver manifest shows yellow "Note from dispatch" banner with GOT IT.
+- 2026-10-24: Proof link expiry — share_created_at; links valid 30 days (expires_at returned), expired links return 410 page; sharing again after expiry issues a new token.
 
 ## Backlog
 - P1: auth/roles; push notifications (on request only)

@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 9: tested apology code redemption tracking, driver coaching notes and 30-day proof link expiry on both backend and frontend. New backend suite: 8/8 passed. Full regression suite: 96/96 passed. Frontend (375x667): admin apology codes section renders. Recording a use with value 40 on an unused code turns the row to USED with TEST-ORD-9, and totals update correctly (3/5 to 4/5, 60% to 80%, net $132.89 to $166.89, avg $52.11 to $49.09, matching the API). Coaching: trends-coach-drv-1 opens a pre-filled sheet, switching reason chips swaps the template, an empty note does not send, the toast reads 'COACHING NOTE SENT TO MARCUS', /driver/drv-1 shows the banner with the note, and GOT IT removes it (API unread=[]). Customer share toast reads 'PROOF LINK READY · VALID 30 DAYS' and opens /api/proof/<token>. Only minor issues were found. Deprecated packages detected: none.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/codes/redeem", "issue": "There is no unique index on code_redemptions.code, so the check-then-insert can race: two redeem requests sent at the same moment could both record the same code. Add a unique index, or catch DuplicateKeyError and return 400."},
+      {"endpoint": "seed (server.py:542)", "issue": "Seeded redeemed_at = t + randint(1, back) days. When randint returns back, the timestamp falls on today at the delivery time of day, so it can be in the future if reset runs earlier in the day. Cap it at now."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin > Low rating trends", "issues": ["trends-coach-<id> button is 64x32, under the 44pt touch target (AlertTrends.tsx:92 minHeight 32)", "COACH button also shows for drivers with 0 low ratings (Priya Nair). The sheet opens with no chips and an empty note; consider hiding the button or adding a generic template"]},
+      {"screen": "CoachSheet", "issues": ["coach-reason-<i> chips are 36px tall, under 44 (CoachSheet.tsx:81)"]},
+      {"screen": "Driver manifest", "issues": ["ackCoaching swallows API errors silently (driver/[driverId].tsx:59). If the call fails the banner just stays with no feedback"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_codes_coaching_expiry.py", "/app/test_reports/pytest/pytest_iter9.xml"],
+  "action_items": [
+    "Optional: add a unique index on code_redemptions.code (or handle DuplicateKeyError) so a code cannot be recorded twice",
+    "Optional: clamp seeded redeemed_at to <= now",
+    "Optional: raise trends COACH button and coach reason chips to minHeight 44; hide COACH for drivers with 0 low ratings or give them a default note"
+  ],
+  "critical_code_review_comments": [
+    "Redeem validation order is unknown (404), then reused (400), then value range (400). A reused code with a bad value returns 'Code already used', which is acceptable.",
+    "Share expiry logic is correct: same token while valid, 410 HTML at 30 days or more, new token after expiry, old token then returns 404. Verified by aging share_created_at to 29 and 31 days."
+  ],
+  "updated_files": ["/app/backend/tests/test_codes_coaching_expiry.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "None. Test data was created through the API and DB was reset via POST /api/admin/reset at the end.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use the env var EXPO_PUBLIC_BACKEND_URL (not EXPO_BACKEND_URL). Run pytest with -n0. The expiry tests write share_created_at directly in Mongo using MONGO_URL/DB_NAME from backend/.env. Redeem and coach sheets slide in, so wait about 1.5s before clicking inside them or Playwright reports 'outside of viewport'. After reset, seed has 5 codes issued and 3 redeemed."
+}

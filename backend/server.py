@@ -4,6 +4,7 @@ from fastapi.concurrency import run_in_threadpool
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo.errors import DuplicateKeyError
 import os
 import math
 import random
@@ -251,6 +252,7 @@ class Stop(BaseModel):
     apology_code: Optional[str] = None  # discount code texted after a 1-2 star rating
     apology_sms_status: Optional[str] = None
     share_token: Optional[str] = None  # public proof-of-delivery link token
+    share_created_at: Optional[str] = None  # links expire PROOF_LINK_DAYS after creation
     fail_reason: Optional[str] = None
 
 
@@ -456,6 +458,8 @@ async def seed(force: bool = False):
     if not force and await db.drivers.count_documents({}) > 0:
         return
     await db.drivers.delete_many({})
+    await db.code_redemptions.delete_many({})
+    await db.coaching_notes.delete_many({})
     await db.stops.delete_many({})
     await db.routes.delete_many({})
     rnd = random.Random(42)
@@ -491,6 +495,7 @@ async def seed_history(rnd: random.Random, drivers: List[Driver]):
     """Six past days of completed routes so the weekly scorecard has real data."""
     today = datetime.now(TZ).date()
     n = 0
+    redemptions: List[dict] = []
     for back in range(6, 0, -1):
         day = today - timedelta(days=back)
         for drv in drivers:
@@ -529,9 +534,19 @@ async def seed_history(rnd: random.Random, drivers: List[Driver]):
                     if docs[-1]["rating"] <= 2:
                         docs[-1]["rating_comment"] = rnd.choice(["LATE", "HARD TO FIND PARCEL", "Parcel left in the rain", "Driver never rang the bell", "LATE, HARD TO FIND PARCEL"])
                         docs[-1]["follow_up_status"] = "resolved" if back > 3 else "open"
+                        docs[-1]["apology_code"] = "SORRY-" + "".join(rnd.choice(string.ascii_uppercase + string.digits) for _ in range(5))
+                        docs[-1]["apology_sms_status"] = "skipped_fictional"
+                        if rnd.random() < 0.5:
+                            value = round(rnd.uniform(18, 90), 2)
+                            redemptions.append({"id": str(uuid.uuid4()), "code": docs[-1]["apology_code"], "stop_id": docs[-1]["id"],
+                                                "order_value": value, "discount": round(value * APOLOGY_DISCOUNT_PCT / 100, 2), "order_ref": f"ORD-{rnd.randint(10000, 99999)}",
+                                                "redeemed_at": min(t + timedelta(days=rnd.randint(1, back)), datetime.now(TZ)).astimezone(timezone.utc).isoformat()})
                 n += 1
             planned = path_length_m(DEPOT, pts)
             await db.stops.insert_many(docs)
+            if redemptions:
+                await db.code_redemptions.insert_many(redemptions)
+                redemptions = []
             await db.routes.insert_one(Route(id=route_id, name=f"H-{day.strftime('%m%d')} {zone}", zone=zone, driver_id=drv.id, status="completed",
                                              planned_distance_m=round(planned), actual_distance_m=round(planned * rnd.uniform(1.0, 1.18)),
                                              started_at=started.astimezone(timezone.utc).isoformat(), completed_at=(t + timedelta(minutes=15)).astimezone(timezone.utc).isoformat(),
@@ -594,6 +609,7 @@ async def create_batch(zone: str, driver_id: str, start: bool = False, service_d
 
 @app.on_event("startup")
 async def startup():
+    await db.code_redemptions.create_index("code", unique=True)  # a code can only ever be redeemed once
     await seed()
     try:
         await run_in_threadpool(init_storage)
@@ -915,6 +931,7 @@ async def rate_delivery(stop_id: str, body: RatingIn):
 
 
 LOW_RATING = 2
+PROOF_LINK_DAYS = 30
 POSITIVE_TAGS = {"ON TIME", "FRIENDLY DRIVER", "CAREFUL WITH PARCEL", "EASY TO FOLLOW"}  # never counted as complaint reasons
 APOLOGY_DISCOUNT_PCT = 15
 
@@ -982,16 +999,96 @@ async def alert_trends(days: int = 7):
     }
 
 
+class RedeemIn(BaseModel):
+    code: str
+    order_value: float
+    order_ref: Optional[str] = None
+
+
+@api_router.post("/codes/redeem")
+async def redeem_code(body: RedeemIn):
+    """Record an apology code being used on a new order (called by checkout, or entered by an admin)."""
+    code = body.code.strip().upper()
+    stop = await db.stops.find_one({"apology_code": code}, {"_id": 0, "id": 1})
+    if not stop:
+        raise HTTPException(404, "Unknown code")
+    if await db.code_redemptions.find_one({"code": code}):
+        raise HTTPException(400, "Code already used")
+    if not 0 < body.order_value <= 10000:
+        raise HTTPException(400, "Order value must be between 0 and 10,000")
+    rec = {"id": str(uuid.uuid4()), "code": code, "stop_id": stop["id"], "order_value": round(body.order_value, 2),
+           "discount": round(body.order_value * APOLOGY_DISCOUNT_PCT / 100, 2), "order_ref": (body.order_ref or "").strip()[:40] or None,
+           "redeemed_at": now_iso()}
+    try:
+        await db.code_redemptions.insert_one({**rec})
+    except DuplicateKeyError:
+        raise HTTPException(400, "Code already used")
+    return rec
+
+
+@api_router.get("/codes/apology")
+async def apology_codes():
+    """Every apology code issued, whether it was used, and what those customers spent afterwards."""
+    stops = [Stop(**d) for d in await db.stops.find({"apology_code": {"$ne": None}}, {"_id": 0}).sort("rated_at", -1).to_list(1000)]
+    red = {r["code"]: r for r in await db.code_redemptions.find({}, {"_id": 0}).to_list(5000)}
+    rows = [{"code": st.apology_code, "stop_id": st.id, "tracking_code": st.tracking_code, "customer_name": st.customer_name,
+             "rating": st.rating, "issued_at": st.rated_at, "sms_status": st.apology_sms_status, "redemption": red.get(st.apology_code)} for st in stops]
+    used = [r["redemption"] for r in rows if r["redemption"]]
+    revenue = round(sum(r["order_value"] for r in used), 2)
+    discount = round(sum(r["discount"] for r in used), 2)
+    return {
+        "discount_pct": APOLOGY_DISCOUNT_PCT, "issued": len(rows), "redeemed": len(used),
+        "redemption_rate": round(len(used) / len(rows) * 100) if rows else 0,
+        "revenue": revenue, "discount_given": discount, "net_revenue": round(revenue - discount, 2),
+        "avg_order": round(revenue / len(used), 2) if used else 0, "codes": rows,
+    }
+
+
+class CoachingIn(BaseModel):
+    note: str
+    reason: Optional[str] = None
+
+
+@api_router.post("/drivers/{driver_id}/coaching")
+async def send_coaching(driver_id: str, body: CoachingIn):
+    await get_driver_or_404(driver_id)
+    note = body.note.strip()
+    if not note:
+        raise HTTPException(400, "Write a note first")
+    rec = {"id": str(uuid.uuid4()), "driver_id": driver_id, "note": note[:600], "reason": (body.reason or "").strip()[:80] or None,
+           "created_at": now_iso(), "read_at": None}
+    await db.coaching_notes.insert_one({**rec})
+    return rec
+
+
+@api_router.get("/drivers/{driver_id}/coaching")
+async def list_coaching(driver_id: str, unread: bool = False):
+    await get_driver_or_404(driver_id)
+    q = {"driver_id": driver_id, **({"read_at": None} if unread else {})}
+    return await db.coaching_notes.find(q, {"_id": 0}).sort("created_at", -1).to_list(100)
+
+
+@api_router.post("/coaching/{note_id}/read")
+async def read_coaching(note_id: str):
+    res = await db.coaching_notes.update_one({"id": note_id, "read_at": None}, {"$set": {"read_at": now_iso()}})
+    if not res.matched_count and not await db.coaching_notes.find_one({"id": note_id}):
+        raise HTTPException(404, "Note not found")
+    return {"ok": True}
+
+
 # ---- public proof-of-delivery share link
 @api_router.post("/stops/{stop_id}/share")
 async def share_proof(stop_id: str):
     stop = await get_stop_or_404(stop_id)
     if stop.status != "delivered":
         raise HTTPException(400, "Proof can be shared after delivery")
-    token = stop.share_token or secrets.token_urlsafe(16)
-    if not stop.share_token:
-        await db.stops.update_one({"id": stop_id}, {"$set": {"share_token": token}})
-    return {"token": token, "path": f"/api/proof/{token}"}
+    created = datetime.fromisoformat(stop.share_created_at) if stop.share_created_at else None
+    expired = not created or datetime.now(timezone.utc) - created >= timedelta(days=PROOF_LINK_DAYS)
+    token = stop.share_token
+    if not token or expired:  # new link (old one stops working) when missing or expired
+        token, created = secrets.token_urlsafe(16), datetime.now(timezone.utc)
+        await db.stops.update_one({"id": stop_id}, {"$set": {"share_token": token, "share_created_at": created.isoformat()}})
+    return {"token": token, "path": f"/api/proof/{token}", "expires_at": (created + timedelta(days=PROOF_LINK_DAYS)).isoformat(), "valid_days": PROOF_LINK_DAYS}
 
 
 @api_router.get("/proof/{token}", response_class=HTMLResponse)
@@ -1000,6 +1097,11 @@ async def proof_page(token: str):
     if not doc:
         raise HTTPException(404, "Link not found")
     st = Stop(**doc)
+    if not st.share_created_at or datetime.now(timezone.utc) - datetime.fromisoformat(st.share_created_at) >= timedelta(days=PROOF_LINK_DAYS):
+        return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex"><title>Link expired</title></head><body style="font-family:'Courier New',monospace;padding:24px">
+<h1 style="font-family:Arial,sans-serif">LINK EXPIRED</h1><p>Proof-of-delivery links last {PROOF_LINK_DAYS} days to protect your privacy.
+Open your order in the MultiDrop app to share a fresh link.</p></body></html>""", status_code=410)
     esc = xml_escape
     when = datetime.fromisoformat(st.delivered_at).astimezone(TZ).strftime("%a %d %b %Y, %H:%M") if st.delivered_at else ""
     photo = f'<img src="/api/files/{esc(st.pod_photo_path)}" alt="Delivery photo">' if st.pod_photo_path else ""

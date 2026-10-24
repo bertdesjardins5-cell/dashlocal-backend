@@ -45,6 +45,23 @@ export default function Manifest() {
     } catch {}
   };
 
+  // Coaching notes from dispatch (unread first)
+  const coachQ = useQuery({
+    queryKey: ["coaching", driverId],
+    queryFn: () => api<{ id: string; note: string; reason: string | null; created_at: string }[]>(`/drivers/${driverId}/coaching?unread=true`),
+    refetchInterval: 20000,
+  });
+  const coachNote = coachQ.data?.[0];
+  const ackCoaching = async () => {
+    if (!coachNote) return;
+    try {
+      await api(`/coaching/${coachNote.id}/read`, { method: "POST" });
+    } catch (e: any) {
+      toast.show(`COULD NOT MARK AS READ: ${e.message}`, "red");
+    }
+    coachQ.refetch();
+  };
+
   const q = useQuery({
     queryKey: ["driver-route", driverId],
     queryFn: () => api<{ route: RouteDetail | null }>(`/drivers/${driverId}/route`),
@@ -145,6 +162,18 @@ export default function Manifest() {
           <Ionicons name="stats-chart" size={20} color={colors.onSurfaceInverse} />
         </Pressable>
       } />
+      {coachNote ? (
+        <View style={s.coachBox} testID="coaching-banner">
+          <Ionicons name="chatbubble-ellipses" size={20} color={colors.onWarning} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <Mono style={s.coachKicker}>NOTE FROM DISPATCH{coachNote.reason ? ` · ${coachNote.reason}` : ""}{(coachQ.data?.length ?? 0) > 1 ? ` · +${coachQ.data!.length - 1} MORE` : ""}</Mono>
+            <Mono style={s.coachText} testID="coaching-note-text">{coachNote.note}</Mono>
+          </View>
+          <Pressable testID="coaching-ack-button" onPress={ackCoaching} style={s.coachAck}>
+            <Mono style={s.coachAckText}>GOT IT</Mono>
+          </Pressable>
+        </View>
+      ) : null}
       {q.isLoading ? <Loading /> : q.error ? <ErrorBlock message={(q.error as Error).message} onRetry={q.refetch} /> : !route ? (
         <View style={s.empty} testID="manifest-empty">
           <Display style={s.emptyTitle}>NO ROUTE{"\n"}ASSIGNED</Display>
@@ -258,6 +287,11 @@ export default function Manifest() {
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   iconBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: c.onSurfaceInverse },
+  coachBox: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md, backgroundColor: c.warning, borderBottomWidth: 2, borderColor: c.border },
+  coachKicker: { fontSize: 10, fontWeight: "700", letterSpacing: 1, color: c.onWarning },
+  coachText: { fontSize: 13, color: c.onWarning },
+  coachAck: { minHeight: 44, paddingHorizontal: spacing.md, justifyContent: "center", backgroundColor: c.surfaceInverse },
+  coachAckText: { fontSize: 11, fontWeight: "700", color: c.onSurfaceInverse },
   empty: { padding: spacing.xl, gap: spacing.sm, borderBottomWidth: 2, borderColor: c.border },
   emptyTitle: { fontSize: 40, lineHeight: 42, letterSpacing: -1 },
   meta: { fontSize: 12, color: c.muted },
