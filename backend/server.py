@@ -1194,7 +1194,13 @@ async def get_stop_or_404(stop_id: str) -> Stop:
 
 @api_router.get("/stops/{stop_id}", dependencies=STOP_DRIVER)
 async def get_stop(stop_id: str):
-    return (await get_stop_or_404(stop_id)).model_dump()
+    """Stop for its driver/admin, plus a doorstep hint: the latest proof photo from an earlier drop to the same customer."""
+    stop = await get_stop_or_404(stop_id)
+    prev = await db.stops.find_one({"id": {"$ne": stop.id}, "customer_phone": stop.customer_phone, "address": stop.address,
+                                    "merchant_id": stop.merchant_id, "status": "delivered", "pod_photo_path": {"$ne": None}},
+                                   {"_id": 0, "pod_photo_path": 1, "delivered_at": 1}, sort=[("delivered_at", -1)])
+    hint = {"photo_url": file_url(prev["pod_photo_path"]), "delivered_at": prev.get("delivered_at")} if prev else None
+    return {**stop.model_dump(), "doorstep_hint": hint}
 
 
 class QrIn(BaseModel):
@@ -2126,11 +2132,12 @@ COLUMNS = {
     "window_start": {"window_start", "from", "start", "window_from"},
     "window_end": {"window_end", "to", "end", "window_to"},
     "priority": {"priority", "priority_delivery", "rush", "express"},
+    "delivery_note": {"delivery_note", "gate_code", "customer_note", "dropoff_note", "door_note"},
 }
 TRUTHY = {"yes", "y", "true", "1", "x", "priority", "rush", "express"}
-TEMPLATE_CSV = ("customer_name,phone,address,notes,window_date,window_start,window_end,priority\n"
-                "Jane Doe,415 555 0123,1 Market St,Leave at reception,,,,\n"
-                "Sam Lee,+14155550188,450 Golden Gate Ave,Ring twice,,14:00,16:00,yes\n")
+TEMPLATE_CSV = ("customer_name,phone,address,notes,window_date,window_start,window_end,priority,delivery_note\n"
+                "Jane Doe,415 555 0123,1 Market St,Leave at reception,,,,,\n"
+                "Sam Lee,+14155550188,450 Golden Gate Ave,Ring twice,,14:00,16:00,yes,Gate code 2468\n")
 _geo_lock = asyncio.Lock()
 _geo_last = [0.0]
 
@@ -2228,6 +2235,12 @@ async def process_row(row: dict) -> dict:
                         priority=(d.get("priority") or "").strip().lower() in TRUTHY)
             stop.fee = compute_fee(stop.model_dump(), await get_pricing(row["merchant_id"]))
             note, source = await remembered_note(row["merchant_id"], stop.customer_phone)
+            csv_note = " ".join((d.get("delivery_note") or "").split())[:200]
+            if csv_note:  # a delivery_note column also updates the store's saved note for this customer
+                key = {"merchant_id": row["merchant_id"], "phone": stop.customer_phone}
+                await db.saved_notes.update_one(key, {"$set": {"note": csv_note, "updated_at": now_iso()},
+                                                      "$setOnInsert": {**key, "id": str(uuid.uuid4()), "created_at": now_iso()}}, upsert=True)
+                note, source = csv_note, "saved"
             if note:  # regular customer: prefill their delivery note (they can still change it)
                 stop.customer_note, stop.customer_note_source, stop.customer_note_at = note, source, now_iso()
             await db.stops.insert_one(stop.model_dump())

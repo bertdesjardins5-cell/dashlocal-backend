@@ -121,7 +121,7 @@ export default function MerchantHome() {
 
           <Mono style={s.section}>IMPORT ORDERS FROM CSV</Mono>
           <View style={s.block}>
-            <Mono style={s.meta}>Columns: customer_name, phone, address (required) · notes, window_date, window_start, window_end, priority (yes = priority delivery, surcharge applies) (optional). Up to 200 rows per file. Addresses are looked up on the map automatically.</Mono>
+            <Mono style={s.meta}>Columns: customer_name, phone, address (required) · notes, window_date, window_start, window_end, priority (yes = priority delivery, surcharge applies), delivery_note or gate_code (sent to the driver and saved for that customer&apos;s next orders) (optional). Up to 200 rows per file. Addresses are looked up on the map automatically.</Mono>
             <View style={{ flexDirection: "row", gap: spacing.sm }}>
               <Btn testID="merchant-template-button" label="TEMPLATE" icon="download" variant="outline" onPress={template} style={{ flex: 1 }} />
               <Btn testID="merchant-upload-button" label="UPLOAD CSV" icon="cloud-upload" loading={uploading} disabled={!!running} onPress={upload} style={{ flex: 2 }} />

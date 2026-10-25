@@ -1,15 +1,15 @@
 import React, { useState } from "react";
-import { TextInput, View } from "react-native";
+import { Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
-import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { api } from "@/src/api";
 import { SessionUser, setSession } from "@/src/session";
-import { Btn, Display, Mono } from "@/src/ui";
-import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
+import BrandButton from "@/src/components/brand/BrandButton";
+import { useBrandForm } from "@/src/components/brand/formStyles";
+import { useTheme } from "@/src/theme";
 
-// Email + password sign-in for merchants and the dispatch admin.
-export default function SignInForm({ title, hint, role }: { title: string; hint: string; role?: "admin" | "merchant" }) {
-  const s = useStyles();
+// Email + password sign-in for merchants and the dispatch admin (DashLocal brand styling).
+export default function SignInForm({ title, hint, role, onSignedIn, scroll = true }: { title: string; hint: string; role?: "admin" | "merchant"; onSignedIn?: (u: SessionUser) => void; scroll?: boolean }) {
+  const s = useBrandForm();
   const { colors } = useTheme();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -23,9 +23,10 @@ export default function SignInForm({ title, hint, role }: { title: string; hint:
     try {
       const r = await api<{ token: string; user: SessionUser }>("/auth/login", { method: "POST", body: { email: email.trim(), password } });
       if (role && r.user.role !== role) {
-        setError(role === "admin" ? "This page needs the dispatch admin account" : "This is a merchant sign-in — use the Admin console for dispatch");
+        setError(role === "admin" ? "This page needs the dispatch admin account" : "This is the merchant sign-in — admins use Admin & driver sign-in");
       } else {
         await setSession(r.token, r.user);
+        onSignedIn?.(r.user);
       }
     } catch (e: any) {
       setError(e.message);
@@ -34,30 +35,24 @@ export default function SignInForm({ title, hint, role }: { title: string; hint:
     }
   };
 
-  return (
-    <KeyboardAwareScrollView contentContainerStyle={s.wrap} keyboardShouldPersistTaps="handled" bottomOffset={24} testID="sign-in-form">
-      <View style={s.icon}><Ionicons name="lock-closed" size={28} color={colors.onSurfaceInverse} /></View>
-      <Display style={s.title}>{title}</Display>
-      <Mono style={s.hint}>{hint}</Mono>
-      {error ? <View style={s.err} testID="sign-in-error"><Mono style={s.errText}>{error}</Mono></View> : null}
-      <Mono style={s.label}>EMAIL</Mono>
+  const body = (
+    <View style={s.card}>
+      <Text style={s.title}>{title}</Text>
+      <Text style={s.hint}>{hint}</Text>
+      {error ? <View style={s.err} testID="sign-in-error"><Text style={s.errText}>{error}</Text></View> : null}
+      <Text style={s.label}>Email</Text>
       <TextInput testID="sign-in-email" value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address"
-        textContentType="username" autoComplete="email" placeholder="you@store.com" placeholderTextColor={colors.muted} style={s.input} />
-      <Mono style={s.label}>PASSWORD</Mono>
+        textContentType="username" autoComplete="email" placeholder="you@store.com" placeholderTextColor={colors.brandMuted} style={s.input} />
+      <Text style={s.label}>Password</Text>
       <TextInput testID="sign-in-password" value={password} onChangeText={setPassword} secureTextEntry textContentType="password" autoComplete="password"
-        placeholder="••••••••" placeholderTextColor={colors.muted} style={s.input} onSubmitEditing={submit} returnKeyType="go" />
-      <Btn testID="sign-in-submit" label="SIGN IN" icon="log-in" loading={busy} onPress={submit} />
+        placeholder="••••••••" placeholderTextColor={colors.brandMuted} style={s.input} onSubmitEditing={submit} returnKeyType="go" />
+      <BrandButton testID="sign-in-submit" label="Sign in" icon="arrow-forward" loading={busy} onPress={submit} style={{ marginTop: 8 }} />
+    </View>
+  );
+  if (!scroll) return <View testID="sign-in-form">{body}</View>;
+  return (
+    <KeyboardAwareScrollView style={s.screen} contentContainerStyle={s.wrap} keyboardShouldPersistTaps="handled" bottomOffset={24} testID="sign-in-form">
+      {body}
     </KeyboardAwareScrollView>
   );
 }
-
-const useStyles = makeStyles((c) => ({
-  wrap: { padding: spacing.xl, gap: spacing.md },
-  icon: { width: 56, height: 56, backgroundColor: c.surfaceInverse, alignItems: "center", justifyContent: "center" },
-  title: { fontSize: 28, letterSpacing: -0.5 },
-  hint: { fontSize: 12, color: c.muted, lineHeight: 18 },
-  label: { fontSize: 10, fontWeight: "700", letterSpacing: 1, color: c.muted },
-  input: { height: 52, borderWidth: 2, borderColor: c.border, paddingHorizontal: spacing.md, fontFamily: fonts.mono, fontSize: 16, color: c.onSurface },
-  err: { backgroundColor: c.brandPrimary, padding: spacing.md },
-  errText: { color: c.onBrandPrimary, fontSize: 12, fontWeight: "700" },
-}));

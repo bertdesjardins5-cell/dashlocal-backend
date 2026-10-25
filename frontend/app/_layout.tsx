@@ -19,6 +19,10 @@ export default function RootLayout() {
   const [loaded] = useFonts({
     SpaceGrotesk: require("../assets/fonts/SpaceGrotesk.ttf"),
     JetBrainsMono: require("../assets/fonts/JetBrainsMono.ttf"),
+    "Poppins-SemiBold": require("../assets/fonts/Poppins-SemiBold.ttf"),
+    "Poppins-Medium": require("../assets/fonts/Poppins-Medium.ttf"),
+    PTSerif: require("../assets/fonts/PT_Serif-Web-Regular.ttf"),
+    "PTSerif-Bold": require("../assets/fonts/PT_Serif-Web-Bold.ttf"),
   });
   // One app level ErrorBoundary; a render crash shows a reload screen
   // instead of a blank app. GestureHandlerRootView must wrap the whole tree

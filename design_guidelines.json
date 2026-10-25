@@ -1,40 +1,40 @@
 {
-  "app_name": "DashLocal Logistics",
-  "personality": "5 Brutalist Mobile",
-  "personality_one_liner": "A high-contrast, strictly operational interface engineered for speed, sunlight readability, and absolute clarity.",
+  "app_name": "DashLocal",
+  "personality": "1 iOS-Native Clean (adapted for B2B Logistics with Editorial typography)",
+  "personality_one_liner": "Modern, professional, and crisp B2B logistics with ample negative space and authoritative typography.",
   "color": {
-    "surface": "#FFFFFF",
-    "onSurface": "#0A0A0A",
-    "surfaceSecondary": "#F2F2F2",
-    "onSurfaceSecondary": "#0A0A0A",
-    "surfaceTertiary": "#E5E5E5",
-    "onSurfaceTertiary": "#0A0A0A",
-    "surfaceInverse": "#0A0A0A",
+    "surface": "#FAF8F5",
+    "onSurface": "#333335",
+    "surfaceSecondary": "#FFFFFF",
+    "onSurfaceSecondary": "#333335",
+    "surfaceTertiary": "#F5F5F5",
+    "onSurfaceTertiary": "#333335",
+    "surfaceInverse": "#333335",
     "onSurfaceInverse": "#FFFFFF",
-    "brand": "#E60000",
-    "brandPrimary": "#E60000",
+    "brand": "#2B8932",
+    "brandPrimary": "#2B8932",
     "onBrandPrimary": "#FFFFFF",
-    "brandSecondary": "#CC0000",
-    "onBrandSecondary": "#FFFFFF",
-    "brandTertiary": "#FFE5E5",
-    "onBrandTertiary": "#E60000",
-    "success": "#008000",
+    "brandSecondary": "#ADD0E6",
+    "onBrandSecondary": "#333335",
+    "brandTertiary": "#C2B235",
+    "onBrandTertiary": "#333335",
+    "success": "#2B8932",
     "onSuccess": "#FFFFFF",
-    "warning": "#FFD700",
-    "onWarning": "#0A0A0A",
+    "warning": "#C2B235",
+    "onWarning": "#333335",
     "error": "#E60000",
     "onError": "#FFFFFF",
-    "info": "#0A0A0A",
-    "onInfo": "#FFFFFF",
-    "border": "#0A0A0A",
-    "borderStrong": "#0A0A0A",
-    "divider": "#0A0A0A",
-    "muted": "#666666",
+    "info": "#ADD0E6",
+    "onInfo": "#333335",
+    "border": "#E5E5E5",
+    "borderStrong": "#333335",
+    "divider": "#EBEBEB",
+    "muted": "#5C5C5E",
     "onBrand": "#FFFFFF"
   },
   "typography": {
-    "displayFontFamily": "Space Grotesk",
-    "textFontFamily": "JetBrains Mono",
+    "displayFontFamily": "Poppins",
+    "textFontFamily": "PT Serif",
     "scale": {
       "sm": 12,
       "base": 14,
@@ -44,7 +44,7 @@
     }
   },
   "spacing": {
-    "rule": "Intentional whitespace imbalance. Rigid grids, thick dividers, and exposed structure over soft paddings.",
+    "rule": "Generous vertical breathing room for a modern editorial feel. Inputs and buttons should be comfortably large for touch targets.",
     "xs": 4,
     "sm": 8,
     "md": 12,
@@ -54,105 +54,79 @@
     "3xl": 48
   },
   "radius_tokens": {
-    "sm": 0,
-    "md": 0,
-    "lg": 0,
-    "pill": 0
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
   },
-  "shadow_tier": 0,
+  "shadow_tier": "1",
   "navigation": "stack_only",
-  "icon_set": "Phosphor",
+  "icon_set": "Feather",
   "glassmorphism": {
     "enabled": false,
     "do's": [],
-    "dont's": ["Absolutely no blur or glassmorphism. Use solid colors and 2pt borders for elevation and structure."]
+    "dont's": ["Do not use glassmorphism for this clean, professional B2B app"]
   },
   "platform_libraries": {
     "glass": {
-      "ios": "none",
-      "android": "none",
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
       "low_end_android_fallback": "solid surfaceSecondary"
     },
     "image": "expo-image",
-    "blur": "none",
+    "blur": "expo-blur",
     "bottom_sheet": "@gorhom/bottom-sheet",
     "animation": "react-native-reanimated",
     "gesture": "react-native-gesture-handler"
   },
   "screens": [
     {
-      "name": "Role Picker",
-      "purpose": "Entry point to access the three different app modules.",
+      "name": "LandingPage",
+      "purpose": "Default entry point explaining DashLocal and providing clear entry routes.",
       "states": {
-        "loading": "Mono font spinner, stark white screen.",
+        "loading": "Centered brand spinner.",
         "empty": "N/A",
-        "error": "Signal red banner with stark white text."
+        "error": "Standard error prompt with retry button."
       },
-      "layout": "Edge-to-edge vertical stacked buttons. Huge Space Grotesk headers. 2pt borders for each row. Mono text for descriptions."
+      "layout": "Mobile-first, responsive stack. Top Header: Vector SVG Logo + 'Track Order' CTA (Muted Gold or text link). Hero Section: Full-width hero image (delivery driver/storefront) with a subtle vertical gradient scrim to ensure text readability, bold Poppins heading ('Same-day local delivery for small businesses'), PT Serif subtitle. Bottom Sticky / Main Container: Primary CTA 'Merchant Sign-in' (Forest Green, full width), Secondary CTA 'Staff Sign-in' (Charcoal outline). Maintain ample negative space between the hero and action blocks."
     },
     {
-      "name": "Driver Manifest",
-      "purpose": "A sequenced list of drops prioritizing sunlight readability and quick interaction.",
+      "name": "MerchantSignIn",
+      "purpose": "Secure authentication for business partners leading to their order portal.",
       "states": {
-        "loading": "Skeleton loaders with hard edges and no border radius.",
-        "empty": "Stark typography: 'ROUTE COMPLETE'.",
-        "error": "Error block with retry button, hard black background."
-      },
-      "layout": "Hero card at the top for 'Next Stop' using the signal red (brandPrimary) background and white text. Remaining stops listed below with edge-to-edge 2pt dividers. Addresses should use JetBrains Mono for easy scanning."
-    },
-    {
-      "name": "Stop Detail (Driver)",
-      "purpose": "Execution screen for a single stop, handling Proof of Delivery and customer contact.",
-      "states": {
-        "loading": "Hard black spinner.",
+        "loading": "Button spinner on 'Sign In'.",
         "empty": "N/A",
-        "error": "Red error block at the top."
+        "error": "Inline red error text above the CTA."
       },
-      "layout": "Sticky primary CTA at the bottom ('MARK ARRIVED'). Prominent stark white boxes with 2pt black borders for 'Take Photo' and 'Signature Pad'. Call/Text buttons span 50% width each in a horizontal flex layout with thick dividers."
+      "layout": "Clean, single-column form on a surfaceSecondary card over a surface background. Poppins heading 'Merchant Portal'. Standard Email and Password inputs with labels above (PT Serif). Forest Green primary submit button. Back button in header."
     },
     {
-      "name": "Customer Live Tracking",
-      "purpose": "Transparency view showing dynamic ETA and driver approach.",
+      "name": "StaffSignIn",
+      "purpose": "Dual-mode login for Admins and Drivers, routing to distinct dashboards.",
       "states": {
-        "loading": "Map skeleton view.",
+        "loading": "Button spinner on 'Sign In'.",
         "empty": "N/A",
-        "error": "Could not fetch driver location message in bottom sheet."
+        "error": "Inline red error text."
       },
-      "layout": "Full-bleed map background. A bottom sheet pinned to the bottom housing the ETA in oversized Space Grotesk. A signal red contextual banner floating just above the sheet reading 'Driver is 2 stops away'."
-    },
-    {
-      "name": "Admin Dashboard",
-      "purpose": "Control center for route batching, assignment, and performance analytics.",
-      "states": {
-        "loading": "Mono text skeleton rows.",
-        "empty": "No active routes text.",
-        "error": "Hard bordered error state with mono logs."
-      },
-      "layout": "Data-dense, ERP-style layout. Analytics cards at the top (Drops/Hr, Deviation) with mono counters. A draggable list of stops below with a 2pt border enclosing the list, and thick internal dividers between rows."
+      "layout": "Top segmented control or pill toggle (Admin / Driver). If Admin: Email + Password inputs. If Driver: Phone number + 6-digit PIN inputs. Primary CTA adapts based on toggle. Keeps the same generous padding and clean card-on-background structure."
     }
   ],
   "images": {
-    "hero_truck": {
-      "url": "https://images.pexels.com/photos/12970764/pexels-photo-12970764.jpeg",
-      "alt": "FedEx delivery truck unloading packages on a busy city street"
+    "hero_background": {
+      "url": "https://images.unsplash.com/photo-1575663620136-5ebbfcc2c597?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTB8MHwxfHNlYXJjaHwxfHxzbWFsbCUyMGJ1c2luZXNzJTIwc3RvcmVmcm9udCUyMGRlbGl2ZXJ5fGVufDB8fHx8MTc5Mjk1MDM0NHww&ixlib=rb-4.1.0&q=85",
+      "alt": "Small business storefront"
     },
-    "driver_action": {
-      "url": "https://images.unsplash.com/photo-1548345680-f5475ea5df84",
-      "alt": "Person holding smartphone displaying delivery route navigation"
-    },
-    "map_background": {
-      "url": "https://images.pexels.com/photos/11828643/pexels-photo-11828643.jpeg",
-      "alt": "Top-down aerial photo of town streets"
+    "driver_hero_fallback": {
+      "url": "https://images.unsplash.com/photo-1695654392283-4ea0fa0b4bb6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1NzZ8MHwxfHNlYXJjaHwxfHxkZWxpdmVyeSUyMGRyaXZlciUyMHBhY2thZ2UlMjBzbWFydHBob25lfGVufDB8fHx8MTc5Mjk1MDM0NHww&ixlib=rb-4.1.0&q=85",
+      "alt": "Delivery driver with package"
     }
   },
   "instructions_to_main_agent": [
-    "Strictly follow the Brutalist Mobile LIGHT personality. Use 0px border radius across all components. Everything must be hard-edged.",
-    "Borders are a structural component here: use 2pt black borders (`#0A0A0A`) around inputs, cards, and bottom sheets to give it an industrial feel.",
-    "Shadows and glassmorphism are completely banned in this app. Rely on high contrast (stark white, hard black, signal red) and thick borders to establish hierarchy.",
-    "Use Space Grotesk for prominent UI headings and JetBrains Mono for operational data (addresses, IDs, ETAs, times, metrics). This establishes the 'command-center/execution tool' aesthetic.",
-    "Implement the 'Sticky Primary CTA' pattern for the Driver Stop Detail screen ('Mark Arrived' / 'Complete Drop'). Ensure it has a safe-area clearance at the bottom.",
-    "For the Customer tracking screen, map placeholders are provided. Layer the bottom sheet over the map with a stark 2pt border.",
-    "Ensure 'Proof of Delivery' elements (Photo box, Signature pad) are prominent, taking up significant height (e.g., 200px each) so they are easy to use in bright sunlight.",
-    "Always apply vertical gradients behind text over images to guarantee WCAG readability, even though this is brutalist, text contrast is non-negotiable."
+    "Design the Logo strictly via react-native-svg: Combine a bold 'D' character (using a heavy sans-serif or path) in Forest Green (#2B8932) with a red (#E60000) upward-pointing polygon/arrow path cutting through its left stem. Alongside it, stack 'DASH' (Charcoal #333335) and 'LOCAL' (Red #E60000) in Poppins Bold. Wrap it in a scalable Svg component.",
+    "Brand colors and fonts (Poppins/PT Serif) are EXCLUSIVE to the Landing page and Sign-in screens. Do NOT touch the existing brutalist dashboards (which use SpaceGrotesk, JetBrainsMono, black/white, red).",
+    "Hero Image Implementation: Use the `hero_background` image from the JSON. Apply a top-to-bottom `expo-linear-gradient` scrim (transparent at 0%, 20% #333335 at 50%, 75%+ #333335 at 100%) layered over the image, placing the white Poppins headline over the darkest bottom portion of the scrim.",
+    "Track my order feature: Place a highly visible entry point (either a top right header button in Muted Gold, or a floating clean input field over the hero section) allowing customers to enter a tracking ID.",
+    "Form aesthetics: Use #F5F5F5 (Soft Gray) for input backgrounds or clean bottom-borders to maximize negative space. Keep labels above inputs, utilizing PT Serif for a trustworthy, established feel.",
+    "Ensure 'Staff Sign-In' relies on a state-based toggle (e.g., a simple pill switcher) rather than separate screens to keep navigation shallow."
   ]
 }

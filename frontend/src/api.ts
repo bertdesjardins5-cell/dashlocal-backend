@@ -41,6 +41,7 @@ export type Stop = {
   customer_note_at?: string | null;
   customer_note_seen?: boolean;
   customer_note_read_at?: string | null;
+  doorstep_hint?: { photo_url: string; delivered_at: string | null } | null;
   customer_note_source?: string | null;
 };
 

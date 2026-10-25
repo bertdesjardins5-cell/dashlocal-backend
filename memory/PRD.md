@@ -76,3 +76,9 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - The driver manifest listens to /ws/route/{id}?token= and refetches on every push, so new notes show instantly with a haptic buzz; polling is kept as a fallback.
 - Read receipt: the driver tapping GOT IT or opening the stop sets customer_note_read_at; the public tracking stop has a customer_note_read boolean; the customer sees "DRIVER HAS READ YOUR NOTE".
 - Saved notes: GET/PUT/DELETE /api/merchants/{id}/saved-notes (by phone). A customer's last note is kept in db.last_customer_notes. CSV imports prefill customer_note (the store's saved note wins over the last note; the customer can edit it).
+
+## Landing page + brand sign-in + CSV notes + doorstep hint (Jun 2026)
+- `/` is now the public DashLocal landing page: hero, how it works, perks, two sign-in cards and a track-order box. Brand colours are new theme keys (brand*), with Poppins headings and PT Serif body.
+- `/sign-in/merchant` sends the merchant to /merchant/{id}. `/sign-in/staff` has an Admin/Driver toggle: admin goes to /admin, driver to /driver/{id}. SignInForm and DriverSignInForm are restyled to the brand (also used by the gated layouts).
+- The CSV column delivery_note (aliases gate_code, customer_note, dropoff_note, door_note) prefills the order's customer note and upserts the store's saved note.
+- GET /api/stops/{id} (driver/admin) returns doorstep_hint {photo_url signed, delivered_at}: the latest earlier delivered proof photo for the same phone and address.

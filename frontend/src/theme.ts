@@ -83,9 +83,28 @@ const light = {
   border: "#0A0A0A", // hairline outline, 0.5pt or 1pt max: inputs, cards
   borderStrong: "#0A0A0A", // focus rings, selected outlines, 1.5pt max
   divider: "#0A0A0A", // subtle list separators
+
+  // ---------------------------------------------------------------------------
+  // DashLocal brand (landing page + sign-in screens only; dashboards keep the tokens above)
+  // ---------------------------------------------------------------------------
+  brandCharcoal: "#333335",
+  onBrandCharcoal: "#FFFFFF",
+  brandSky: "#ADD0E6",
+  onBrandSky: "#333335",
+  brandSoftGray: "#F5F5F5",
+  onBrandSoftGray: "#333335",
+  brandForest: "#2B8932",
+  onBrandForest: "#FFFFFF",
+  brandGold: "#C2B235",
+  onBrandGold: "#333335",
+  brandCream: "#FBF7E6", // style-guide cream (the #F9F000 code renders as bright yellow, so the swatch's pale cream is used)
+  onBrandCream: "#333335",
+  brandRed: "#D7262E", // logo arrow + "LOCAL"
+  brandMuted: "#5C5C5E",
+  brandLine: "#E5E5E5",
 };
 
-export const fonts = { display: "SpaceGrotesk", mono: "JetBrainsMono" };
+export const fonts = { display: "SpaceGrotesk", mono: "JetBrainsMono", brandHeading: "Poppins-SemiBold", brandHeadingMedium: "Poppins-Medium", brandBody: "PTSerif", brandBodyBold: "PTSerif-Bold" };
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32, xxxl: 48 };
 
 export type ThemeColors = typeof light;

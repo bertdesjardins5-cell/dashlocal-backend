@@ -7,7 +7,7 @@ import { Image } from "expo-image";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
-import { api, API, fileUrl, RouteDetail, Stop, windowLabel } from "@/src/api";
+import { api, API, BACKEND_URL, fileUrl, RouteDetail, Stop, windowLabel } from "@/src/api";
 import { getToken } from "@/src/session";
 import { uploadForm } from "@/src/utils/upload";
 import SignaturePad from "@/src/components/SignaturePad";
@@ -169,6 +169,14 @@ export default function StopDetail() {
               {windowLabel(stop) ? <Mono style={s.windowTag} testID="stop-window">DELIVER {windowLabel(stop)}</Mono> : null}
             </View>
 
+            {stop.doorstep_hint && !closed ? (
+              <View style={s.hint} testID="doorstep-hint">
+                <Mono style={s.hintKicker}>LAST DROP HERE · {stop.doorstep_hint.delivered_at ? new Date(stop.doorstep_hint.delivered_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }).toUpperCase() : ""}</Mono>
+                <Image testID="doorstep-hint-photo" source={`${BACKEND_URL}${stop.doorstep_hint.photo_url}`} style={s.hintImg} contentFit="cover" />
+                <Mono style={s.meta}>Leave the parcel where the last driver did.</Mono>
+              </View>
+            ) : null}
+
             <View style={s.commRow}>
               <Pressable testID="call-customer-button" disabled={!!contacting} onPress={() => contact("call")} style={({ pressed }) => [s.commBtn, (pressed || contacting === "call") && { backgroundColor: colors.surfaceTertiary }, !!contacting && { opacity: 0.6 }]}>
                 <Ionicons name="call" size={22} color={colors.onSurface} />
@@ -295,6 +303,9 @@ const useStyles = makeStyles((c) => ({
   meta: { fontSize: 12, color: c.muted },
   note: { fontSize: 13, backgroundColor: c.warning, color: c.onWarning, padding: spacing.sm, marginTop: spacing.sm },
   custNote: { backgroundColor: c.brandPrimary, padding: spacing.sm, marginTop: spacing.sm, gap: 2, borderWidth: 2, borderColor: c.border },
+  hint: { marginHorizontal: spacing.lg, marginBottom: spacing.lg, gap: spacing.xs, borderWidth: 2, borderColor: c.border, padding: spacing.sm },
+  hintKicker: { fontSize: 10, fontWeight: "700", letterSpacing: 1 },
+  hintImg: { width: "100%", height: 180, backgroundColor: c.surfaceTertiary },
   custNoteKicker: { fontSize: 10, fontWeight: "700", letterSpacing: 1, color: c.onBrandPrimary },
   custNoteText: { fontSize: 15, fontWeight: "700", color: c.onBrandPrimary },
   commRow: { flexDirection: "row", borderBottomWidth: 2, borderColor: c.border },
