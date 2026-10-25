@@ -12,9 +12,9 @@ from pathlib import Path
 load_dotenv(Path(__file__).resolve().parents[2] / "frontend" / ".env")
 BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
-DEPOT = {"lat": 37.7749, "lng": -122.4194}
+DEPOT = {"lat": 43.4516, "lng": -80.4925}
 COMPASS = ("North", "South", "East", "West")
-DRIVERS = {"drv-1": ("+14155550101", "482913"), "drv-2": ("+14155550102", "730516"), "drv-3": ("+14155550103", "264871")}
+DRIVERS = {"drv-1": ("+15195550101", "482913"), "drv-2": ("+15195550102", "730516"), "drv-3": ("+15195550103", "264871")}
 DEFAULT_COV = {"drv-1": "North", "drv-2": "South", "drv-3": "East"}
 NO = {"X-No-Auto-Auth": "1"}
 
@@ -45,7 +45,7 @@ def drv_tokens():
 
 
 def tz_today():
-    return datetime.now(ZoneInfo("America/Los_Angeles")).date()
+    return datetime.now(ZoneInfo("America/Toronto")).date()
 
 
 def reset(admin):
@@ -132,7 +132,7 @@ class TestPreview:
         assert requests.get(f"{API}/dispatch/preview?date=bad", headers=admin).status_code == 400
 
 
-# ---- auto dispatch today (seed: drv-1 has active Mission route)
+# ---- auto dispatch today (seed: drv-1 has active Downtown route)
 class TestAutoDispatchToday:
     def test_dispatch_today(self, admin, drv_tokens):
         reset(admin)
@@ -201,7 +201,7 @@ class TestAutoDispatchToday:
 class TestFallback:
     def test_uncovered_goes_to_fewest(self, admin):
         reset(admin)
-        set_cov(admin, {"drv-1": "North", "drv-2": None, "drv-3": None})
+        set_cov(admin, {"drv-1": "West", "drv-2": None, "drv-3": None})
         p = requests.get(f"{API}/dispatch/preview", headers=admin).json()
         counts = {z["zone"]: z["count"] for z in p["zones"]}
         r = requests.post(f"{API}/routes/auto-dispatch", json={}, headers=admin)
@@ -210,13 +210,13 @@ class TestFallback:
         print("FALLBACK", res, counts)
         by_drv = {x["driver_id"]: x for x in res["routes"]}
         # drv-1 only gets North (plus anything if it's fewest - it has an active route so unlikely)
-        assert "North" in by_drv["drv-1"]["zones"] and "North" not in by_drv["drv-1"]["fallback"]
+        assert "West" in by_drv["drv-1"]["zones"] and "West" not in by_drv["drv-1"]["fallback"]
         for x in res["routes"]:
             for z in x["zones"]:
-                if z != "North":
+                if z != "West":
                     assert z in x["fallback"]
         # the largest uncovered zone should go to a driver with 0 load (drv-2 by id tiebreak)
-        unc = sorted([z for z in ("South", "East", "West") if counts[z]], key=lambda z: -counts[z])
+        unc = sorted([z for z in ("North", "South", "East") if counts[z]], key=lambda z: -counts[z])
         if unc:
             assert unc[0] in by_drv.get("drv-2", {}).get("zones", [])
         set_cov(admin, DEFAULT_COV)

@@ -58,7 +58,7 @@ export default function WeeklyEmailCard({ merchantId, notify }: { merchantId: st
       <View testID="weekly-email-toggle" style={s.row}>
         <View style={{ flex: 1, gap: 2 }}>
           <Mono style={s.title}>EMAIL ME EVERY MONDAY</Mono>
-          <Mono style={s.meta} numberOfLines={2}>Report + bill statement to {w.recipients.join(", ") || "—"} · 8:00 SF time</Mono>
+          <Mono style={s.meta} numberOfLines={2}>Report + bill statement to {w.recipients.join(", ") || "—"} · 8:00 Eastern time</Mono>
         </View>
         <Switch value={w.enabled} onValueChange={toggle} disabled={busy === "toggle"} trackColor={{ true: colors.brandPrimary, false: colors.surfaceSecondary }} testID="weekly-email-switch" />
       </View>

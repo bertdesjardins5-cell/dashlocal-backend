@@ -20,8 +20,10 @@ import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useT
 import { makeStyles, spacing, useTheme } from "@/src/theme";
 
 type Job = { id: string; filename: string; total: number; processed: number; created: number; flagged: number; status: "running" | "done"; created_at: string };
+type Run = { key: "afternoon" | "evening"; label: string; today: boolean; date: string; cutoff_label: string; pickup_label: string; window_label: string; drops_today: number };
 type Detail = {
-  id: string; name: string; orders: Stop[]; flagged: ImportRow[]; jobs: Job[];
+  id: string; name: string; orders: Stop[]; flagged: ImportRow[]; jobs: Job[]; pharmacy_partner?: boolean; runs?: Run[];
+  pharmacy_terms?: { batch_rate: number; standard_rate: number; min_drops: number };
   counts: { orders: number; pending: number; delivered: number; failed: number; flagged: number };
 };
 
@@ -37,6 +39,7 @@ export default function MerchantHome() {
   const [uploading, setUploading] = useState(false);
   const [fix, setFix] = useState<ImportRow | null>(null);
   const [busyOrder, setBusyOrder] = useState<string | null>(null);
+  const [run, setRun] = useState<Run["key"] | null>(null);
 
   const togglePriority = async (o: Stop) => {
     setBusyOrder(o.id);
@@ -62,6 +65,9 @@ export default function MerchantHome() {
   const last = d?.jobs[0];
 
   const upload = async () => {
+    const pharmacy = !!d?.runs;
+    const chosen = d?.runs?.find((r) => r.key === run);
+    if (pharmacy && !chosen) return toast.show("PICK A PICKUP RUN FIRST", "red");
     try {
       const picked = await DocumentPicker.getDocumentAsync({
         type: ["text/csv", "text/comma-separated-values", "application/vnd.ms-excel", "text/plain"],
@@ -71,13 +77,13 @@ export default function MerchantHome() {
       const a = picked.assets[0];
       if (!a.name.toLowerCase().endsWith(".csv")) return toast.show("PICK A .CSV FILE", "red");
       setUploading(true);
-      const res = await uploadForm(`${API}/merchants/${merchantId}/import`, {
+      const res = await uploadForm(`${API}/merchants/${merchantId}/import${pharmacy ? `?run=${run}` : ""}`, {
         files: { file: { uri: a.uri, name: a.name, mimeType: "text/csv" } },
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       const j = await res.json();
       if (!res.ok) throw new Error(typeof j.detail === "string" ? j.detail : `Upload failed (${res.status})`);
-      toast.show(`${j.total} ROWS RECEIVED · LOOKING UP ADDRESSES`, "green");
+      toast.show(chosen ? `${j.total} ROWS RECEIVED FOR ${chosen.label.toUpperCase()} ${chosen.today ? "TODAY" : "TOMORROW"}` : `${j.total} ROWS RECEIVED · LOOKING UP ADDRESSES`, "green");
       q.refetch();
     } catch (e: any) {
       toast.show(e.message ?? "Upload failed", "red");
@@ -125,7 +131,31 @@ export default function MerchantHome() {
 
           <Mono style={s.section}>IMPORT ORDERS FROM CSV</Mono>
           <View style={s.block}>
-            <Mono style={s.meta}>Columns: customer_name, phone, address (required) · notes, window_date, window_start, window_end, priority (yes = priority delivery, surcharge applies), delivery_note or gate_code (sent to the driver and saved for that customer&apos;s next orders) (optional). Up to 200 rows per file. Addresses are looked up on the map automatically.</Mono>
+            <Mono style={s.meta}>Columns: customer_name, phone, address (required) · notes, window_date, window_start, window_end, priority (yes = priority delivery, surcharge applies), delivery_note or gate_code (sent to the driver and saved for that customer&apos;s next orders) (optional). Up to 200 rows per file. Addresses are looked up on the map automatically.{d.runs ? " Pharmacy runs set the delivery day and window, so window columns are ignored." : ""}</Mono>
+            {d.runs ? (
+              <View style={{ gap: spacing.sm }} testID="pharmacy-runs">
+                <Mono style={s.label}>PICKUP RUN (EASTERN TIME)</Mono>
+                {d.runs.map((r) => {
+                  const sel = run === r.key;
+                  const need = (d.pharmacy_terms?.min_drops ?? 10) - r.drops_today;
+                  return (
+                    <Pressable key={r.key} testID={`run-${r.key}`} onPress={() => setRun(r.key)}
+                      style={[s.run, sel && { backgroundColor: colors.surfaceInverse }]}>
+                      <View style={{ flex: 1, gap: 2 }}>
+                        <Display style={[{ fontSize: 15 }, sel && { color: colors.onSurfaceInverse }]}>{r.label.toUpperCase()} · {r.today ? "TODAY" : `TOMORROW ${dayLabel(r.date).toUpperCase()}`}</Display>
+                        <Mono style={[s.meta, sel && { color: colors.onSurfaceInverse }]}>
+                          Order cut-off {r.cutoff_label} · Pickup {r.pickup_label} · Patients {r.window_label}
+                        </Mono>
+                        <Mono style={[s.meta, sel && { color: colors.onSurfaceInverse }]} testID={`run-${r.key}-drops`}>
+                          {r.drops_today} drop{r.drops_today === 1 ? "" : "s"} on this pickup · {need > 0 ? `${need} more for the $${d.pharmacy_terms?.batch_rate.toFixed(2)} batch rate` : `batch rate $${d.pharmacy_terms?.batch_rate.toFixed(2)}/drop`}
+                        </Mono>
+                      </View>
+                      {sel ? <Ionicons name="checkmark-circle" size={22} color={colors.onSurfaceInverse} /> : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
             <View style={{ flexDirection: "row", gap: spacing.sm }}>
               <Btn testID="merchant-template-button" label="TEMPLATE" icon="download" variant="outline" onPress={template} style={{ flex: 1 }} />
               <Btn testID="merchant-upload-button" label="UPLOAD CSV" icon="cloud-upload" loading={uploading} disabled={!!running} onPress={upload} style={{ flex: 2 }} />
@@ -225,4 +255,5 @@ const useStyles = makeStyles((c) => ({
   empty: { padding: spacing.lg, fontSize: 13, color: c.muted },
   priBtn: { alignSelf: "flex-start", minHeight: 44, paddingHorizontal: spacing.md, borderWidth: 2, borderColor: c.border, justifyContent: "center", marginTop: spacing.xs },
   priText: { fontSize: 11, fontWeight: "700" },
+  run: { flexDirection: "row", alignItems: "center", gap: spacing.sm, borderWidth: 2, borderColor: c.border, padding: spacing.md, minHeight: 56 },
 }));

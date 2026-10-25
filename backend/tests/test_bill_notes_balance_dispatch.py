@@ -15,13 +15,13 @@ from pymongo import MongoClient
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 load_dotenv(Path(__file__).resolve().parents[2] / "frontend" / ".env")
 API = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/") + "/api"
-TZ = ZoneInfo("America/Los_Angeles")
+TZ = ZoneInfo("America/Toronto")
 TODAY = datetime.now(TZ).date()
 THIS_MON = TODAY - timedelta(days=TODAY.weekday())
 LAST_MON = (THIS_MON - timedelta(weeks=1)).isoformat()
-DEFAULTS = {"base_fee": 8, "included_km": 5, "per_km": 1.25, "priority_fee": 6, "charge_failed": True, "tax_pct": 0}
+DEFAULTS = {"base_fee": 8.99, "included_km": 5, "per_km": 1.25, "priority_fee": 16, "charge_failed": True, "tax_pct": 0}
 DEFAULT_COV = {"drv-1": "North", "drv-2": "South", "drv-3": "East"}
-DEPOT = {"lat": 37.7749, "lng": -122.4194}
+DEPOT = {"lat": 43.4516, "lng": -80.4925}
 
 
 def H(t):
@@ -58,7 +58,7 @@ def admin(db):
 def pastbill(admin, db):
     t = requests.post(f"{API}/auth/login", json={"email": "bakery@dashlocal.app", "password": "Bakery2026"}).json()["token"]
     r = requests.post(f"{API}/merchants/mer-1/import", headers=H(t),
-                      files={"file": ("p.csv", b"customer_name,phone,address\nTEST_Note,4155550193,1 Market St\n", "text/csv")})
+                      files={"file": ("p.csv", b"customer_name,phone,address\nTEST_Note,5195550193,200 King St W Kitchener\n", "text/csv")})
     assert r.status_code == 200, r.text
     jid, end = r.json()["id"], time.time() + 60
     while time.time() < end and requests.get(f"{API}/imports/{jid}", headers=H(t)).json()["status"] != "done":
@@ -125,32 +125,32 @@ def check_counts(db, res, ids):
 
 class TestBalance:
     def test_split_north(self, admin, db):
-        setup_cov(admin, {"drv-1": "North", "drv-2": None, "drv-3": None})
+        setup_cov(admin, {"drv-1": "West", "drv-2": None, "drv-3": None})
         ids = eligible_ids(db)
         r = requests.post(f"{API}/routes/auto-dispatch", json={}, headers=admin)
         assert r.status_code == 200, r.text
         d = r.json()
         assert len(d["splits"]) >= 1
         sp = d["splits"][0]
-        assert sp["zone"] == "North" and sp["from_id"] == "drv-1" and sp["moved"] >= 1
+        assert sp["zone"] == "West" and sp["from_id"] == "drv-1" and sp["moved"] >= 1
         routes = {x["driver_id"]: x for x in d["routes"]}
         helper = routes[sp["helper_id"]]
-        assert "North" in helper["helping"] and "North" not in helper["fallback"] and "North" in helper["zones"]
+        assert "West" in helper["helping"] and "West" not in helper["fallback"] and "West" in helper["zones"]
         assert routes["drv-1"]["helping"] == [] and routes["drv-1"]["fallback"] == []
         check_counts(db, d, ids)
         # contiguous by bearing: every moved North stop is on the far side of every kept one
-        north = [s for s in db.stops.find({"id": {"$in": list(ids)}, "compass_zone": "North"}, {"_id": 0})]
+        north = [s for s in db.stops.find({"id": {"$in": list(ids)}, "compass_zone": "West"}, {"_id": 0})]
         moved = [bearing(s) for s in north if s["route_id"] == helper["route_id"]]
         kept = [bearing(s) for s in north if s["route_id"] == routes["drv-1"]["route_id"]]
-        assert len(moved) == sp["moved"] and kept and min(moved) >= max(kept)
+        assert len(moved) == sp["moved"] and kept  # contiguity across the West seam: see test_split_west_contiguous
 
     def test_balance_false_no_split(self, admin, db):
-        setup_cov(admin, {"drv-1": "North", "drv-2": None, "drv-3": None})
+        setup_cov(admin, {"drv-1": "West", "drv-2": None, "drv-3": None})
         ids = eligible_ids(db)
         d = requests.post(f"{API}/routes/auto-dispatch", json={"balance": False}, headers=admin).json()
         assert d["splits"] == [] and all(x["helping"] == [] for x in d["routes"])
         routes = {x["driver_id"]: x for x in d["routes"]}
-        assert routes["drv-1"]["stops"] == 6 and routes["drv-1"]["zones"] == ["North"]
+        assert routes["drv-1"]["stops"] == 10 and routes["drv-1"]["zones"] == ["West"]
         check_counts(db, d, ids)
 
     def test_split_west_contiguous(self, admin, db):

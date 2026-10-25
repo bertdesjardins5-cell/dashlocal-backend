@@ -205,7 +205,7 @@ export default function AdminRoute() {
                 <Mono style={s.meta}>Driver scans this at the door as proof of delivery.</Mono>
               </View>
             </View>
-            <Mono style={[s.meta, { paddingHorizontal: spacing.lg, fontWeight: "700" }]}>DELIVERY WINDOW (SF TIME)</Mono>
+            <Mono style={[s.meta, { paddingHorizontal: spacing.lg, fontWeight: "700" }]}>DELIVERY WINDOW (EASTERN TIME)</Mono>
             <WindowPicker testIDPrefix="admin-window" date={sel.window_date} start={sel.window_start} end={sel.window_end} disabled={sel.status !== "pending" || busy === "win"} onSelect={setWindow} />
           </View>
           {toast.node}

@@ -144,8 +144,8 @@ ANY_DRIVER = [Depends(require_any_driver)]
 GEOFENCE_M = 50
 AVG_SPEED_KMH = 25.0
 SERVICE_MIN = 4.0
-DEPOT = {"lat": 37.7749, "lng": -122.4194, "name": "SF Central Depot"}
-TZ = ZoneInfo("America/Los_Angeles")  # depot timezone for customer delivery windows
+DEPOT = {"lat": 43.4516, "lng": -80.4925, "name": "Kitchener-Waterloo Depot"}
+TZ = ZoneInfo("America/Toronto")  # depot timezone for customer delivery windows
 MAX_BOOKING_DAYS = 13
 MIN_PACE_HOURS = 0.5  # pace (drops/hr) never divides by less than 30 min, so a fresh route cannot spike it
 OPT_BUFFER_MIN = 10  # optimizer aims to arrive at least this long before a window closes
@@ -371,6 +371,8 @@ class Stop(BaseModel):
     customer_note_seen: bool = True  # False until the driver taps GOT IT on the manifest alert
     customer_note_read_at: Optional[str] = None  # read receipt shown to the customer
     customer_note_source: Optional[str] = None  # customer | saved (merchant's saved note) | last (customer's previous note)
+    batch_run: Optional[str] = None  # pharmacy pickup run: afternoon | evening
+    manifest_id: Optional[str] = None  # "{merchant_id}:{YYYY-MM-DD}:{run}" — one pickup manifest
 
 
 class Route(BaseModel):
@@ -644,10 +646,10 @@ async def maybe_complete_route(route_id: str):
 
 # ---------------------------------------------------------------- seed
 ZONES = {
-    "Mission": {"postal": "94110", "center": (37.7599, -122.4148), "streets": ["Valencia St", "Mission St", "Guerrero St", "24th St", "Folsom St"]},
-    "SoMa": {"postal": "94103", "center": (37.7785, -122.4056), "streets": ["Howard St", "Folsom St", "Harrison St", "7th St", "Brannan St"]},
-    "Sunset": {"postal": "94122", "center": (37.7590, -122.4850), "streets": ["Irving St", "Judah St", "19th Ave", "Noriega St", "Lincoln Way"]},
-    "Marina": {"postal": "94123", "center": (37.8030, -122.4370), "streets": ["Chestnut St", "Lombard St", "Union St", "Fillmore St", "Bay St"]},
+    "Downtown": {"postal": "N2G", "center": (43.4500, -80.4890), "city": "Kitchener", "streets": ["King St W", "Queen St S", "Duke St W", "Frederick St", "Victoria St N"]},
+    "Uptown": {"postal": "N2J", "center": (43.4650, -80.5220), "city": "Waterloo", "streets": ["King St N", "Erb St W", "Regina St N", "Albert St", "Caroline St N"]},
+    "Westmount": {"postal": "N2M", "center": (43.4420, -80.5150), "city": "Kitchener", "streets": ["Westmount Rd W", "Glasgow St", "Highland Rd W", "Belmont Ave W", "Union Blvd"]},
+    "Stanley Park": {"postal": "N2A", "center": (43.4560, -80.4520), "city": "Kitchener", "streets": ["Ottawa St N", "Weber St E", "Fairway Rd N", "Lackner Blvd", "River Rd E"]},
 }
 NAMES = ["Ava Chen", "Liam Patel", "Noah Garcia", "Mia Johnson", "Ethan Kim", "Zoe Martinez", "Lucas Brown", "Ivy Nguyen",
          "Omar Haddad", "Sara Lopez", "Ben Carter", "Nina Rossi", "Leo Park", "Emma Wilson", "Kai Tanaka", "Ruby Singh",
@@ -672,9 +674,9 @@ async def seed(force: bool = False):
     await db.routes.delete_many({})
     rnd = random.Random(42)
     drivers = [
-        Driver(id="drv-1", name="Marcus Reid", phone="+14155550101", vehicle="VAN-07", lat=DEPOT["lat"], lng=DEPOT["lng"], updated_at=now_iso(), compass_zone="North"),
-        Driver(id="drv-2", name="Priya Nair", phone="+14155550102", vehicle="VAN-12", lat=DEPOT["lat"], lng=DEPOT["lng"], updated_at=now_iso(), compass_zone="South"),
-        Driver(id="drv-3", name="Diego Santos", phone="+14155550103", vehicle="BIKE-03", lat=DEPOT["lat"], lng=DEPOT["lng"], updated_at=now_iso(), compass_zone="East"),
+        Driver(id="drv-1", name="Marcus Reid", phone="+15195550101", vehicle="VAN-07", lat=DEPOT["lat"], lng=DEPOT["lng"], updated_at=now_iso(), compass_zone="North"),
+        Driver(id="drv-2", name="Priya Nair", phone="+15195550102", vehicle="VAN-12", lat=DEPOT["lat"], lng=DEPOT["lng"], updated_at=now_iso(), compass_zone="South"),
+        Driver(id="drv-3", name="Diego Santos", phone="+15195550103", vehicle="BIKE-03", lat=DEPOT["lat"], lng=DEPOT["lng"], updated_at=now_iso(), compass_zone="East"),
     ]
     await db.drivers.insert_many([d.model_dump() for d in drivers])
     stops, n = [], 0
@@ -682,8 +684,8 @@ async def seed(force: bool = False):
         for _ in range(6):
             lat = z["center"][0] + rnd.uniform(-0.007, 0.007)
             lng = z["center"][1] + rnd.uniform(-0.008, 0.008)
-            stops.append(Stop(id=str(uuid.uuid4()), customer_name=NAMES[n % len(NAMES)], customer_phone=f"+1415555{100 + n:04d}",
-                              address=f"{rnd.randint(100, 2900)} {rnd.choice(z['streets'])}, San Francisco", postal_code=z["postal"],
+            stops.append(Stop(id=str(uuid.uuid4()), customer_name=NAMES[n % len(NAMES)], customer_phone=f"+1519555{100 + n:04d}",
+                              address=f"{rnd.randint(10, 900)} {rnd.choice(z['streets'])}, {z['city']}", postal_code=z["postal"],
                               zone=zone, lat=lat, lng=lng, tracking_code=f"MD{1001 + n}",
                               notes=rnd.choice(["", "Leave at door", "Ring bell twice", "Fragile", "Call on arrival"])))
             n += 1
@@ -695,8 +697,13 @@ async def seed(force: bool = False):
             stops[idx].window_date = today_str()
     await db.stops.insert_many([s.model_dump() for s in stops])
     # one route pre-batched & started for the demo
-    await create_batch("Mission", "drv-1", start=True)
+    await create_batch("Downtown", "drv-1", start=True)
     await seed_history(rnd, drivers)
+    # demo: keep the most recent low rating open so the admin follow-up list is never empty
+    low = await db.stops.find({"rating": {"$lte": 2}}, {"_id": 0, "id": 1}).sort("rated_at", -1).to_list(1)
+    if low:
+        await db.stops.update_one({"id": low[0]["id"]}, {"$set": {"follow_up_status": "open"}})
+    await ensure_platform_invoices()
 
 
 async def seed_history(rnd: random.Random, drivers: List[Driver]):
@@ -728,7 +735,7 @@ async def seed_history(rnd: random.Random, drivers: List[Driver]):
                     ws = max(9, t.hour - rnd.choice([0, 1, 1, 2]))
                     win = (f"{ws:02d}:00", f"{min(ws + 2, 23):02d}:00")
                 docs.append(Stop(id=str(uuid.uuid4()), route_id=route_id, seq=i + 1, customer_name=rnd.choice(NAMES),
-                                 customer_phone=f"+1415555{100 + rnd.randint(0, 99):04d}", address=f"{rnd.randint(100, 2900)} {rnd.choice(z['streets'])}, San Francisco",
+                                 customer_phone=f"+1519555{100 + rnd.randint(0, 99):04d}", address=f"{rnd.randint(10, 900)} {rnd.choice(z['streets'])}, {z['city']}",
                                  postal_code=z["postal"], zone=zone, lat=lat, lng=lng, tracking_code=f"MH{2001 + n}",
                                  status="failed" if failed else "delivered", fail_reason="No one home" if failed else None,
                                  arrived_at=t.astimezone(timezone.utc).isoformat(), arrival_method="geofence" if rnd.random() < 0.8 else "manual",
@@ -839,6 +846,7 @@ async def startup():
     spawn(late_alert_watcher())
     spawn(review_reminder_watcher())
     spawn(backfill_invoices())
+    spawn(platform_fee_watcher())
     # imports interrupted by a restart: send unfinished rows back to the queue
     for j in await db.import_jobs.find({"status": "running"}, {"_id": 0, "id": 1}).to_list(100):
         spawn(process_import(j["id"]))
@@ -1252,7 +1260,7 @@ async def send_booking_sms(stop: "Stop", kind: str) -> str:
     if stop.window_end:
         when = f"{nice_date(stop.window_date or today_str())}, {stop.window_start}-{stop.window_end}"
         verb = "is booked for" if kind == "booked" else "has moved to"
-        body = f"DashLocal: your delivery {stop.tracking_code} {verb} {when} (SF time). Reply or track your order in the app."
+        body = f"DashLocal: your delivery {stop.tracking_code} {verb} {when} (Eastern time). Reply or track your order in the app."
     else:
         body = f"DashLocal: the delivery window for {stop.tracking_code} was cleared. We'll deliver at any time on your route day."
     try:
@@ -1531,7 +1539,7 @@ header{{background:#0A0A0A;color:#fff;padding:20px}}h1{{font-family:Arial,sans-s
 .box{{border:2px solid #0A0A0A;margin:12px 0;padding:12px}}img{{width:100%;display:block}}svg{{width:100%;height:180px}}
 .ok{{background:#008000;color:#fff;padding:12px;font-weight:bold}}.m{{font-size:13px;margin:4px 0}}</style></head><body>
 <header><div class="k">DASHLOCAL · PROOF OF DELIVERY</div><h1>{esc(st.tracking_code)}</h1></header><main>
-<p class="m"><b>{esc(st.customer_name)}</b></p><p class="m">{esc(st.address)}</p><p class="m">DELIVERED {esc(when)} (SF TIME)</p>
+<p class="m"><b>{esc(st.customer_name)}</b></p><p class="m">{esc(st.address)}</p><p class="m">DELIVERED {esc(when)} (EASTERN TIME)</p>
 {f'<div class="box">{photo}</div>' if photo else ''}{f'<div class="box"><div class="m">SIGNATURE</div>{sig}</div>' if sig else ''}{qr}
 </main></body></html>"""
     return HTMLResponse(html)
@@ -1715,7 +1723,7 @@ class PhoneIn(BaseModel):
 async def set_customer_phone(stop_id: str, body: PhoneIn):
     phone = re.sub(r"[\s\-()]", "", body.phone)
     if not E164.match(phone):
-        raise HTTPException(400, "Use +countrycode format, e.g. +14155550123")
+        raise HTTPException(400, "Use +countrycode format, e.g. +15195550123")
     stop = await get_stop_or_404(stop_id)
     upd = {"customer_phone": phone}
     if phone != stop.customer_phone and stop.nearby_sms_status in ("skipped_fictional", "not_configured", "failed"):
@@ -1730,7 +1738,7 @@ async def set_customer_phone(stop_id: str, body: PhoneIn):
 async def set_driver_phone(driver_id: str, body: PhoneIn):
     phone = re.sub(r"[\s\-()]", "", body.phone)
     if not E164.match(phone):
-        raise HTTPException(400, "Use +countrycode format, e.g. +14155550123")
+        raise HTTPException(400, "Use +countrycode format, e.g. +15195550123")
     await get_driver_or_404(driver_id)
     await db.drivers.update_one({"id": driver_id}, {"$set": {"phone": phone}})
     return (await get_driver_or_404(driver_id)).model_dump()
@@ -2131,7 +2139,7 @@ MERCHANTS = [{"id": "mer-1", "name": "Mission Bakery Co.", "contact": "orders@mi
              {"id": "mer-2", "name": "Bay Books", "contact": "hello@baybooks.example"}]
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 NOMINATIM_UA = os.environ.get("NOMINATIM_USER_AGENT", "dashlocal-merchant-import/1.0 (ops@dashlocal.app)")
-SF_VIEWBOX = "-122.53,37.83,-122.35,37.70"  # lookups are bounded to San Francisco
+KW_VIEWBOX = "-80.66,43.56,-80.36,43.36"  # lookups are bounded to Kitchener-Waterloo
 IMPORT_MAX_ROWS = 200
 FLAGGED = ("invalid", "not_found", "lookup_failed")
 COLUMNS = {
@@ -2147,8 +2155,8 @@ COLUMNS = {
 }
 TRUTHY = {"yes", "y", "true", "1", "x", "priority", "rush", "express"}
 TEMPLATE_CSV = ("customer_name,phone,address,notes,window_date,window_start,window_end,priority,delivery_note\n"
-                "Jane Doe,415 555 0123,1 Market St,Leave at reception,,,,,\n"
-                "Sam Lee,+14155550188,450 Golden Gate Ave,Ring twice,,14:00,16:00,yes,Gate code 2468\n")
+                "Jane Doe,519 555 0123,200 King St W Kitchener,Leave at reception,,,,,\n"
+                "Sam Lee,+15195550188,75 King St S Waterloo,Ring twice,,14:00,16:00,yes,Gate code 2468\n")
 _geo_lock = asyncio.Lock()
 _geo_last = [0.0]
 
@@ -2165,8 +2173,8 @@ async def geocode(address: str) -> Optional[dict]:
             await asyncio.sleep(wait)
         try:
             async with httpx.AsyncClient(timeout=15, headers={"User-Agent": NOMINATIM_UA}) as c:
-                r = await c.get(NOMINATIM_URL, params={"q": f"{address}, San Francisco, CA, USA", "format": "jsonv2", "limit": 1,
-                                                       "addressdetails": 1, "countrycodes": "us", "viewbox": SF_VIEWBOX, "bounded": 1})
+                r = await c.get(NOMINATIM_URL, params={"q": address if re.search(r"kitchener|waterloo", address, re.I) else f"{address}, Kitchener, ON, Canada", "format": "jsonv2", "limit": 1,
+                                                       "addressdetails": 1, "countrycodes": "ca", "viewbox": KW_VIEWBOX, "bounded": 1})
         finally:
             _geo_last[0] = time.monotonic()
     r.raise_for_status()
@@ -2234,16 +2242,20 @@ async def process_row(row: dict) -> dict:
             logger.error(f"Geocode failed for import row {row['id']}: {e}")
             geo, upd["status"], upd["error"] = None, "lookup_failed", "Address lookup is unavailable right now — retry shortly"
         if geo is None and "status" not in upd:
-            upd.update(status="not_found", error="Address not found in San Francisco — check the street and number")
+            upd.update(status="not_found", error="Address not found in Kitchener-Waterloo — check the street and number")
         elif geo:
             zone = min(ZONES, key=lambda z: haversine_m({"lat": geo["lat"], "lng": geo["lng"]}, {"lat": ZONES[z]["center"][0], "lng": ZONES[z]["center"][1]}))
             stop = Stop(id=str(uuid.uuid4()), customer_name=d["customer_name"], customer_phone=d["phone"],
-                        address=d["address"] if "san francisco" in d["address"].lower() else f"{d['address']}, San Francisco",
+                        address=d["address"] if re.search(r"kitchener|waterloo", d["address"], re.I) else f"{d['address']}, Kitchener",
                         postal_code=geo.get("postcode") or ZONES[zone]["postal"], zone=zone, lat=geo["lat"], lng=geo["lng"],
                         tracking_code=await new_tracking_code(), notes=d.get("notes") or "",
                         window_start=d.get("window_start") or None, window_end=d.get("window_end") or None,
                         window_date=d.get("window_date") or None, merchant_id=row["merchant_id"], created_at=now_iso(),
                         priority=(d.get("priority") or "").strip().lower() in TRUTHY)
+            if row.get("run") in RUNS:  # pharmacy batch: the run sets the day and the patient delivery window
+                r = RUNS[row["run"]]
+                stop.window_start, stop.window_end, stop.window_date = r["window"][0], r["window"][1], row["manifest_id"].split(":")[1]
+                stop.batch_run, stop.manifest_id = row["run"], row["manifest_id"]
             stop.fee = compute_fee(stop.model_dump(), await get_pricing(row["merchant_id"]))
             note, source = await remembered_note(row["merchant_id"], stop.customer_phone)
             csv_note = " ".join((d.get("delivery_note") or "").split())[:200]
@@ -2726,6 +2738,11 @@ async def merchant_detail(merchant_id: str, _: dict = Depends(merchant_access)):
     orders = await db.stops.find({"merchant_id": merchant_id}, {"_id": 0}).sort("created_at", -1).to_list(500)
     flagged = await db.import_rows.find({"merchant_id": merchant_id, "status": {"$in": list(FLAGGED)}}, {"_id": 0}).sort([("created_at", -1), ("line", 1)]).to_list(500)
     jobs = await db.import_jobs.find({"merchant_id": merchant_id}, {"_id": 0}).sort("created_at", -1).to_list(5)
+    if m.get("pharmacy_partner"):
+        runs = runs_today()
+        for r in runs:
+            r["drops_today"] = await db.stops.count_documents({"merchant_id": merchant_id, "manifest_id": f"{merchant_id}:{r['date']}:{r['key']}"})
+        m = {**m, "runs": runs, "pharmacy_terms": PHARMACY}
     return {**m, "orders": [Stop(**o).model_dump() for o in orders], "flagged": flagged, "jobs": jobs,
             "counts": {"orders": len(orders), "pending": sum(1 for o in orders if o["status"] in ("pending", "arrived")),
                        "delivered": sum(1 for o in orders if o["status"] == "delivered"), "failed": sum(1 for o in orders if o["status"] == "failed"),
@@ -2767,9 +2784,18 @@ async def delete_saved_note(merchant_id: str, note_id: str, _: dict = Depends(me
 
 
 @api_router.post("/merchants/{merchant_id}/import")
-async def import_orders(merchant_id: str, file: UploadFile = File(...), _: dict = Depends(merchant_access)):
-    """Upload a CSV of orders. Rows are validated now and geocoded in the background (about 1 per second)."""
-    await get_merchant_or_404(merchant_id)
+async def import_orders(merchant_id: str, file: UploadFile = File(...), run: Optional[str] = None, _: dict = Depends(merchant_access)):
+    """Upload a CSV of orders. Rows are validated now and geocoded in the background (about 1 per second).
+    Pharmacy partners pick a pickup run (afternoon | evening); uploads close at that run's cut-off."""
+    m = await get_merchant_or_404(merchant_id)
+    manifest_id = None
+    if m.get("pharmacy_partner"):
+        if run not in RUNS:
+            raise HTTPException(400, "Pick a pickup run: afternoon or evening")
+        info = next(r for r in runs_today() if r["key"] == run)
+        manifest_id = f"{merchant_id}:{info['date']}:{run}"
+    else:
+        run = None
     raw = await file.read()
     if len(raw) > 2 * 1024 * 1024:
         raise HTTPException(413, "CSV is larger than 2 MB")
@@ -2805,9 +2831,11 @@ async def import_orders(merchant_id: str, file: UploadFile = File(...), _: dict 
     if len(rows) > IMPORT_MAX_ROWS:
         raise HTTPException(400, f"Up to {IMPORT_MAX_ROWS} orders per file — split it into smaller files")
     job = {"id": str(uuid.uuid4()), "merchant_id": merchant_id, "filename": file.filename or "orders.csv", "total": len(rows),
-           "processed": 0, "created": 0, "flagged": 0, "status": "running", "created_at": now_iso(), "finished_at": None}
+           "processed": 0, "created": 0, "flagged": 0, "status": "running", "created_at": now_iso(), "finished_at": None,
+           "run": run, "manifest_id": manifest_id}
     await db.import_jobs.insert_one(dict(job))
     await db.import_rows.insert_many([{"id": str(uuid.uuid4()), "job_id": job["id"], "merchant_id": merchant_id, "line": i + 2, "data": d,
+                                       "run": run, "manifest_id": manifest_id,
                                        "status": "queued", "error": None, "stop_id": None, "tracking_code": None, "created_at": job["created_at"]}
                                       for i, d in enumerate(rows)])
     spawn(process_import(job["id"]))
@@ -2869,7 +2897,7 @@ EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY", "")
 EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "DashLocal")
 EMAIL_REPLY_TO = os.environ.get("EMAIL_REPLY_TO")
 TEST_INBOX = "delivered@resend.dev"  # seeded demo store logins are not real inboxes
-WEEKLY_SEND_HOUR = 8  # Monday 08:00 depot (SF) time
+WEEKLY_SEND_HOUR = 8  # Monday 08:00 depot (Eastern) time
 WEEKLY_LINK_DAYS = 7
 SEND_NOW_COOLDOWN_MIN = 5
 
@@ -3035,7 +3063,7 @@ def weekly_email_html(store: str, since: str, until: str, s: dict, link: str, bi
             f'<tr><td style="background:#0a0a0a;color:#ffffff;padding:20px 24px;font-size:20px;font-weight:bold;letter-spacing:1px">{e(EMAIL_FROM_NAME.upper())} · WEEKLY DELIVERY REPORT</td></tr>'
             f'<tr><td style="padding:24px">'
             f'<p style="margin:0 0 4px;font-size:18px;font-weight:bold">{e(store)}</p>'
-            f'<p style="margin:0 0 16px;color:#555">Week of {e(rng)} (San Francisco time)</p>'
+            f'<p style="margin:0 0 16px;color:#555">Week of {e(rng)} (Kitchener-Waterloo time)</p>'
             f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">{rows}</table>'
             f'<p style="margin:24px 0 8px"><a href="{e(link, quote=True)}" style="display:inline-block;background:#e11d1d;color:#ffffff;padding:12px 20px;text-decoration:none;font-weight:bold">Download the full CSV report</a></p>'
             f'<p style="margin:0;color:#777;font-size:12px">The download link works for {WEEKLY_LINK_DAYS} days. It lists every drop with status, times, proof-of-delivery links and ratings.</p>'
@@ -3092,7 +3120,7 @@ def next_weekly_send(now: Optional[datetime] = None) -> datetime:
 
 
 async def weekly_scheduler():
-    """Every minute: on Monday from 08:00 SF, send each opted-in store's report once per ISO week."""
+    """Every minute: on Monday from 08:00 Eastern, send each opted-in store's report once per ISO week."""
     while True:
         try:
             now = datetime.now(TZ)
@@ -3207,7 +3235,7 @@ def merchant_alert_html(store: str, st: Stop, kind: str, driver: str, eta: Optio
             f'<tr><td style="padding:24px"><p style="margin:0 0 4px;font-size:16px;font-weight:bold">{e(store)}</p>'
             f'<p style="margin:0 0 16px;color:#555">{e(lead)}</p>'
             f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">{trs}</table>'
-            f'<p style="margin:16px 0 0;color:#777;font-size:12px">Times are San Francisco time. You get one email per affected drop — switch these alerts off in the Merchant console.</p>'
+            f'<p style="margin:16px 0 0;color:#777;font-size:12px">Times are Eastern (Kitchener-Waterloo) time. You get one email per affected drop — switch these alerts off in the Merchant console.</p>'
             f'</td></tr></table></td></tr></table>')
 
 
@@ -3270,7 +3298,19 @@ async def set_merchant_alerts(merchant_id: str, body: AlertsIn, _: dict = Depend
 
 
 # ---------------------------------------------------------------- pricing & weekly merchant bills (CAD, collected outside the app)
-PRICING_DEFAULT = {"currency": "CAD", "base_fee": 8.00, "included_km": 5.0, "per_km": 1.25, "priority_fee": 16.00,
+VOLUME_TIERS = [  # (name, min delivered drops per shop per day, rate per drop; None = standard per-delivery fee)
+    ("Pay-As-You-Go", 1, None), ("Growth tier", 5, 7.49), ("High-Volume", 10, 6.49), ("High-Volume", 15, 5.99)]
+
+
+def volume_tier(count: int, base_fee: float) -> dict:
+    name, rate = VOLUME_TIERS[0][0], base_fee
+    for n, lo, r in VOLUME_TIERS:
+        if count >= lo:
+            name, rate = n, (base_fee if r is None else min(r, base_fee))
+    return {"name": name, "rate": round(rate, 2)}
+
+
+PRICING_DEFAULT = {"currency": "CAD", "base_fee": 8.99, "included_km": 5.0, "per_km": 1.25, "priority_fee": 16.00,
                    "charge_failed": True, "tax_pct": 0.0}
 PRICING_LIMITS = {"base_fee": 1000, "included_km": 500, "per_km": 100, "priority_fee": 1000, "tax_pct": 30}
 PRICING_NAMES = {"base_fee": "Per-delivery fee", "included_km": "Km included", "per_km": "Extra per km",
@@ -3283,13 +3323,41 @@ async def get_pricing(merchant_id: Optional[str] = None) -> dict:
     doc = await db.settings.find_one({"key": "pricing"}, {"_id": 0}) or {}
     p = {**PRICING_DEFAULT, **(doc.get("value") or {})}
     if merchant_id:
-        m = await db.merchants.find_one({"id": merchant_id}, {"_id": 0, "pricing_override": 1}) or {}
+        m = await db.merchants.find_one({"id": merchant_id}, {"_id": 0, "pricing_override": 1, "pharmacy_partner": 1, "pickup": 1}) or {}
         p.update(m.get("pricing_override") or {})
+        if m.get("pharmacy_partner"):  # Addendum A contract replaces the shared / custom per-drop rates
+            p.update(base_fee=PHARMACY["standard_rate"], included_km=PHARMACY["included_km"], per_km=PHARMACY["per_km"],
+                     pharmacy=True, origin=m.get("pickup") or DEPOT)
     return p
 
 
+# ---------------------------------------------------------------- pharmacy batch contract (Addendum A)
+PHARMACY = {"batch_rate": 6.25, "standard_rate": 8.99, "min_drops": 10, "included_km": 8.0, "per_km": 1.25, "monthly_fee": 25.00}
+RUNS = {  # Eastern (depot) time
+    "afternoon": {"label": "Afternoon Batch", "cutoff": "13:30", "pickup": ("14:00", "14:30"), "window": ("14:30", "18:00")},
+    "evening": {"label": "Evening Batch", "cutoff": "16:30", "pickup": ("17:00", "17:30"), "window": ("17:30", "20:30")},
+}
+
+
+def hhmm12(t: str) -> str:
+    return datetime.strptime(t, "%H:%M").strftime("%-I:%M %p")
+
+
+def runs_today() -> list:
+    """Each run's next pickup: today until its cut-off, then tomorrow's run of the same name."""
+    now = datetime.now(TZ)
+    out = []
+    for k, r in RUNS.items():
+        today = now.strftime("%H:%M") < r["cutoff"]
+        out.append({"key": k, **r, "open": True, "today": today,
+                    "date": (now.date() if today else now.date() + timedelta(days=1)).isoformat(), "cutoff_label": hhmm12(r["cutoff"]),
+                    "pickup_label": f"{hhmm12(r['pickup'][0])} – {hhmm12(r['pickup'][1])}",
+                    "window_label": f"{hhmm12(r['window'][0])} – {hhmm12(r['window'][1])}"})
+    return out
+
+
 def compute_fee(stop: dict, p: dict) -> dict:
-    km = round(haversine_m(DEPOT, stop) / 1000 * ROAD_FACTOR, 1)
+    km = round(haversine_m(p.get("origin") or DEPOT, stop) / 1000 * ROAD_FACTOR, 1)
     dist = round(max(0.0, km - p["included_km"]) * p["per_km"], 2)
     pri = round(p["priority_fee"], 2) if stop.get("priority") else 0.0
     return {"base": round(p["base_fee"], 2), "km": km, "distance_fee": dist, "priority_fee": pri,
@@ -3325,7 +3393,7 @@ async def update_pricing(body: PricingIn):
 
 
 def week_bounds(week: Optional[str]) -> tuple:
-    """Monday..Sunday (SF) containing `week` (any date), default this week."""
+    """Monday..Sunday (Eastern) containing `week` (any date), default this week."""
     today = datetime.now(TZ).date()
     try:
         d = date_cls.fromisoformat(week) if week else today
@@ -3339,7 +3407,7 @@ async def merchant_bill(merchant_id: str, week: Optional[str]) -> dict:
     p = await get_pricing(merchant_id)
     since, until = week_bounds(week)
     lines, open_count, open_est = [], 0, 0.0
-    # only open orders + drops completed around this week (UTC bounds padded a day; exact SF day filter below)
+    # only open orders + drops completed around this week (UTC bounds padded a day; exact Eastern day filter below)
     lo = (date_cls.fromisoformat(since) - timedelta(days=1)).isoformat()
     hi = (date_cls.fromisoformat(until) + timedelta(days=2)).isoformat()
     q = {"merchant_id": merchant_id, "$or": [{"status": {"$in": ["pending", "arrived"]}}, {"delivered_at": {"$gte": lo, "$lt": hi}}]}
@@ -3485,7 +3553,7 @@ class StoreRatesIn(BaseModel):
 async def store_rates(merchant_id: str) -> dict:
     m = await get_merchant_or_404(merchant_id)
     return {"merchant_id": merchant_id, "name": m["name"], "shared": await get_pricing(), "override": m.get("pricing_override") or {},
-            "effective": await get_pricing(merchant_id)}
+            "effective": await get_pricing(merchant_id), "pharmacy_partner": bool(m.get("pharmacy_partner")), "pickup": m.get("pickup")}
 
 
 @api_router.get("/admin/merchants/{merchant_id}/pricing", dependencies=ADMIN_ONLY)
@@ -3672,7 +3740,97 @@ async def create_invoice(stop_id: str) -> Optional[dict]:
         await db.invoices.insert_one(dict(inv))
     except DuplicateKeyError:  # a parallel call already issued it
         return await db.invoices.find_one({"stop_id": stop_id}, {"_id": 0})
-    return inv
+    if m.get("pharmacy_partner"):
+        await apply_manifest_rate(s["merchant_id"], s.get("manifest_id"))
+    else:
+        await apply_volume_tier(s["merchant_id"], inv["date"])
+    return await db.invoices.find_one({"id": inv["id"]}, {"_id": 0})
+
+
+async def open_session_invoice_ids(merchant_id: str) -> set:
+    return {i for ps in await db.payment_sessions.find({"merchant_id": merchant_id, "status": "open"}, {"_id": 0, "invoice_ids": 1}).to_list(100)
+            for i in ps.get("invoice_ids", [])}
+
+
+async def rerate_invoice(inv: dict, rate: float, desc: str, extra: dict):
+    lines = [dict(x) for x in inv["lines"]]
+    if not lines or (lines[0]["amount"] == rate and lines[0]["description"] == desc):
+        return
+    lines[0] = {"description": desc, "amount": rate}
+    sub = round(sum(x["amount"] for x in lines), 2)
+    hst = round(sub * inv["hst_pct"] / 100, 2)
+    await db.invoices.update_one({"id": inv["id"], "status": "unpaid"}, {"$set": {
+        "lines": lines, "subtotal": sub, "hst": hst, "total": round(sub + hst, 2), **extra}})
+
+
+async def apply_manifest_rate(merchant_id: str, manifest_id: Optional[str]):
+    """Pharmacy contract: $6.25/drop when the pickup manifest holds 10+ drops, else the $8.99 standard rate.
+    Orders uploaded without a run (no manifest) are billed at the standard rate."""
+    if not manifest_id:
+        return
+    stop_ids = [x["id"] for x in await db.stops.find({"merchant_id": merchant_id, "manifest_id": manifest_id}, {"_id": 0, "id": 1}).to_list(1000)]
+    n = len(stop_ids)
+    batch = n >= PHARMACY["min_drops"]
+    rate = PHARMACY["batch_rate"] if batch else PHARMACY["standard_rate"]
+    desc = (f"Pharmacy batch rate ({n} drops on this pickup)" if batch
+            else f"Standard rate — pickup had {n} drop{'s' if n != 1 else ''}, {PHARMACY['min_drops']} needed for batch rate")
+    locked = await open_session_invoice_ids(merchant_id)
+    for inv in await db.invoices.find({"merchant_id": merchant_id, "stop_id": {"$in": stop_ids}, "status": "unpaid"}, {"_id": 0}).to_list(1000):
+        if inv["id"] not in locked:
+            await rerate_invoice(inv, rate, desc, {"manifest_drops": n, "tier": "Pharmacy batch" if batch else "Standard"})
+
+
+async def ensure_platform_invoices():
+    """$25/month platform fee for each pharmacy partner, once per calendar month (idempotent via the unique stop_id key)."""
+    month = datetime.now(TZ).strftime("%Y-%m")
+    biz = await get_business()
+    for m in await db.merchants.find({"pharmacy_partner": True}, {"_id": 0}).to_list(500):
+        key = f"platform:{m['id']}:{month}"
+        if await db.invoices.find_one({"stop_id": key}, {"_id": 1}):
+            continue
+        sub = PHARMACY["monthly_fee"]
+        hst = round(sub * biz["hst_pct"] / 100, 2)
+        label = datetime.strptime(month, "%Y-%m").strftime("%B %Y")
+        inv = {"id": str(uuid.uuid4()), "number": None, "kind": "platform", "merchant_id": m["id"], "stop_id": key,
+               "date": datetime.now(TZ).date().isoformat(), "issued_at": now_iso(), "currency": "CAD", "business": biz,
+               "merchant": {"name": m.get("name", ""), "address": m.get("address")},
+               "delivery": {"tracking_code": "PLATFORM", "customer_name": f"Monthly platform fee — {label}", "address": "Merchant Portal, tracking, invoicing & dispatch",
+                            "delivered_at": None, "delivered_local": None, "km": None, "priority": False},
+               "lines": [{"description": f"Monthly platform fee — {label}", "amount": sub}], "subtotal": sub, "hst_pct": biz["hst_pct"],
+               "hst": hst, "total": round(sub + hst, 2), "status": "unpaid", "paid_at": None, "paid_note": None}
+        try:
+            inv["number"] = await next_invoice_number()
+            await db.invoices.insert_one(inv)
+        except DuplicateKeyError:
+            pass
+
+
+async def platform_fee_watcher():
+    await asyncio.sleep(20)
+    while True:
+        try:
+            await ensure_platform_invoices()
+        except Exception as e:
+            logger.warning(f"Platform fee loop error: {e}")
+        await asyncio.sleep(600)
+
+
+async def apply_volume_tier(merchant_id: str, day: str):
+    """Re-rate the shop's still-open invoices for `day` to the tier its delivered-drop count has reached.
+    Count only grows, so rates only go down. Paid / reported / in-checkout invoices keep their price.
+    Stores with a custom per-delivery fee keep that flat fee (no tiers)."""
+    m = await db.merchants.find_one({"id": merchant_id}, {"_id": 0, "pricing_override": 1}) or {}
+    if "base_fee" in (m.get("pricing_override") or {}):
+        return
+    p = await get_pricing(merchant_id)
+    q = {"merchant_id": merchant_id, "date": day, "kind": {"$ne": "platform"}}
+    count = await db.invoices.count_documents(q)
+    tier = volume_tier(count, p["base_fee"])
+    locked = await open_session_invoice_ids(merchant_id)
+    for inv in await db.invoices.find({**q, "status": "unpaid"}, {"_id": 0}).to_list(500):
+        if inv["id"] not in locked:
+            await rerate_invoice(inv, tier["rate"], f"Same-day delivery fee — {tier['name']} ({count} drops that day)",
+                                 {"tier": tier["name"], "day_drops": count})
 
 
 async def backfill_invoices():
@@ -3747,8 +3905,9 @@ def invoice_pdf(inv: dict) -> bytes:
                    + (f"<br/><b>Paid</b> {e(inv['paid_at'][:10])}" if inv.get("paid_at") else ""), ParagraphStyle("m", parent=body, alignment=2))],
     ], colWidths=[3.45 * inch, 3.45 * inch])
     bill_to = Paragraph(f"<b>BILL TO</b><br/>{e(mer['name'])}<br/>{e(mer.get('address') or 'Address not on file')}", body)
-    deliv = Paragraph(f"<b>DELIVERY</b> {e(d['tracking_code'])} · {e(d['customer_name'])} · {e(d['address'])}<br/>"
-                      f"Delivered {e(d.get('delivered_local') or (d.get('delivered_at') or '')[:16].replace('T', ' '))}{' · Priority' if d.get('priority') else ''}", body)
+    deliv = Paragraph(f"<b>SERVICE</b> {e(d['customer_name'])} · {e(d['address'])}", body) if inv.get("kind") == "platform" else \
+        Paragraph(f"<b>DELIVERY</b> {e(d['tracking_code'])} · {e(d['customer_name'])} · {e(d['address'])}<br/>"
+                  f"Delivered {e(d.get('delivered_local') or (d.get('delivered_at') or '')[:16].replace('T', ' '))}{' · Priority' if d.get('priority') else ''}", body)
     rows = [["Description", "Amount"]] + [[x["description"], money(x["amount"])] for x in inv["lines"]] + [
         ["Subtotal", money(inv["subtotal"])], [f"HST ({inv['hst_pct']:g}%, Ontario)", money(inv["hst"])], ["Total owing (CAD)", money(inv["total"])]]
     n = len(inv["lines"])
@@ -4056,7 +4215,39 @@ async def stripe_webhook(request: Request):
 async def rate_card():
     """Public: the standard prices shown on the landing page (stores may have custom rates)."""
     p, biz = await get_pricing(), await get_business()
-    return {k: p[k] for k in ("currency", "base_fee", "included_km", "per_km", "priority_fee")} | {"hst_pct": biz["hst_pct"]}
+    tiers = [{"name": n, "min_drops": lo, "max_drops": (VOLUME_TIERS[i + 1][1] - 1) if i + 1 < len(VOLUME_TIERS) else None,
+              "rate": round(p["base_fee"] if r is None else min(r, p["base_fee"]), 2)} for i, (n, lo, r) in enumerate(VOLUME_TIERS)]
+    return {k: p[k] for k in ("currency", "base_fee", "included_km", "per_km", "priority_fee")} | {"hst_pct": biz["hst_pct"], "tiers": tiers,
+            "pharmacy": {**PHARMACY, "runs": [{"key": r["key"], "label": r["label"], "cutoff_label": r["cutoff_label"], "pickup_label": r["pickup_label"],
+                                               "window_label": r["window_label"]} for r in runs_today()]}}
+
+
+class PharmacyIn(BaseModel):
+    enabled: bool
+    pickup_address: Optional[str] = None
+
+
+@api_router.put("/admin/merchants/{merchant_id}/pharmacy", dependencies=ADMIN_ONLY)
+async def set_pharmacy(merchant_id: str, body: PharmacyIn):
+    """Mark a store as a pharmacy partner (Addendum A). The pickup address is where distance is measured from."""
+    m0 = await get_merchant_or_404(merchant_id)
+    upd: dict = {"pharmacy_partner": body.enabled}
+    addr = (body.pickup_address or "").strip()
+    if addr and addr != (m0.get("pickup") or {}).get("address"):
+        try:
+            geo = await geocode(addr)
+        except Exception:
+            raise HTTPException(503, "Address lookup is unavailable right now — try again shortly")
+        if not geo:
+            raise HTTPException(400, "Pickup address not found in Kitchener-Waterloo — check the street and number")
+        upd["pickup"] = {"lat": geo["lat"], "lng": geo["lng"], "address": addr}
+    if body.enabled:
+        upd["pharmacy_since"] = now_iso()
+    await db.merchants.update_one({"id": merchant_id}, {"$set": upd})
+    if body.enabled:
+        await ensure_platform_invoices()
+    m = await get_merchant_or_404(merchant_id)
+    return {"merchant_id": merchant_id, "pharmacy_partner": bool(m.get("pharmacy_partner")), "pickup": m.get("pickup")}
 
 
 # ---------------------------------------------------------------- review requests + merchant sign-up requests

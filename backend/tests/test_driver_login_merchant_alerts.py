@@ -12,10 +12,10 @@ from pymongo import MongoClient
 
 BASE_URL = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/")
 API = f"{BASE_URL}/api"
-TZ = ZoneInfo("America/Los_Angeles")
+TZ = ZoneInfo("America/Toronto")
 _raw = requests.Session.request  # bypass conftest auto-admin injection
 mdb = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
-PINS = {"drv-1": ("+14155550101", "482913"), "drv-2": ("+14155550102", "730516"), "drv-3": ("+14155550103", "264871")}
+PINS = {"drv-1": ("+15195550101", "482913"), "drv-2": ("+15195550102", "730516"), "drv-3": ("+15195550103", "264871")}
 SIG = "data:image/png;base64,iVBORw0KGgo="
 
 
@@ -54,7 +54,7 @@ def toks():
 # ---------------- Driver login
 class TestDriverLogin:
     def test_formats_and_me(self, toks):
-        r = dlogin("(415) 555-0101", "482913")
+        r = dlogin("(519) 555-0101", "482913")
         assert r.status_code == 200, r.text
         u = r.json()["user"]
         assert u["role"] == "driver" and u["driver_id"] == "drv-1" and u["driver_name"]
@@ -65,19 +65,19 @@ class TestDriverLogin:
         assert m["role"] == "driver" and m["driver_id"] == "drv-1" and m.get("driver_name"), me
 
     def test_wrong_pin_unknown_phone_generic(self, toks):
-        a = dlogin("+14155550101", "000001")
-        b = dlogin("+14155559999", "482913")
+        a = dlogin("+15195550101", "000001")
+        b = dlogin("+15195559999", "482913")
         assert a.status_code == 401 and b.status_code == 401
         assert a.json()["detail"] == b.json()["detail"] == "Wrong phone number or PIN"
-        assert dlogin("+14155550101", "482913").status_code == 200  # success clears counter
+        assert dlogin("+15195550101", "482913").status_code == 200  # success clears counter
 
     def test_lockout_drv3_then_admin_reset(self, toks):
-        codes = [dlogin("+14155550103", "999990").status_code for _ in range(5)]
+        codes = [dlogin("+15195550103", "999990").status_code for _ in range(5)]
         assert codes == [401] * 5, codes
-        r = dlogin("+14155550103", "264871")  # correct PIN is still locked out
+        r = dlogin("+15195550103", "264871")  # correct PIN is still locked out
         assert r.status_code == 429, r.text
         assert raw("PUT", f"{API}/admin/drivers/drv-3/pin", json={"pin": "264871"}, headers=H(toks["admin"])).status_code == 200
-        assert dlogin("+14155550103", "264871").status_code == 200
+        assert dlogin("+15195550103", "264871").status_code == 200
 
 
 # ---------------- Admin PIN management
@@ -102,11 +102,11 @@ class TestAdminPins:
         assert raw("PUT", f"{API}/admin/drivers/drv-2/pin", json={"pin": "583920"}, headers=H(toks["drv-1"])).status_code == 403
         try:
             assert raw("PUT", f"{API}/admin/drivers/drv-2/pin", json={"pin": "583920"}, headers=h).status_code == 200
-            assert dlogin("+14155550102", "583920").status_code == 200
-            assert dlogin("+14155550102", "730516").status_code == 401
+            assert dlogin("+15195550102", "583920").status_code == 200
+            assert dlogin("+15195550102", "730516").status_code == 401
         finally:
             assert raw("PUT", f"{API}/admin/drivers/drv-2/pin", json={"pin": "730516"}, headers=h).status_code == 200
-        assert dlogin("+14155550102", "730516").status_code == 200
+        assert dlogin("+15195550102", "730516").status_code == 200
 
 
 # ---------------- Driver authorization
@@ -139,9 +139,9 @@ class TestDriverAuthz:
         for m, p, body in [("GET", "/drivers/drv-1/route", None), ("GET", "/drivers/drv-1/summary", None),
                            ("GET", "/drivers/drv-1/scorecard", None), ("GET", "/drivers/drv-1/badges/new", None),
                            ("POST", "/drivers/drv-1/badges/seen", {"keys": []}), ("GET", "/drivers/drv-1/coaching", None),
-                           ("POST", "/drivers/drv-1/location", {"lat": 37.76, "lng": -122.42}),
+                           ("POST", "/drivers/drv-1/location", {"lat": 43.46, "lng": -80.42}),
                            ("POST", "/drivers/drv-1/simulate-step", None),
-                           ("PUT", "/drivers/drv-1/phone", {"phone": "+14155550101"})]:
+                           ("PUT", "/drivers/drv-1/phone", {"phone": "+15195550101"})]:
             r = raw(m, API + p, json=body, headers=h)
             if r.status_code != 200:
                 bad.append((m, p, r.status_code, r.text[:120]))
@@ -153,9 +153,9 @@ class TestDriverAuthz:
         for m, p, body in [("GET", "/drivers/drv-2/route", None), ("GET", "/drivers/drv-2/summary", None),
                            ("GET", "/drivers/drv-2/scorecard", None), ("GET", "/drivers/drv-2/badges/new", None),
                            ("POST", "/drivers/drv-2/badges/seen", {"keys": []}), ("GET", "/drivers/drv-2/coaching", None),
-                           ("POST", "/drivers/drv-2/location", {"lat": 37.76, "lng": -122.42}),
+                           ("POST", "/drivers/drv-2/location", {"lat": 43.46, "lng": -80.42}),
                            ("POST", "/drivers/drv-2/simulate-step", None),
-                           ("PUT", "/drivers/drv-2/phone", {"phone": "+14155550109"}),
+                           ("PUT", "/drivers/drv-2/phone", {"phone": "+15195550109"}),
                            ("GET", "/analytics", None), ("GET", "/drivers", None), ("GET", "/routes", None)]:
             r = raw(m, API + p, json=body, headers=h)
             if r.status_code != 403:
@@ -183,7 +183,7 @@ class TestDriverAuthz:
         assert raw("GET", f"{API}/stops/{s['id']}", headers=h).status_code == 200
         q = raw("POST", f"{API}/stops/{s['id']}/verify-qr", json={"code": "WRONG"}, headers=h)
         assert q.status_code not in (401, 403), q.status_code
-        assert raw("PUT", f"{API}/stops/{s['id']}/phone", json={"phone": s.get("phone") or "+14155550177"}, headers=h).status_code == 200
+        assert raw("PUT", f"{API}/stops/{s['id']}/phone", json={"phone": s.get("phone") or "+15195550177"}, headers=h).status_code == 200
         assert raw("POST", f"{API}/stops/{s['id']}/arrive", headers=h).status_code == 200
         up = raw("POST", f"{API}/upload", files={"file": ("pod.png", b"\x89PNG\r\n\x1a\n" + b"0" * 64, "image/png")}, headers=h)
         assert up.status_code == 200, up.text[:200]
@@ -203,7 +203,7 @@ class TestDriverAuthz:
                            ("POST", f"/routes/{rid}/update-seen", None), ("GET", f"/stops/{sid}", None),
                            ("POST", f"/stops/{sid}/arrive", None), ("POST", f"/stops/{sid}/deliver", {"signature": SIG}),
                            ("POST", f"/stops/{sid}/fail", {"reason": "x"}), ("POST", f"/stops/{sid}/contact", {"channel": "sms"}),
-                           ("POST", f"/stops/{sid}/verify-qr", {"code": "x"}), ("PUT", f"/stops/{sid}/phone", {"phone": "+14155550177"})]:
+                           ("POST", f"/stops/{sid}/verify-qr", {"code": "x"}), ("PUT", f"/stops/{sid}/phone", {"phone": "+15195550177"})]:
             r = raw(m, API + p, json=body, headers=h)
             if r.status_code != 403:
                 bad.append((m, p, r.status_code))
@@ -261,8 +261,8 @@ def wait_alert(code, kind, admin, t=25):
 def mstops(toks):
     a = H(toks["admin"])
     assert raw("POST", f"{API}/admin/reset", headers=a).status_code == 200
-    csv = ("customer_name,phone,address\nTEST_AlertFail,4155550181,1 Market St\nTEST_AlertOff,4155550182,1 Market St\n"
-           "TEST_AlertLate,4155550183,1 Market St\nTEST_AlertDLate,4155550184,1 Market St\n").encode()
+    csv = ("customer_name,phone,address\nTEST_AlertFail,5195550181,200 King St W Kitchener\nTEST_AlertOff,5195550182,200 King St W Kitchener\n"
+           "TEST_AlertLate,5195550183,200 King St W Kitchener\nTEST_AlertDLate,5195550184,200 King St W Kitchener\n").encode()
     r = raw("POST", f"{API}/merchants/mer-1/import", headers=H(toks["m1"]), files={"file": ("a.csv", csv, "text/csv")})
     assert r.status_code == 200, r.text
     jid, end = r.json()["id"], time.time() + 60
@@ -325,11 +325,11 @@ class TestMerchantAlerts:
             pytest.skip("too early in the day to craft an elapsed window")
         mdb.stops.update_one({"id": o["id"]}, {"$set": {"window_start": "00:00", "window_end": "00:30", "window_date": now.date().isoformat()}})
         h = H(mstops["dt"])
-        assert raw("POST", f"{API}/drivers/{mstops['drv']}/location", json={"lat": 37.79, "lng": -122.39}, headers=h).status_code == 200
+        assert raw("POST", f"{API}/drivers/{mstops['drv']}/location", json={"lat": 43.49, "lng": -80.59}, headers=h).status_code == 200
         rec = wait_alert(o["tracking_code"], "late", toks["admin"])
         assert len(rec) == 1 and rec[0]["status"] == "sent" and rec[0]["late_min"] > 5 and rec[0]["eta"], rec
         for _ in range(2):
-            raw("POST", f"{API}/drivers/{mstops['drv']}/location", json={"lat": 37.791, "lng": -122.391}, headers=h)
+            raw("POST", f"{API}/drivers/{mstops['drv']}/location", json={"lat": 43.491, "lng": -80.591}, headers=h)
         time.sleep(3)
         assert mdb.merchant_alerts.count_documents({"stop_id": o["id"]}) == 1
         # delivering after a 'late' email must not add a 'delivered_late' one

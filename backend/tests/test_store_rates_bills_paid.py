@@ -16,9 +16,9 @@ from pymongo import MongoClient
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 BASE_URL = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/")
 API = f"{BASE_URL}/api"
-DEFAULTS = {"base_fee": 8, "included_km": 5, "per_km": 1.25, "priority_fee": 6, "charge_failed": True, "tax_pct": 0}
+DEFAULTS = {"base_fee": 8.99, "included_km": 5, "per_km": 1.25, "priority_fee": 16, "charge_failed": True, "tax_pct": 0}
 NOAUTH = {"X-No-Auto-Auth": "1"}
-TZ = ZoneInfo("America/Los_Angeles")
+TZ = ZoneInfo("America/Toronto")
 TODAY = datetime.now(TZ).date()
 THIS_MON = TODAY - timedelta(days=TODAY.weekday())
 LAST_MON = (THIS_MON - timedelta(weeks=1)).isoformat()
@@ -78,12 +78,12 @@ class TestStoreRates:
         for k in ("included_km", "per_km", "priority_fee", "charge_failed", "tax_pct", "currency"):
             assert d["effective"][k] == d["shared"][k], k
         assert requests.get(f"{API}/pricing", headers=H(toks["m1"])).json()["base_fee"] == 6.5
-        assert requests.get(f"{API}/pricing", headers=H(toks["m2"])).json()["base_fee"] == 8
-        assert requests.get(f"{API}/pricing", headers=H(toks["admin"])).json()["base_fee"] == 8
+        assert requests.get(f"{API}/pricing", headers=H(toks["m2"])).json()["base_fee"] == 8.99
+        assert requests.get(f"{API}/pricing", headers=H(toks["admin"])).json()["base_fee"] == 8.99
 
     def test_null_follows_shared(self, toks):
         d = _rates(toks, "mer-1", {"base_fee": None, "per_km": 2}).json()
-        assert d["override"] == {"per_km": 2} and d["effective"]["base_fee"] == 8 and d["effective"]["per_km"] == 2
+        assert d["override"] == {"per_km": 2} and d["effective"]["base_fee"] == 8.99 and d["effective"]["per_km"] == 2
 
     def test_validation(self, toks):
         r = _rates(toks, "mer-1", {"base_fee": 1000.01})
@@ -105,7 +105,7 @@ def order(toks):
     assert _rates(toks, "mer-1", {"base_fee": 6.5, "priority_fee": 2}).status_code == 200
     h = H(toks["m1"])
     r = requests.post(f"{API}/merchants/mer-1/import", headers=h,
-                      files={"file": ("p.csv", b"customer_name,phone,address\nTEST_Rates,4155550193,1 Market St\n", "text/csv")})
+                      files={"file": ("p.csv", b"customer_name,phone,address\nTEST_Rates,5195550193,200 King St W Kitchener\n", "text/csv")})
     assert r.status_code == 200, r.text
     jid, end = r.json()["id"], time.time() + 60
     while time.time() < end:
@@ -131,7 +131,7 @@ class TestStoreRatesOrders:
         _rates(toks, "mer-1", {"base_fee": 9})
         o = [x for x in requests.get(f"{API}/merchants/mer-1", headers=H(toks["m1"])).json()["orders"] if x["id"] == order["id"]][0]
         assert o["fee"]["base"] == 6.5
-        assert requests.get(f"{API}/pricing", headers=H(toks["m2"])).json()["base_fee"] == 8
+        assert requests.get(f"{API}/pricing", headers=H(toks["m2"])).json()["base_fee"] == 8.99
 
     def test_admin_billing_custom_rates_flag(self, toks):
         s = {x["id"]: x for x in requests.get(f"{API}/admin/billing", headers=H(toks["admin"])).json()["stores"]}

@@ -144,7 +144,7 @@ def delivered(toks):
     assert requests.post(f"{API}/admin/reset", headers=H(toks["admin"])).status_code == 200
     h = H(toks["m1"])
     r = requests.post(f"{API}/merchants/mer-1/import", headers=h,
-                      files={"file": ("r.csv", b"customer_name,phone,address\nTEST_Report,4155550188,1 Market St\n", "text/csv")})
+                      files={"file": ("r.csv", b"customer_name,phone,address\nTEST_Report,5195550188,200 King St W Kitchener\n", "text/csv")})
     assert r.status_code == 200, r.text
     jid = r.json()["id"]
     end = time.time() + 60

@@ -14,7 +14,7 @@ export type ImportRow = {
 
 const FIELDS: { k: keyof ImportRow["data"]; label: string; ph: string }[] = [
   { k: "customer_name", label: "CUSTOMER NAME", ph: "Jane Doe" },
-  { k: "phone", label: "PHONE", ph: "+1 415 555 0123" },
+  { k: "phone", label: "PHONE", ph: "+1 519 555 0123" },
   { k: "address", label: "STREET ADDRESS (SAN FRANCISCO)", ph: "1 Market St" },
   { k: "notes", label: "NOTES (OPTIONAL)", ph: "Leave at reception" },
   { k: "window_date", label: "DELIVERY DATE (OPTIONAL, YYYY-MM-DD)", ph: "2026-06-30" },

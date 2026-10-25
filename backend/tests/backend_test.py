@@ -44,7 +44,7 @@ def test_driver_route(api):
     assert r.status_code == 200
     rt = r.json()["route"]
     assert rt is not None and rt["status"] == "active"
-    assert rt["zone"] == "Mission"
+    assert rt["zone"] == "Downtown"
     assert len(rt["stops"]) > 0
     assert rt["next_stop_id"]
 
@@ -59,13 +59,13 @@ def test_zones(api):
     assert r.status_code == 200
     zones = r.json()
     names = [z["zone"] for z in zones]
-    # Mission already batched during seed; remaining zones should exist
+    # Downtown already batched during seed; remaining zones should exist
     assert all(z["count"] > 0 for z in zones)
-    assert "SoMa" in names
+    assert "Uptown" in names
 
 
 def test_batch_and_optimize_sequence_start(api):
-    r = api.post(f"{API}/routes/batch", json={"zone": "SoMa", "driver_id": "drv-2"})
+    r = api.post(f"{API}/routes/batch", json={"zone": "Uptown", "driver_id": "drv-2"})
     assert r.status_code == 200
     rd = r.json()
     route_id = rd["id"]
@@ -97,7 +97,7 @@ def test_batch_and_optimize_sequence_start(api):
 
 
 def test_batch_bad_zone(api):
-    assert api.post(f"{API}/routes/batch", json={"zone": "Mission", "driver_id": "drv-3"}).status_code == 400
+    assert api.post(f"{API}/routes/batch", json={"zone": "Downtown", "driver_id": "drv-3"}).status_code == 400
     assert api.post(f"{API}/routes/batch", json={"zone": "Marina", "driver_id": "ghost"}).status_code == 404
 
 
@@ -115,15 +115,15 @@ def test_simulate_step_geofence(api):
 
 
 def test_post_location(api):
-    r = api.post(f"{API}/drivers/drv-3/location", json={"lat": 37.78, "lng": -122.41})
+    r = api.post(f"{API}/drivers/drv-3/location", json={"lat": 43.48, "lng": -80.41})
     assert r.status_code == 200
     assert r.json()["ok"] is True
 
 
 # ---- stops: arrive / deliver / fail
 def test_arrive_deliver_fail_flow(api):
-    # new planned route in Sunset for drv-3
-    rd = api.post(f"{API}/routes/batch", json={"zone": "Sunset", "driver_id": "drv-3"}).json()
+    # new planned route in Westmount for drv-3
+    rd = api.post(f"{API}/routes/batch", json={"zone": "Westmount", "driver_id": "drv-3"}).json()
     stops = rd["stops"]
     api.post(f"{API}/routes/{rd['id']}/start")
     s0 = stops[0]

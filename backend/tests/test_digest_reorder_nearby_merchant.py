@@ -199,22 +199,22 @@ class TestMerchants:
         assert r.text.startswith("customer_name,phone,address")
 
     def test_import_errors(self, api):
-        assert _upload(api, "name,phone\nA,4155550100\n").status_code == 400
+        assert _upload(api, "name,phone\nA,5195550100\n").status_code == 400
         assert _upload(api, "").status_code == 400
         assert _upload(api, "customer_name,phone,address\n").status_code == 400
-        big = "customer_name,phone,address\n" + "".join(f"P{i},4155550{i:03d},1 Market St\n" for i in range(201))
+        big = "customer_name,phone,address\n" + "".join(f"P{i},5195550{i:03d},200 King St W Kitchener\n" for i in range(201))
         r = _upload(api, big)
         assert r.status_code == 400 and "200" in r.json()["detail"]
-        assert _upload(api, "customer_name,phone,address\nA,4155550100,1 Market St\n", mid="nope").status_code == 404
+        assert _upload(api, "customer_name,phone,address\nA,5195550100,200 King St W Kitchener\n", mid="nope").status_code == 404
         assert api.get(f"{API}/imports/nope").status_code == 404
 
 
 @pytest.fixture(scope="module")
 def import_job(api):
     csv_text = ("Name,Phone,Address,Notes\n"
-                "TEST_Valid,415 555 0177,1 Market St,front desk\n"
+                "TEST_Valid,519 555 0177,200 King St W Kitchener,front desk\n"
                 "TEST_BadPhone,123,450 Golden Gate Ave,\n"
-                "TEST_Bogus,4155550166,99999 Zzyzx Nowhere Blvd,\n")
+                "TEST_Bogus,5195550166,99999 Zzyzx Nowhere Blvd,\n")
     r = _upload(api, csv_text)
     assert r.status_code == 200, r.text
     j = r.json()
@@ -235,7 +235,7 @@ class TestImportFlow:
         order = next(o for o in d["orders"] if o["customer_name"] == "TEST_Valid")
         assert order["merchant_id"] == "mer-1" and order["zone"]
         assert order["tracking_code"].startswith("MC") and len(order["tracking_code"]) == 7
-        assert order["customer_phone"] == "+14155550177"
+        assert order["customer_phone"] == "+15195550177"
         zones = api.get(f"{API}/zones").json()
         assert any(o["id"] == order["id"] for z in zones for o in z["orders"]), "imported stop not batchable"
 
@@ -243,11 +243,11 @@ class TestImportFlow:
         d = api.get(f"{API}/merchants/mer-1").json()
         flagged = {r["data"]["customer_name"]: r for r in d["flagged"] if r["job_id"] == import_job["id"]}
         bp = flagged["TEST_BadPhone"]
-        r = api.put(f"{API}/import-rows/{bp['id']}", json={"phone": "+1 415 555 0199"})
+        r = api.put(f"{API}/import-rows/{bp['id']}", json={"phone": "+1 519 555 0199"})
         assert r.status_code == 200 and r.json()["status"] == "created", r.text
         assert r.json()["tracking_code"].startswith("MC")
         # already created -> 400
-        assert api.put(f"{API}/import-rows/{bp['id']}", json={"phone": "4155550100"}).status_code == 400
+        assert api.put(f"{API}/import-rows/{bp['id']}", json={"phone": "5195550100"}).status_code == 400
         assert api.delete(f"{API}/import-rows/{bp['id']}").status_code == 400
         job = api.get(f"{API}/imports/{import_job['id']}").json()
         assert job["created"] == 2 and job["flagged"] == 1

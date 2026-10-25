@@ -16,8 +16,8 @@ if not BASE_URL:
             BASE_URL = line.split("=", 1)[1].strip().strip('"').rstrip("/")
 API = f"{BASE_URL}/api"
 NOAUTH = {"X-No-Auto-Auth": "1"}
-PHONE_RAW, PHONE = "4155550166", "+14155550166"
-PHONE2_RAW, PHONE2 = "4155550167", "+14155550167"
+PHONE_RAW, PHONE = "5195550166", "+15195550166"
+PHONE2_RAW, PHONE2 = "5195550167", "+15195550167"
 PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
 
 
@@ -31,7 +31,7 @@ def login(email, pw):
     return {"Authorization": f"Bearer {r.json()['token']}", "X-No-Auto-Auth": "1"}
 
 
-def driver_h(phone="+14155550101", pin="482913"):
+def driver_h(phone="+15195550101", pin="482913"):
     r = requests.post(f"{API}/auth/driver-login", json={"phone": phone, "pin": pin}, headers=NOAUTH)
     if r.status_code != 200:
         pytest.skip(f"driver login failed {r.status_code}")
@@ -79,7 +79,7 @@ def ctx():
 # ---- Notes In CSV
 class TestCsvNotes:
     def test_delivery_note_prefills_and_saves(self, ctx):
-        rows = import_csv(ctx["m1"], f"customer_name,phone,address,delivery_note\nTEST_CSV One,{PHONE_RAW},1 Market St,  Gate   code 1111 \n")
+        rows = import_csv(ctx["m1"], f"customer_name,phone,address,delivery_note\nTEST_CSV One,{PHONE_RAW},200 King St W Kitchener,  Gate   code 1111 \n")
         assert rows[0]["status"] == "created", rows
         s = stop_doc(rows[0]["stop_id"])
         assert s["customer_note"] == "Gate code 1111"
@@ -89,15 +89,15 @@ class TestCsvNotes:
         assert len(saved) == 1 and saved[0]["note"] == "Gate code 1111"
 
     def test_gate_code_alias_replaces_saved(self, ctx):
-        rows = import_csv(ctx["m1"], f"customer_name,phone,address,gate_code\nTEST_CSV Two,{PHONE_RAW},1 Market St,Gate 2222 use side door\n")
+        rows = import_csv(ctx["m1"], f"customer_name,phone,address,gate_code\nTEST_CSV Two,{PHONE_RAW},200 King St W Kitchener,Gate 2222 use side door\n")
         s = stop_doc(rows[0]["stop_id"])
         assert s["customer_note"] == "Gate 2222 use side door" and s["customer_note_source"] == "saved"
         saved = saved_for(ctx["m1"], PHONE)
         assert len(saved) == 1 and saved[0]["note"] == "Gate 2222 use side door"
 
     def test_row_without_note_falls_back_to_saved(self, ctx):
-        rows = import_csv(ctx["m1"], f"customer_name,phone,address,delivery_note\nTEST_CSV Three,{PHONE_RAW},1 Market St,\n"
-                                      f"TEST_CSV Four,{PHONE2_RAW},1 Market St,Leave with doorman\n")
+        rows = import_csv(ctx["m1"], f"customer_name,phone,address,delivery_note\nTEST_CSV Three,{PHONE_RAW},200 King St W Kitchener,\n"
+                                      f"TEST_CSV Four,{PHONE2_RAW},200 King St W Kitchener,Leave with doorman\n")
         assert [r["status"] for r in rows] == ["created", "created"], rows
         s = stop_doc(rows[0]["stop_id"])
         assert s["customer_note"] == "Gate 2222 use side door" and s["customer_note_source"] == "saved"
@@ -106,7 +106,7 @@ class TestCsvNotes:
         assert saved_for(ctx["m1"], PHONE)[0]["note"] == "Gate 2222 use side door"  # blank cell does not clear the saved note
 
     def test_long_note_truncated_200(self, ctx):
-        rows = import_csv(ctx["m1"], f"customer_name,phone,address,delivery_note\nTEST_CSV Five,{PHONE2_RAW},1 Market St,{'x' * 260}\n")
+        rows = import_csv(ctx["m1"], f"customer_name,phone,address,delivery_note\nTEST_CSV Five,{PHONE2_RAW},200 King St W Kitchener,{'x' * 260}\n")
         s = stop_doc(rows[0]["stop_id"])
         assert len(s["customer_note"]) == 200
         assert len(saved_for(ctx["m1"], PHONE2)[0]["note"]) == 200
@@ -150,7 +150,7 @@ class TestDoorstepHint:
         clone_delivered(t["id"], p_old, "2025-12-01T10:00:00+00:00")
         clone_delivered(t["id"], p_new, "2026-01-05T10:00:00+00:00")
         clone_delivered(t["id"], None, "2026-01-09T10:00:00+00:00")  # newer but without photo -> ignored
-        clone_delivered(t["id"], p_old, "2026-01-10T10:00:00+00:00", address="999 Other St, San Francisco")  # other address
+        clone_delivered(t["id"], p_old, "2026-01-10T10:00:00+00:00", address="999 Other St, Kitchener")  # other address
         r = requests.get(f"{API}/stops/{t['id']}", headers=d)
         assert r.status_code == 200
         h = r.json()["doorstep_hint"]
@@ -165,5 +165,5 @@ class TestDoorstepHint:
     def test_other_driver_and_anon_blocked(self, ctx):
         t = target_stop()
         assert requests.get(f"{API}/stops/{t['id']}", headers=NOAUTH).status_code == 401
-        r = requests.get(f"{API}/stops/{t['id']}", headers=driver_h("+14155550102", "730516"))
+        r = requests.get(f"{API}/stops/{t['id']}", headers=driver_h("+15195550102", "730516"))
         assert r.status_code == 403

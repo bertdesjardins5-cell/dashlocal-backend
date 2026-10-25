@@ -107,7 +107,7 @@ class TestCustomerNote:
 
     # ---- POST /customer-note/seen
     def test_seen_other_driver_403(self, ctx):
-        t = driver_token("+14155550102", "730516")
+        t = driver_token("+15195550102", "730516")
         r = requests.post(f"{BASE_URL}/api/stops/{ctx['s1']}/customer-note/seen", headers={"Authorization": f"Bearer {t}"})
         assert r.status_code == 403
 
@@ -116,7 +116,7 @@ class TestCustomerNote:
         assert r.status_code == 401
 
     def test_seen_route_driver(self, ctx):
-        t = driver_token("+14155550101", "482913")
+        t = driver_token("+15195550101", "482913")
         r = requests.post(f"{BASE_URL}/api/stops/{ctx['s1']}/customer-note/seen", headers={"Authorization": f"Bearer {t}"})
         assert r.status_code == 200
         assert mongo(f'print(db.stops.findOne({{id:"{ctx["s1"]}"}}).customer_note_seen)') == "true"

@@ -12,9 +12,9 @@ import requests
 
 BASE_URL = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/")
 API = f"{BASE_URL}/api"
-DEFAULTS = {"base_fee": 8, "included_km": 5, "per_km": 1.25, "priority_fee": 6, "charge_failed": True, "tax_pct": 0}
+DEFAULTS = {"base_fee": 8.99, "included_km": 5, "per_km": 1.25, "priority_fee": 16, "charge_failed": True, "tax_pct": 0}
 CUSTOM = {"base_fee": 10, "included_km": 1, "per_km": 2, "priority_fee": 5, "charge_failed": True, "tax_pct": 13}
-DEPOT = {"lat": 37.7749, "lng": -122.4194}
+DEPOT = {"lat": 43.4516, "lng": -80.4925}
 NOAUTH = {"X-No-Auto-Auth": "1"}
 
 
@@ -44,7 +44,7 @@ def _hav(a, b):
 @pytest.fixture(scope="module")
 def toks():
     t = {"admin": _login("admin@dashlocal.app", "DashLocalAdmin2026"), "m1": _login("bakery@dashlocal.app", "Bakery2026"),
-         "m2": _login("books@dashlocal.app", "Books2026"), "d2": _dlogin("+14155550102", "730516")}
+         "m2": _login("books@dashlocal.app", "Books2026"), "d2": _dlogin("+15195550102", "730516")}
     assert requests.post(f"{API}/admin/reset", headers=H(t["admin"])).status_code == 200
     yield t
     requests.put(f"{API}/admin/pricing", json=DEFAULTS, headers=H(t["admin"]))
@@ -90,8 +90,8 @@ class TestPricingAPI:
 def orders(toks):
     assert _put_pricing(toks, CUSTOM).status_code == 200
     csvb = (b"customer_name,phone,address,priority\n"
-            b"TEST_PriA,4155550191,1 Market St,yes\n"
-            b"TEST_PriB,4155550192,101 Market St,\n")
+            b"TEST_PriA,5195550191,200 King St W Kitchener,yes\n"
+            b"TEST_PriB,5195550192,10200 King St W Kitchener,\n")
     h = H(toks["m1"])
     r = requests.post(f"{API}/merchants/mer-1/import", headers=h, files={"file": ("p.csv", csvb, "text/csv")})
     assert r.status_code == 200, r.text

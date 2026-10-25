@@ -39,7 +39,9 @@ export default function Landing() {
   const [code, setCode] = useState("");
   const track = () => code.trim() && router.push(`/customer/${code.trim().toUpperCase()}`);
   const reviews = useQuery({ queryKey: ["testimonials"], queryFn: () => api<{ id: string; quote: string; person: string | null; shop: string }[]>("/testimonials") });
-  const rates = useQuery({ queryKey: ["rate-card"], queryFn: () => api<{ currency: string; base_fee: number; included_km: number; per_km: number; priority_fee: number; hst_pct: number }>("/rate-card") });
+  const rates = useQuery({ queryKey: ["rate-card"], queryFn: () => api<{ currency: string; base_fee: number; included_km: number; per_km: number; priority_fee: number; hst_pct: number; tiers: { name: string; min_drops: number; max_drops: number | null; rate: number }[];
+    pharmacy: { batch_rate: number; standard_rate: number; min_drops: number; included_km: number; per_km: number; monthly_fee: number;
+      runs: { key: string; label: string; cutoff_label: string; pickup_label: string; window_label: string }[] } }>("/rate-card") });
 
   return (
     <View style={s.root} testID="landing-screen">
@@ -110,7 +112,7 @@ export default function Landing() {
               <Text style={s.h2}>Simple rates, no subscriptions</Text>
               <View style={[s.grid, wide && { flexDirection: "row" }]}>
                 {[
-                  { k: "base", title: "Per delivery", v: `$${rates.data.base_fee.toFixed(2)}`, sub: `Includes the first ${rates.data.included_km} km` },
+                  { k: "base", title: "Per delivery", v: `$${rates.data.base_fee.toFixed(2)}`, sub: `Standard rate, includes the first ${rates.data.included_km} km` },
                   { k: "km", title: "Extra distance", v: `$${rates.data.per_km.toFixed(2)}`, sub: `per km after ${rates.data.included_km} km` },
                   { k: "priority", title: "Priority rush", v: `+$${rates.data.priority_fee.toFixed(2)}`, sub: "Goes out first on the route" },
                 ].map((r) => (
@@ -121,8 +123,42 @@ export default function Landing() {
                   </View>
                 ))}
               </View>
+              <View style={[s.rate, { marginTop: 16 }]} testID="rate-tiers">
+                <Text style={s.rateTitle}>Batch pricing: more drops a day, lower rate per drop</Text>
+                {rates.data.tiers.map((t) => {
+                  const save = Math.round((1 - t.rate / rates.data.base_fee) * 100);
+                  return (
+                    <View key={t.min_drops} style={s.tierRow} testID={`tier-${t.min_drops}`}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.h3}>{t.name}</Text>
+                        <Text style={s.body}>{t.max_drops ? `${t.min_drops}–${t.max_drops}` : `${t.min_drops}+`} drops a day</Text>
+                      </View>
+                      <View style={{ alignItems: "flex-end" }}>
+                        <Text style={s.tierRate}>${t.rate.toFixed(2)}</Text>
+                        <Text style={s.body}>{save > 0 ? `Save ${save}%` : "per drop"}</Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+              <View style={[s.rate, { marginTop: 16 }]} testID="rate-pharmacy">
+                <Text style={s.rateTitle}>Pharmacy batch delivery</Text>
+                <Text style={s.rateVal}>${rates.data.pharmacy.batch_rate.toFixed(2)}<Text style={s.body}> per drop</Text></Text>
+                <Text style={s.body}>
+                  For pharmacy partners with {rates.data.pharmacy.min_drops}+ drops on one pickup (fewer drops are billed at ${rates.data.pharmacy.standard_rate.toFixed(2)}). The first {rates.data.pharmacy.included_km} km from your pharmacy are included, then ${rates.data.pharmacy.per_km.toFixed(2)} per km. Platform fee is ${rates.data.pharmacy.monthly_fee.toFixed(2)} a month.
+                </Text>
+                {rates.data.pharmacy.runs.map((r) => (
+                  <View key={r.key} style={s.tierRow} testID={`pharmacy-run-${r.key}`}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.h3}>{r.label}</Text>
+                      <Text style={s.body}>Order by {r.cutoff_label} · pickup {r.pickup_label}</Text>
+                    </View>
+                    <Text style={[s.body, { textAlign: "right", maxWidth: 130 }]}>Delivered {r.window_label}</Text>
+                  </View>
+                ))}
+              </View>
               <Text style={[s.body, { marginTop: 12 }]} testID="rate-card-note">
-                Prices in {rates.data.currency} plus {rates.data.hst_pct}% HST. You get an invoice for every completed delivery, and you only pay for deliveries we complete. Volume pricing is available; ask us when you sign up.
+                Prices in {rates.data.currency} plus {rates.data.hst_pct}% HST. Your rate is set by how many of your drops we complete that day, and every drop that day gets the lower rate. Distance and priority fees are added on top. You get an invoice for every completed delivery, and you only pay for deliveries we complete.
               </Text>
             </View>
           </View>
@@ -231,6 +267,8 @@ const useStyles = makeStyles((c) => ({
   review: { gap: 12, padding: 24, borderRadius: 20, backgroundColor: c.surface, borderWidth: 1, borderColor: c.brandLine },
   rate: { gap: 6, padding: 24, borderRadius: 20, backgroundColor: c.surface, borderWidth: 1, borderColor: c.brandLine },
   rateTitle: { fontFamily: fonts.brandHeadingMedium, fontSize: 14, color: c.brandForest, letterSpacing: 0.5 },
+  tierRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, borderTopWidth: 1, borderTopColor: c.brandLine },
+  tierRate: { fontFamily: fonts.brandHeading, fontSize: 24, color: c.brandCharcoal },
   rateVal: { fontFamily: fonts.brandHeading, fontSize: 36, lineHeight: 44, color: c.brandCharcoal },
   quoteMark: { fontFamily: fonts.brandHeading, fontSize: 44, lineHeight: 44, color: c.brandGold, marginBottom: -12 },
   quote: { fontFamily: fonts.brandBody, fontSize: 17, lineHeight: 27, color: c.brandCharcoal },

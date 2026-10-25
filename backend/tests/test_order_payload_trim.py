@@ -19,7 +19,7 @@ mdb = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
 PII = {"customer_name", "customer_phone", "address", "notes", "lat", "lng", "pod_photo_path", "pod_signature",
        "share_token", "postal_code", "fail_reason", "fee", "rating_comment"}
 PUBLIC = {"id", "tracking_code", "status", "arrived_at", "delivered_at", "pod_qr_verified", "window_start",
-          "window_end", "window_date", "rating", "nearby_sms_status", "has_photo", "has_signature"}
+          "window_end", "window_date", "rating", "nearby_sms_status", "has_photo", "has_signature", "customer_note_read"}
 
 
 def last4(code):
@@ -54,7 +54,7 @@ def admin():
 
 @pytest.fixture(scope="module")
 def drv1(admin):
-    r = requests.post(f"{API}/auth/driver-login", json={"phone": "+14155550101", "pin": "482913"}, headers=NOAUTH)
+    r = requests.post(f"{API}/auth/driver-login", json={"phone": "+15195550101", "pin": "482913"}, headers=NOAUTH)
     assert r.status_code == 200, r.text
     return r.json()["token"]
 
@@ -75,7 +75,7 @@ class TestWindowTrim:
         # book tomorrow 10-12 (never in the past)
         from datetime import datetime, timedelta
         from zoneinfo import ZoneInfo
-        tmrw = (datetime.now(ZoneInfo("America/Los_Angeles")) + timedelta(days=1)).strftime("%Y-%m-%d")
+        tmrw = (datetime.now(ZoneInfo("America/Toronto")) + timedelta(days=1)).strftime("%Y-%m-%d")
         r = requests.put(f"{API}/stops/{sid('MD1005')}/window", json={"date": tmrw, "start": "10:00", "end": "12:00"},
                          headers={"X-Order-Token": order_token("MD1005"), **NOAUTH})
         assert r.status_code == 200, r.text

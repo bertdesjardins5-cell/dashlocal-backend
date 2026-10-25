@@ -39,7 +39,7 @@ export default function DriverSignInForm({ onSignedIn, scroll = true }: { onSign
       {error ? <View style={s.err} testID="driver-sign-in-error"><Text style={s.errText}>{error}</Text></View> : null}
       <Text style={s.label}>Phone number</Text>
       <TextInput testID="driver-sign-in-phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" textContentType="telephoneNumber"
-        autoComplete="tel" placeholder="(415) 555-0101" placeholderTextColor={colors.brandMuted} style={s.input} />
+        autoComplete="tel" placeholder="(519) 555-0101" placeholderTextColor={colors.brandMuted} style={s.input} />
       <Text style={s.label}>PIN</Text>
       <TextInput testID="driver-sign-in-pin" value={pin} onChangeText={(v) => setPin(v.replace(/\D/g, "").slice(0, 6))} keyboardType="number-pad"
         secureTextEntry maxLength={6} placeholder="••••••" placeholderTextColor={colors.brandMuted} style={[s.input, s.pin]} onSubmitEditing={submit} returnKeyType="go" />

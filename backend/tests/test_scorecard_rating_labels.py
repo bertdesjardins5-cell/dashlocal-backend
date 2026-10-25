@@ -9,7 +9,7 @@ import requests
 
 BASE_URL = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/")
 API = f"{BASE_URL}/api"
-TZ = ZoneInfo("America/Los_Angeles")
+TZ = ZoneInfo("America/Toronto")
 FICTIONAL = re.compile(r"^\+1\d{3}55501\d{2}$")
 
 

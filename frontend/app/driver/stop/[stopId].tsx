@@ -72,7 +72,7 @@ export default function StopDetail() {
   const savePhones = async () => {
     const clean = (p: string) => p.replace(/[\s\-()]/g, "");
     const valid = (p: string) => /^\+[1-9]\d{7,14}$/.test(clean(p));
-    if (!valid(custPhone) || (driverId && !valid(drvPhone))) return toast.show("USE +COUNTRYCODE FORMAT, E.G. +14155550123", "red");
+    if (!valid(custPhone) || (driverId && !valid(drvPhone))) return toast.show("USE +COUNTRYCODE FORMAT, E.G. +15195550123", "red");
     setSavingPhones(true);
     try {
       if (custPhone && custPhone !== stop?.customer_phone) await api(`/stops/${stopId}/phone`, { method: "PUT", body: { phone: custPhone } });
@@ -206,9 +206,9 @@ export default function StopDetail() {
             {showPhones ? (
               <View style={s.section} testID="phones-editor">
                 <Mono style={s.meta}>YOUR PHONE (TWILIO RINGS THIS FIRST)</Mono>
-                <TextInput testID="driver-phone-input" value={drvPhone} onChangeText={setDrvPhone} keyboardType="phone-pad" placeholder="+14155550123" placeholderTextColor={colors.muted} style={s.input} />
+                <TextInput testID="driver-phone-input" value={drvPhone} onChangeText={setDrvPhone} keyboardType="phone-pad" placeholder="+15195550123" placeholderTextColor={colors.muted} style={s.input} />
                 <Mono style={s.meta}>CUSTOMER PHONE</Mono>
-                <TextInput testID="customer-phone-input" value={custPhone} onChangeText={setCustPhone} keyboardType="phone-pad" placeholder="+14155550123" placeholderTextColor={colors.muted} style={s.input} />
+                <TextInput testID="customer-phone-input" value={custPhone} onChangeText={setCustPhone} keyboardType="phone-pad" placeholder="+15195550123" placeholderTextColor={colors.muted} style={s.input} />
                 <Btn testID="save-phones-button" label="SAVE NUMBERS" variant="dark" loading={savingPhones} onPress={savePhones} />
               </View>
             ) : null}

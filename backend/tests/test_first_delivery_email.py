@@ -67,7 +67,7 @@ def route():
     r101 = db.routes.find_one({"status": "active", "driver_id": "drv-1"}, {"_id": 0})
     assert r101, "seeded active route missing"
     rid = "TEST_FD_route_" + uuid.uuid4().hex[:6]
-    db.routes.insert_one({"id": rid, "name": "TEST_FD Route", "zone": "Mission", "driver_id": "drv-2", "status": "active", "planned_distance_m": 0,
+    db.routes.insert_one({"id": rid, "name": "TEST_FD Route", "zone": "Downtown", "driver_id": "drv-2", "status": "active", "planned_distance_m": 0,
                           "actual_distance_m": 0, "started_at": r101["started_at"], "completed_at": None, "resequenced_at": None,
                           "resequence_seen": True, "service_date": r101["service_date"], "created_at": r101["created_at"]})
     return rid
@@ -75,8 +75,8 @@ def route():
 
 def _stop(mid, route_id, seq):
     sid = "TEST_FD_stop_" + uuid.uuid4().hex[:8]
-    db.stops.insert_one({"id": sid, "route_id": route_id, "seq": seq, "customer_name": "TEST Customer", "customer_phone": "+14155550199",
-                         "address": "100 Valencia St", "postal_code": "94110", "zone": "Mission", "lat": 37.77, "lng": -122.42,
+    db.stops.insert_one({"id": sid, "route_id": route_id, "seq": seq, "customer_name": "TEST Customer", "customer_phone": "+15195550199",
+                         "address": "200 King St W, Kitchener", "postal_code": "N2G 4V6", "zone": "Downtown", "lat": 43.47, "lng": -80.42,
                          "status": "pending", "tracking_code": "TFD" + uuid.uuid4().hex[:5].upper(), "notes": "", "merchant_id": mid})
     return sid
 
@@ -110,7 +110,7 @@ class TestApprove:
 class TestFirstDelivery:
     def test_csv_import_creates_stop(self, shop, route, admin):
         """Real path: merchant CSV import -> stop with merchant_id; then attach it to today's route."""
-        csv = "customer_name,phone,address\nTEST Csv Customer,+14155550198,\"3150 18th St, San Francisco, CA 94110\"\n"
+        csv = "customer_name,phone,address\nTEST Csv Customer,+15195550198,\"200 King St W, Kitchener\"\n"
         r = requests.post(f"{BASE_URL}/api/merchants/{shop['mid']}/import", files={"file": ("o.csv", io.BytesIO(csv.encode()), "text/csv")}, headers=admin)
         assert r.status_code == 200, r.text
         job = r.json()["id"]

@@ -30,7 +30,7 @@ def merchant():
 
 @pytest.fixture(scope="module")
 def driver():
-    return _login("driver-login", {"phone": "(415) 555-0101", "pin": "482913"})
+    return _login("driver-login", {"phone": "(519) 555-0101", "pin": "482913"})
 
 
 @pytest.fixture(scope="module", autouse=True)

@@ -11,7 +11,7 @@ import websockets
 BASE_URL = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/")
 API = f"{BASE_URL}/api"
 WS = BASE_URL.replace("http", "ws", 1) + "/api/ws/admin"
-TZ = ZoneInfo("America/Los_Angeles")
+TZ = ZoneInfo("America/Toronto")
 _raw = requests.Session.request  # bypass conftest auto-admin injection for gating checks
 
 

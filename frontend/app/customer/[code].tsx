@@ -169,7 +169,7 @@ export default function TrackOrder() {
                 {!delivered && t.stop.status !== "failed" ? (
                   <View style={{ marginHorizontal: -spacing.lg, gap: spacing.xs }} testID="customer-window-section">
                     <Mono style={[s.label, { paddingHorizontal: spacing.lg }]}>
-                      {windowLabel(t.stop) ? `YOUR WINDOW ${windowLabel(t.stop)} (SF TIME)` : "BOOK A DELIVERY DAY & WINDOW"}
+                      {windowLabel(t.stop) ? `YOUR WINDOW ${windowLabel(t.stop)} (EASTERN TIME)` : "BOOK A DELIVERY DAY & WINDOW"}
                       {t.late_min ? ` · MAY RUN ${t.late_min}M LATE` : ""}
                     </Mono>
                     <WindowPicker testIDPrefix="customer-window" date={t.stop.window_date} start={t.stop.window_start} end={t.stop.window_end} disabled={savingWin || t.stop.status === "arrived"} onSelect={requestWindow} />

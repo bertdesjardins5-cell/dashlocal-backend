@@ -79,7 +79,7 @@ class TestSignupPublic:
         assert r.status_code == 400, r.text
 
     def test_create_and_list(self, admin):
-        body, r = _signup(phone="(415) 555-0199", address="1 Market St", message="  hello   there ")
+        body, r = _signup(phone="(519) 555-0199", address="200 King St W Kitchener", message="  hello   there ")
         assert r.status_code == 200 and r.json() == {"ok": True}, r.text
         lst = requests.get(f"{BASE_URL}/api/admin/signup-requests", headers=admin).json()
         mine = [x for x in lst if x["email"] == body["email"]]

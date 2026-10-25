@@ -70,7 +70,7 @@ def route():
     r101 = db.routes.find_one({"status": "active", "driver_id": "drv-1"}, {"_id": 0})
     assert r101, "seeded active route missing"
     rid = "TEST_INV_route_" + uuid.uuid4().hex[:6]
-    db.routes.insert_one({"id": rid, "name": "TEST_INV Route", "zone": "Mission", "driver_id": "drv-2", "status": "active", "planned_distance_m": 0,
+    db.routes.insert_one({"id": rid, "name": "TEST_INV Route", "zone": "Downtown", "driver_id": "drv-2", "status": "active", "planned_distance_m": 0,
                           "actual_distance_m": 0, "started_at": r101["started_at"], "completed_at": None, "resequenced_at": None,
                           "resequence_seen": True, "service_date": r101["service_date"], "created_at": r101["created_at"]})
     return rid
@@ -112,10 +112,10 @@ class TestInvoiceCreation:
     def test_import_and_route(self, bakery, route):
         before = {s["id"] for s in db.stops.find({"merchant_id": "mer-1"}, {"id": 1})}
         csv = ("customer_name,phone,address\n"
-               "TEST_INV A,+14155550191,\"3150 18th St, San Francisco, CA 94110\"\n"
-               "TEST_INV B,+14155550192,\"500 Castro St, San Francisco, CA 94114\"\n"
-               "TEST_INV C,+14155550193,\"1 Ferry Building, San Francisco, CA 94111\"\n"
-               "TEST_INV D,+14155550194,\"2000 Mission St, San Francisco, CA 94110\"\n")
+               "TEST_INV A,+15195550191,\"200 King St W, Kitchener\"\n"
+               "TEST_INV B,+15195550192,\"75 King St S, Waterloo\"\n"
+               "TEST_INV C,+15195550193,\"385 Fairway Rd S, Kitchener\"\n"
+               "TEST_INV D,+15195550194,\"100 Regina St S, Waterloo\"\n")
         r = requests.post(f"{API}/merchants/mer-1/import", files={"file": ("o.csv", io.BytesIO(csv.encode()), "text/csv")}, headers=bakery)
         assert r.status_code == 200, r.text
         job = r.json()["id"]

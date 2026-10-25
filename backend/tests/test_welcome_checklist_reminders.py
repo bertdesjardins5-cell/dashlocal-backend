@@ -109,13 +109,13 @@ class TestChecklist:
         assert requests.post(f"{BASE_URL}/api/merchants/{shop['mid']}/checklist/dismiss", headers=NOAUTH).status_code == 401
 
     def test_note_step(self, shop):
-        r = requests.put(f"{BASE_URL}/api/merchants/{shop['mid']}/saved-notes", json={"phone": "+14155559911", "note": "TEST gate 1234"}, headers=shop["h"])
+        r = requests.put(f"{BASE_URL}/api/merchants/{shop['mid']}/saved-notes", json={"phone": "+15195559911", "note": "TEST gate 1234"}, headers=shop["h"])
         assert r.status_code == 200, r.text
         d = requests.get(f"{BASE_URL}/api/merchants/{shop['mid']}/checklist", headers=shop["h"]).json()
         assert {s["key"]: s["done"] for s in d["steps"]}["note"] is True and d["done"] == 2
 
     def test_upload_step(self, shop):
-        csv = b"customer_name,phone,address\nTEST Person,+14155559912,1 Market St San Francisco CA\n"
+        csv = b"customer_name,phone,address\nTEST Person,+15195559912,200 King St W Kitchener\n"
         h = {k: v for k, v in shop["h"].items()}
         r = requests.post(f"{BASE_URL}/api/merchants/{shop['mid']}/import", files={"file": ("orders.csv", io.BytesIO(csv), "text/csv")}, headers=h)
         assert r.status_code == 200, r.text

@@ -13,7 +13,7 @@ if not BASE_URL:
             BASE_URL = line.split("=", 1)[1].strip().strip('"').rstrip("/")
 API = f"{BASE_URL}/api"
 NOAUTH = {"X-No-Auto-Auth": "1"}
-PHONE_RAW, PHONE = "4155550177", "+14155550177"
+PHONE_RAW, PHONE = "5195550177", "+15195550177"
 
 
 def mongo(js):
@@ -27,7 +27,7 @@ def login(email, pw):
 
 
 def driver_h():
-    r = requests.post(f"{API}/auth/driver-login", json={"phone": "+14155550101", "pin": "482913"}, headers=NOAUTH)
+    r = requests.post(f"{API}/auth/driver-login", json={"phone": "+15195550101", "pin": "482913"}, headers=NOAUTH)
     if r.status_code != 200:
         pytest.skip(f"driver login failed {r.status_code}")
     return {"Authorization": f"Bearer {r.json()['token']}", "X-No-Auto-Auth": "1"}
@@ -39,7 +39,7 @@ def cleanup():
 
 
 def import_one(m, name="TEST_SN Cust"):
-    body = f"customer_name,phone,address\n{name},{PHONE_RAW},1 Market St\n".encode()
+    body = f"customer_name,phone,address\n{name},{PHONE_RAW},200 King St W Kitchener\n".encode()
     r = requests.post(f"{API}/merchants/mer-1/import", headers=m, files={"file": ("t.csv", body, "text/csv")})
     assert r.status_code == 200, r.text
     job = r.json()["id"]
@@ -89,7 +89,7 @@ class TestSavedNotes:
         assert r.status_code == 200, r.text
         d = r.json()
         assert d["phone"] == PHONE and d["note"] == "Ring twice" and d["id"] and "_id" not in d
-        r2 = requests.put(f"{API}/merchants/mer-1/saved-notes", headers=ctx["m1"], json={"phone": "(415) 555-0177", "note": "Leave at side gate"})
+        r2 = requests.put(f"{API}/merchants/mer-1/saved-notes", headers=ctx["m1"], json={"phone": "(519) 555-0177", "note": "Leave at side gate"})
         assert r2.status_code == 200 and r2.json()["id"] == d["id"]
         lst = requests.get(f"{API}/merchants/mer-1/saved-notes", headers=ctx["m1"]).json()
         mine = [n for n in lst if n["phone"] == PHONE]

@@ -13,7 +13,7 @@ const FIELDS = [
   { k: "store_name", label: "Store name", ph: "e.g. Mission Bakery Co.", req: true },
   { k: "contact_name", label: "Your name", ph: "e.g. Ana Lopez", req: true },
   { k: "email", label: "Work email", ph: "you@store.com", req: true, kb: "email-address" as const },
-  { k: "phone", label: "Phone (optional)", ph: "(415) 555-0123", kb: "phone-pad" as const },
+  { k: "phone", label: "Phone (optional)", ph: "(519) 555-0123", kb: "phone-pad" as const },
   { k: "address", label: "Store address (optional)", ph: "e.g. 1 Market St" },
 ] as const;
 

@@ -89,7 +89,7 @@ export default function BillCard({ merchantId, notify }: { merchantId: string; n
         ) : null}
         {b.lines.length === 0 ? <Mono style={s.meta}>NO COMPLETED DROPS THIS WEEK</Mono> : null}
         <Btn testID="bill-download" label="DOWNLOAD STATEMENT" icon="document-text" variant="outline" loading={busy} onPress={download} />
-        <Mono style={s.meta}>Bills run Monday–Sunday (SF time) and are emailed with your Monday report. Payment is arranged directly with dispatch.</Mono>
+        <Mono style={s.meta}>Bills run Monday–Sunday (Eastern time) and are emailed with your Monday report. Payment is arranged directly with dispatch.</Mono>
       </View>
     </View>
   );

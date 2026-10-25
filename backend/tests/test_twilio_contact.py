@@ -1,5 +1,5 @@
 """Twilio masked contact + phone editing tests.
-WARNING: test_sms_real_send performs ONE real Twilio SMS (costs money) to a seeded fictional +1415555xxxx number.
+WARNING: test_sms_real_send performs ONE real Twilio SMS (costs money) to a seeded fictional +1519555xxxx number.
 Never add tests for channel='call' against an assigned stop (would ring a real phone).
 Set SKIP_TWILIO_SEND=1 to skip the real send.
 """
@@ -50,20 +50,20 @@ def test_call_unassigned_stop_400_no_driver(api):
 
 # ---- phone editing
 def test_customer_phone_invalid(api, stop):
-    for bad in ["4155550123", "abc", "+0123", ""]:
+    for bad in ["5195550123", "abc", "+0123", ""]:
         r = api.put(f"{API}/stops/{stop['id']}/phone", json={"phone": bad})
         assert r.status_code == 400, bad
 
 
 def test_customer_phone_normalized_and_persisted(api, stop):
-    r = api.put(f"{API}/stops/{stop['id']}/phone", json={"phone": "+1 (415) 555-0123"})
+    r = api.put(f"{API}/stops/{stop['id']}/phone", json={"phone": "+1 (519) 555-0123"})
     assert r.status_code == 200
-    assert r.json()["customer_phone"] == "+14155550123"
-    assert api.get(f"{API}/stops/{stop['id']}").json()["customer_phone"] == "+14155550123"
+    assert r.json()["customer_phone"] == "+15195550123"
+    assert api.get(f"{API}/stops/{stop['id']}").json()["customer_phone"] == "+15195550123"
 
 
 def test_customer_phone_404(api):
-    assert api.put(f"{API}/stops/nope-123/phone", json={"phone": "+14155550123"}).status_code == 404
+    assert api.put(f"{API}/stops/nope-123/phone", json={"phone": "+15195550123"}).status_code == 404
 
 
 def test_driver_phone_invalid(api):
@@ -72,23 +72,23 @@ def test_driver_phone_invalid(api):
 
 
 def test_driver_phone_normalized_and_persisted(api):
-    r = api.put(f"{API}/drivers/drv-1/phone", json={"phone": "+1 (415) 555-0101"})
+    r = api.put(f"{API}/drivers/drv-1/phone", json={"phone": "+1 (519) 555-0101"})
     assert r.status_code == 200
-    assert r.json()["phone"] == "+14155550101"
+    assert r.json()["phone"] == "+15195550101"
     drivers = api.get(f"{API}/drivers").json()
     d = next(x for x in drivers if x["id"] == "drv-1")
-    assert d["phone"] == "+14155550101"
+    assert d["phone"] == "+15195550101"
 
 
 def test_driver_phone_404(api):
-    assert api.put(f"{API}/drivers/drv-x/phone", json={"phone": "+14155550101"}).status_code == 404
+    assert api.put(f"{API}/drivers/drv-x/phone", json={"phone": "+15195550101"}).status_code == 404
 
 
 # ---- ONE real SMS send
 @pytest.mark.skipif(os.environ.get("SKIP_TWILIO_SEND") == "1", reason="real Twilio send skipped")
 def test_sms_real_send(api, stop):
     phone = api.get(f"{API}/stops/{stop['id']}").json()["customer_phone"]
-    assert phone.startswith("+1415555"), "safety: only send to fictional seeded numbers"
+    assert phone.startswith("+1519555"), "safety: only send to fictional seeded numbers"
     r = api.post(f"{API}/stops/{stop['id']}/contact", json={"channel": "sms", "message": "TEST_ DashLocal test message"})
     print("SMS response:", r.status_code, r.text[:300])
     assert r.status_code == 200, r.text

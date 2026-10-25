@@ -4,11 +4,12 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { api } from "@/src/api";
+import PharmacyPartnerCard from "@/src/components/PharmacyPartnerCard";
 import { Btn, Display, Mono } from "@/src/ui";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
 type P = { base_fee: number; included_km: number; per_km: number; priority_fee: number; charge_failed: boolean; tax_pct: number };
-type Rates = { name: string; shared: P; override: Partial<P>; effective: P };
+type Rates = { name: string; shared: P; override: Partial<P>; effective: P; pharmacy_partner: boolean; pickup: { lat: number; lng: number; address: string } | null };
 
 const FIELDS: { k: keyof Omit<P, "charge_failed">; label: string }[] = [
   { k: "base_fee", label: "PER-DELIVERY FEE (CAD)" },
@@ -29,10 +30,12 @@ export default function StoreRatesSheet({ merchantId, onClose, onSaved, notify }
   const [form, setForm] = useState<Record<string, string>>({});
   const [cf, setCf] = useState<"shared" | "yes" | "no">("shared");
   const [busy, setBusy] = useState(false);
+  const [pharm, setPharm] = useState(false);
 
   useEffect(() => {
     api<Rates>(`/admin/merchants/${merchantId}/pricing`).then((x) => {
       setR(x);
+      setPharm(x.pharmacy_partner);
       setForm(Object.fromEntries(FIELDS.map((f) => [f.k, x.override[f.k] != null ? String(x.override[f.k]) : ""])));
       setCf(x.override.charge_failed == null ? "shared" : x.override.charge_failed ? "yes" : "no");
     }).catch((e) => { notify(e.message, "red"); onClose(); });
@@ -73,9 +76,10 @@ export default function StoreRatesSheet({ merchantId, onClose, onSaved, notify }
           <Pressable testID="store-rates-close" onPress={onClose} style={s.close}><Ionicons name="close" size={24} color={colors.onSurface} /></Pressable>
         </View>
         <KeyboardAwareScrollView style={{ flexShrink: 1 }} contentContainerStyle={{ gap: spacing.md, paddingVertical: spacing.sm }} keyboardShouldPersistTaps="handled" bottomOffset={24}>
-          <Mono style={s.meta}>Leave a field empty to use the shared price. Custom rates apply to this store's new orders only.</Mono>
+          <Mono style={s.meta}>Leave a field empty to use the shared price. Custom rates apply to this store&apos;s new orders only.</Mono>
+          {r ? <PharmacyPartnerCard merchantId={merchantId} enabled={r.pharmacy_partner} pickup={r.pickup} onChange={setPharm} /> : null}
           {FIELDS.map((f) => (
-            <View key={f.k} style={s.field}>
+            <View key={f.k} style={[s.field, pharm && { opacity: 0.4 }]} pointerEvents={pharm ? "none" : "auto"}>
               <View style={{ flex: 1, gap: 2 }}>
                 <Mono style={s.label}>{f.label}</Mono>
                 <Mono style={s.meta}>SHARED: {r ? r.shared[f.k] : "…"}</Mono>

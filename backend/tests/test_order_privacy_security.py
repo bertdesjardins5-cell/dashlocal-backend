@@ -48,14 +48,14 @@ def admin():
 
 @pytest.fixture(scope="module")
 def drv1(admin):
-    r = requests.post(f"{API}/auth/driver-login", json={"phone": "+14155550101", "pin": "482913"}, headers=NOAUTH)
+    r = requests.post(f"{API}/auth/driver-login", json={"phone": "+15195550101", "pin": "482913"}, headers=NOAUTH)
     assert r.status_code == 200, r.text
     return r.json()["token"]
 
 
 @pytest.fixture(scope="module")
 def drv2(admin):
-    r = requests.post(f"{API}/auth/driver-login", json={"phone": "+14155550102", "pin": "730516"}, headers=NOAUTH)
+    r = requests.post(f"{API}/auth/driver-login", json={"phone": "+15195550102", "pin": "730516"}, headers=NOAUTH)
     assert r.status_code == 200, r.text
     return r.json()["token"]
 
