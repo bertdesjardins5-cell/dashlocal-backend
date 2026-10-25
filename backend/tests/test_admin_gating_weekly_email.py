@@ -41,7 +41,7 @@ def ids(toks):
     raw("POST", f"{API}/admin/reset", headers=H(toks["admin"]))
     routes = raw("GET", f"{API}/routes", headers=H(toks["admin"])).json()
     rid = routes[0]["id"]
-    route = raw("GET", f"{API}/routes/{rid}").json()
+    route = raw("GET", f"{API}/routes/{rid}", headers=H(toks["admin"])).json()
     rid2 = routes[1]["id"] if len(routes) > 1 else "other-route"
     return {"rid": rid, "rid2": rid2, "stop": route["stops"][0]["id"], "drv": route.get("driver_id") or "drv-1"}
 
@@ -75,7 +75,8 @@ class TestAdminGating:
             assert r.status_code == 200, (p, r.status_code, r.text[:200])
 
     def test_open_endpoints_still_open(self, ids):
-        for p in [f"/routes/{ids['rid']}", "/drivers", f"/drivers/{ids['drv']}/coaching", "/track/MD1001"]:
+        # iteration 13: routes/drivers are now driver/admin-gated; only customer tracking stays open
+        for p in ["/track/MD1001"]:
             r = raw("GET", API + p)
             assert r.status_code == 200, (p, r.status_code, r.text[:200])
 

@@ -8,6 +8,7 @@ import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { clearSession, getToken, useSession } from "@/src/session";
 import ReportDownload from "@/src/components/ReportDownload";
 import WeeklyEmailCard from "@/src/components/WeeklyEmailCard";
+import ProblemAlertsCard from "@/src/components/ProblemAlertsCard";
 import { api, API, dayLabel, Stop, windowLabel } from "@/src/api";
 import { uploadForm } from "@/src/utils/upload";
 import FixRowSheet, { ImportRow } from "@/src/components/FixRowSheet";
@@ -144,6 +145,8 @@ export default function MerchantHome() {
           <Mono style={s.section}>DELIVERY REPORT</Mono>
           <ReportDownload merchantId={merchantId} notify={toast.show} />
           <WeeklyEmailCard merchantId={merchantId} notify={toast.show} />
+          <Mono style={s.section}>PROBLEM ALERTS</Mono>
+          <ProblemAlertsCard merchantId={merchantId} notify={toast.show} />
 
           <Mono style={s.section}>ORDERS</Mono>
           {d.orders.length === 0 ? <Mono style={s.empty} testID="merchant-orders-empty">NO ORDERS YET · UPLOAD A CSV TO GET STARTED</Mono> : null}

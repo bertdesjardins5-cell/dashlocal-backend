@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { api, dayLabel, depotToday, fmtDepotTime, RouteDetail, windowLabel } from "@/src/api";
+import { clearSession } from "@/src/session";
 import RouteMap from "@/src/components/RouteMap";
 import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
@@ -167,9 +168,14 @@ export default function Manifest() {
   return (
     <View style={s.root} testID="driver-manifest-screen">
       <Header title={route?.name ?? "MANIFEST"} subtitle={route ? `${route.service_date !== depotToday() ? `${dayLabel(route.service_date)} · ` : ""}${route.completed}/${route.total} DROPS · ${route.driver?.name}` : undefined} right={
-        <Pressable testID="driver-summary-button" onPress={() => router.push(`/driver/summary/${driverId}`)} style={s.iconBtn}>
-          <Ionicons name="stats-chart" size={20} color={colors.onSurfaceInverse} />
-        </Pressable>
+        <View style={{ flexDirection: "row", gap: spacing.sm }}>
+          <Pressable testID="driver-summary-button" onPress={() => router.push(`/driver/summary/${driverId}`)} style={s.iconBtn}>
+            <Ionicons name="stats-chart" size={20} color={colors.onSurfaceInverse} />
+          </Pressable>
+          <Pressable testID="driver-sign-out-button" onPress={() => clearSession()} style={s.iconBtn}>
+            <Ionicons name="log-out" size={20} color={colors.onSurfaceInverse} />
+          </Pressable>
+        </View>
       } />
       {coachNote ? (
         <View style={s.coachBox} testID="coaching-banner">

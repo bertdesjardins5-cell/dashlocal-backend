@@ -8,6 +8,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { api, API, fileUrl, RouteDetail, Stop, windowLabel } from "@/src/api";
+import { getToken } from "@/src/session";
 import { uploadForm } from "@/src/utils/upload";
 import SignaturePad from "@/src/components/SignaturePad";
 import Svg, { Path } from "react-native-svg";
@@ -86,7 +87,10 @@ export default function StopDetail() {
     setPhoto({ uri: asset.uri, path: null });
     setUploading(true);
     try {
-      const res = await uploadForm(`${API}/upload`, { files: { file: { uri: asset.uri, name: asset.fileName ?? "pod.jpg", mimeType: asset.mimeType ?? "image/jpeg" } } });
+      const res = await uploadForm(`${API}/upload`, {
+        files: { file: { uri: asset.uri, name: asset.fileName ?? "pod.jpg", mimeType: asset.mimeType ?? "image/jpeg" } },
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
       if (!res.ok) throw new Error(res.status === 402 ? "Storage out of credits" : "Upload failed");
       const j = await res.json();
       setPhoto({ uri: asset.uri, path: j.path });

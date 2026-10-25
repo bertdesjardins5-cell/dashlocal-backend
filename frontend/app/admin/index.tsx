@@ -98,6 +98,14 @@ export default function AdminDashboard() {
             </View>
             <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />
           </Pressable>
+          <Pressable testID="admin-driver-accounts-link" onPress={() => router.push("/admin/drivers")} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
+            <Ionicons name="key" size={24} color={colors.onSurface} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Display style={s.rowTitle}>DRIVER PINS</Display>
+              <Mono style={s.meta}>Set or reset each driver's 6-digit sign-in PIN</Mono>
+            </View>
+            <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />
+          </Pressable>
           <Mono style={s.section}>DAILY OPS DIGEST</Mono>
           <DailyDigest />
           <LowRatingAlerts notify={toast.show} />

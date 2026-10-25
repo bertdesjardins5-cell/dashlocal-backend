@@ -55,13 +55,13 @@ export default function WeeklyEmailCard({ merchantId, notify }: { merchantId: st
 
   return (
     <View style={s.block} testID="weekly-email-card">
-      <Pressable testID="weekly-email-toggle" onPress={() => toggle(!w.enabled)} disabled={busy === "toggle"} style={s.row}>
+      <View testID="weekly-email-toggle" style={s.row}> toggle(!w.enabled)} disabled={busy === "toggle"} style={s.row}>
         <View style={{ flex: 1, gap: 2 }}>
           <Mono style={s.title}>EMAIL ME EVERY MONDAY</Mono>
           <Mono style={s.meta} numberOfLines={2}>To {w.recipients.join(", ") || "—"} · 8:00 SF time</Mono>
         </View>
         <Switch value={w.enabled} onValueChange={toggle} disabled={busy === "toggle"} trackColor={{ true: colors.brandPrimary, false: colors.surfaceSecondary }} testID="weekly-email-switch" />
-      </Pressable>
+      </View>
       <Mono style={s.meta} testID="weekly-email-next">{w.enabled ? `NEXT: ${when(w.next_send)}` : "PAUSED — NO WEEKLY EMAILS"}</Mono>
       {w.last ? (
         <Mono style={[s.meta, w.last.status !== "sent" && { color: colors.brandPrimary, fontWeight: "700" }]} testID="weekly-email-last">

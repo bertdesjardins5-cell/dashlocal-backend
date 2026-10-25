@@ -66,6 +66,56 @@ async def require_admin(request: Request):
 
 ADMIN_ONLY = [Depends(require_admin)]
 
+
+async def require_driver_self(driver_id: str, request: Request):
+    """The signed-in driver themself (or the dispatch admin)."""
+    u = await current_user(request)
+    if u["role"] == "admin" or (u["role"] == "driver" and u.get("driver_id") == driver_id):
+        return u
+    raise HTTPException(403, "You can only open your own manifest")
+
+
+async def require_route_driver(route_id: str, request: Request):
+    """The driver assigned to this route (or the dispatch admin)."""
+    u = await current_user(request)
+    if u["role"] == "admin":
+        return u
+    if u["role"] == "driver":
+        r = await db.routes.find_one({"id": route_id}, {"_id": 0, "driver_id": 1})
+        if not r:
+            raise HTTPException(404, "Route not found")
+        if r.get("driver_id") == u.get("driver_id"):
+            return u
+    raise HTTPException(403, "This route belongs to another driver")
+
+
+async def require_stop_driver(stop_id: str, request: Request):
+    """The driver whose route holds this stop (or the dispatch admin)."""
+    u = await current_user(request)
+    if u["role"] == "admin":
+        return u
+    if u["role"] == "driver":
+        s = await db.stops.find_one({"id": stop_id}, {"_id": 0, "route_id": 1})
+        if not s:
+            raise HTTPException(404, "Stop not found")
+        r = await db.routes.find_one({"id": s.get("route_id")}, {"_id": 0, "driver_id": 1}) if s.get("route_id") else None
+        if r and r.get("driver_id") == u.get("driver_id"):
+            return u
+    raise HTTPException(403, "This stop is on another driver's route")
+
+
+async def require_any_driver(request: Request):
+    u = await current_user(request)
+    if u["role"] in ("admin", "driver"):
+        return u
+    raise HTTPException(403, "Driver sign-in required")
+
+
+DRIVER_SELF = [Depends(require_driver_self)]
+ROUTE_DRIVER = [Depends(require_route_driver)]
+STOP_DRIVER = [Depends(require_stop_driver)]
+ANY_DRIVER = [Depends(require_any_driver)]
+
 # ---------------------------------------------------------------- constants
 GEOFENCE_M = 50
 AVG_SPEED_KMH = 25.0
@@ -275,6 +325,8 @@ class Stop(BaseModel):
     nearby_sms_status: Optional[str] = None  # "driver is 2 stops away" text: sending | sent | skipped_fictional | not_configured | failed
     nearby_sms_at: Optional[str] = None
     merchant_id: Optional[str] = None  # set when the order came from a merchant CSV import
+    merchant_late_alert_at: Optional[str] = None  # "running late" email sent to the merchant (once)
+    merchant_fail_alert_at: Optional[str] = None  # "failed drop" email sent to the merchant (once)
     created_at: Optional[str] = None
     fail_reason: Optional[str] = None
 
@@ -511,6 +563,7 @@ async def broadcast_route(route_id: str):
     route = Route(**(await db.routes.find_one({"id": route_id}, {"_id": 0})))
     stops = await get_stops(route_id)
     await maybe_nearby_sms(route, stops)
+    await maybe_late_alerts(route, stops)
     for s in stops:
         if hub.rooms.get(f"track:{s.tracking_code}"):
             await hub.send(f"track:{s.tracking_code}", await tracking_payload(s.tracking_code))
@@ -544,6 +597,8 @@ async def seed(force: bool = False):
     await db.coaching_notes.delete_many({})
     await db.import_jobs.delete_many({})
     await db.import_rows.delete_many({})
+    await db.merchant_alerts.delete_many({})
+    await db.report_emails.delete_many({})
     await db.stops.delete_many({})
     await db.routes.delete_many({})
     rnd = random.Random(42)
@@ -701,6 +756,7 @@ async def startup():
         await db.merchants.update_one({"id": m["id"]}, {"$setOnInsert": m}, upsert=True)
     await seed_users()
     spawn(weekly_scheduler())
+    spawn(late_alert_watcher())
     # imports interrupted by a restart: send unfinished rows back to the queue
     for j in await db.import_jobs.find({"status": "running"}, {"_id": 0, "id": 1}).to_list(100):
         spawn(process_import(j["id"]))
@@ -723,7 +779,7 @@ async def reset(request: Request):
     return {"ok": True}
 
 
-@api_router.get("/drivers")
+@api_router.get("/drivers", dependencies=ADMIN_ONLY)
 async def list_drivers():
     docs = await db.drivers.find({}, {"_id": 0}).to_list(100)
     out = []
@@ -733,7 +789,7 @@ async def list_drivers():
     return out
 
 
-@api_router.get("/drivers/{driver_id}/route")
+@api_router.get("/drivers/{driver_id}/route", dependencies=DRIVER_SELF)
 async def driver_route(driver_id: str):
     await get_driver_or_404(driver_id)
     # active route first, then the soonest planned route from today on, then today's finished route
@@ -768,12 +824,12 @@ async def update_location(driver_id: str, lat: float, lng: float) -> dict:
     return {"ok": True, "geofence_arrived_stop_id": geofenced}
 
 
-@api_router.post("/drivers/{driver_id}/location")
+@api_router.post("/drivers/{driver_id}/location", dependencies=DRIVER_SELF)
 async def post_location(driver_id: str, body: LocationIn):
     return await update_location(driver_id, body.lat, body.lng)
 
 
-@api_router.post("/drivers/{driver_id}/simulate-step")
+@api_router.post("/drivers/{driver_id}/simulate-step", dependencies=DRIVER_SELF)
 async def simulate_step(driver_id: str, meters: float = 180):
     """Demo helper: move the driver toward the next open stop (GPS stand-in for web preview)."""
     driver = await get_driver_or_404(driver_id)
@@ -825,7 +881,7 @@ async def list_routes():
     return out
 
 
-@api_router.get("/routes/{route_id}")
+@api_router.get("/routes/{route_id}", dependencies=ROUTE_DRIVER)
 async def get_route(route_id: str):
     return await route_detail(await get_route_or_404(route_id))
 
@@ -871,7 +927,7 @@ async def resequence(route_id: str, body: SequenceIn):
     return await route_detail(await get_route_or_404(route_id))
 
 
-@api_router.post("/routes/{route_id}/update-seen")
+@api_router.post("/routes/{route_id}/update-seen", dependencies=ROUTE_DRIVER)
 async def route_update_seen(route_id: str):
     """Driver acknowledged the dispatcher's latest re-order."""
     await get_route_or_404(route_id)
@@ -879,7 +935,7 @@ async def route_update_seen(route_id: str):
     return await route_detail(await get_route_or_404(route_id))
 
 
-@api_router.post("/routes/{route_id}/start")
+@api_router.post("/routes/{route_id}/start", dependencies=ROUTE_DRIVER)
 async def start_route(route_id: str):
     route = await get_route_or_404(route_id)
     if route.status != "planned":
@@ -902,7 +958,7 @@ async def get_stop_or_404(stop_id: str) -> Stop:
     return Stop(**doc)
 
 
-@api_router.get("/stops/{stop_id}")
+@api_router.get("/stops/{stop_id}", dependencies=STOP_DRIVER)
 async def get_stop(stop_id: str):
     return (await get_stop_or_404(stop_id)).model_dump()
 
@@ -911,7 +967,7 @@ class QrIn(BaseModel):
     code: str
 
 
-@api_router.post("/stops/{stop_id}/verify-qr")
+@api_router.post("/stops/{stop_id}/verify-qr", dependencies=STOP_DRIVER)
 async def verify_qr(stop_id: str, body: QrIn):
     """Parcel label QR encodes the tracking code; scanning the right parcel at the door is proof of delivery."""
     stop = await get_stop_or_404(stop_id)
@@ -1172,7 +1228,7 @@ async def send_coaching(driver_id: str, body: CoachingIn):
     return rec
 
 
-@api_router.get("/drivers/{driver_id}/coaching")
+@api_router.get("/drivers/{driver_id}/coaching", dependencies=DRIVER_SELF)
 async def list_coaching(driver_id: str, unread: bool = False):
     await get_driver_or_404(driver_id)
     q = {"driver_id": driver_id, **({"read_at": None} if unread else {})}
@@ -1293,7 +1349,7 @@ async def ws_admin(ws: WebSocket, token: str = ""):
         hub.leave("admin", ws)
 
 
-@api_router.post("/stops/{stop_id}/arrive")
+@api_router.post("/stops/{stop_id}/arrive", dependencies=STOP_DRIVER)
 async def arrive(stop_id: str):
     stop = await get_stop_or_404(stop_id)
     if stop.status != "pending":
@@ -1305,7 +1361,7 @@ async def arrive(stop_id: str):
     return (await get_stop_or_404(stop_id)).model_dump()
 
 
-@api_router.post("/stops/{stop_id}/deliver")
+@api_router.post("/stops/{stop_id}/deliver", dependencies=STOP_DRIVER)
 async def deliver(stop_id: str, body: DeliverIn):
     stop = await get_stop_or_404(stop_id)
     if stop.status in ("delivered", "failed"):
@@ -1317,19 +1373,27 @@ async def deliver(stop_id: str, body: DeliverIn):
     if not stop.arrived_at:
         upd.update({"arrived_at": now_iso(), "arrival_method": "manual"})
     await db.stops.update_one({"id": stop_id}, {"$set": upd})
+    if stop.merchant_id and not stop.merchant_late_alert_at:
+        done = await get_stop_or_404(stop_id)
+        if delivered_on_time(done) is False and (await db.stops.update_one(
+                {"id": stop_id, "merchant_late_alert_at": None}, {"$set": {"merchant_late_alert_at": now_iso()}})).modified_count:
+            spawn(send_merchant_alert(done, "delivered_late"))
     if stop.route_id:
         await maybe_complete_route(stop.route_id)
         await broadcast_route(stop.route_id)
     return (await get_stop_or_404(stop_id)).model_dump()
 
 
-@api_router.post("/stops/{stop_id}/fail")
+@api_router.post("/stops/{stop_id}/fail", dependencies=STOP_DRIVER)
 async def fail(stop_id: str, body: FailIn):
     stop = await get_stop_or_404(stop_id)
     if stop.status in ("delivered", "failed"):
         raise HTTPException(400, f"Stop is already {stop.status}")
     await ensure_stop_actionable_today(stop)
     await db.stops.update_one({"id": stop_id}, {"$set": {"status": "failed", "fail_reason": body.reason, "delivered_at": now_iso()}})
+    if stop.merchant_id and (await db.stops.update_one(
+            {"id": stop_id, "merchant_fail_alert_at": None}, {"$set": {"merchant_fail_alert_at": now_iso()}})).modified_count:
+        spawn(send_merchant_alert(await get_stop_or_404(stop_id), "failed"))
     if stop.route_id:
         await maybe_complete_route(stop.route_id)
         await broadcast_route(stop.route_id)
@@ -1352,7 +1416,7 @@ def twilio_number() -> str:
     return "+" + (digits if raw.startswith("+") or len(digits) > 10 else "1" + digits)
 
 
-@api_router.post("/stops/{stop_id}/contact")
+@api_router.post("/stops/{stop_id}/contact", dependencies=STOP_DRIVER)
 async def contact(stop_id: str, body: ContactIn):
     """Masked communication via Twilio: both parties only ever see the Twilio number.
     call -> Twilio rings the driver, then bridges to the customer with the Twilio number as caller ID.
@@ -1393,7 +1457,7 @@ class PhoneIn(BaseModel):
     phone: str
 
 
-@api_router.put("/stops/{stop_id}/phone")
+@api_router.put("/stops/{stop_id}/phone", dependencies=STOP_DRIVER)
 async def set_customer_phone(stop_id: str, body: PhoneIn):
     phone = re.sub(r"[\s\-()]", "", body.phone)
     if not E164.match(phone):
@@ -1408,7 +1472,7 @@ async def set_customer_phone(stop_id: str, body: PhoneIn):
     return (await get_stop_or_404(stop_id)).model_dump()
 
 
-@api_router.put("/drivers/{driver_id}/phone")
+@api_router.put("/drivers/{driver_id}/phone", dependencies=DRIVER_SELF)
 async def set_driver_phone(driver_id: str, body: PhoneIn):
     phone = re.sub(r"[\s\-()]", "", body.phone)
     if not E164.match(phone):
@@ -1418,7 +1482,7 @@ async def set_driver_phone(driver_id: str, body: PhoneIn):
     return (await get_driver_or_404(driver_id)).model_dump()
 
 
-@api_router.post("/upload")
+@api_router.post("/upload", dependencies=ANY_DRIVER)
 async def upload(file: UploadFile = File(...)):
     data = await file.read()
     if len(data) > 10 * 1024 * 1024:
@@ -1467,7 +1531,7 @@ def delivered_on_time(st: Stop) -> Optional[bool]:
     return local <= datetime.combine(day, time_cls(h, m), TZ)
 
 
-@api_router.get("/drivers/{driver_id}/summary")
+@api_router.get("/drivers/{driver_id}/summary", dependencies=DRIVER_SELF)
 async def driver_summary(driver_id: str, date: Optional[str] = None):
     """End-of-day scorecard for a driver: drops, on-time rate, km driven, pace."""
     driver = await get_driver_or_404(driver_id)
@@ -1514,7 +1578,7 @@ async def day_stats(driver: Driver, day: str) -> dict:
     }
 
 
-@api_router.get("/drivers/{driver_id}/scorecard")
+@api_router.get("/drivers/{driver_id}/scorecard", dependencies=DRIVER_SELF)
 async def driver_scorecard(driver_id: str, days: int = 7):
     """Rolling weekly scorecard: one row per day (oldest first), week totals and this week's badges."""
     sc = await scorecard_data(driver_id, days)
@@ -1551,7 +1615,7 @@ async def scorecard_data(driver_id: str, days: int = 7) -> dict:
     }
 
 
-@api_router.get("/drivers/{driver_id}/badges/new")
+@api_router.get("/drivers/{driver_id}/badges/new", dependencies=DRIVER_SELF)
 async def new_badges(driver_id: str):
     """Badges the driver currently holds but hasn't celebrated yet."""
     doc = await db.drivers.find_one({"id": driver_id}, {"_id": 0, "seen_badges": 1})
@@ -1570,7 +1634,7 @@ class SeenIn(BaseModel):
     keys: List[str]
 
 
-@api_router.post("/drivers/{driver_id}/badges/seen")
+@api_router.post("/drivers/{driver_id}/badges/seen", dependencies=DRIVER_SELF)
 async def mark_badges_seen(driver_id: str, body: SeenIn):
     await get_driver_or_404(driver_id)
     await db.drivers.update_one({"id": driver_id}, {"$addToSet": {"seen_badges": {"$each": body.keys}}})
@@ -1867,6 +1931,7 @@ SESSION_HOURS = 12
 LOGIN_MAX_FAILS = 5
 LOGIN_LOCK_MIN = 15
 DEMO_MERCHANT_USERS = [("mer-1", "bakery@multidrop.app", "Bakery2026"), ("mer-2", "books@multidrop.app", "Books2026")]
+DEMO_DRIVER_PINS = {"drv-1": "482913", "drv-2": "730516", "drv-3": "264871"}
 
 
 def hash_pw(p: str) -> str:
@@ -1906,7 +1971,7 @@ async def current_user(request: Request) -> dict:
     if not h.lower().startswith("bearer ") or not h[7:].strip():
         raise HTTPException(401, "Sign in required")
     p = decode_token(h[7:].strip(), "session")
-    u = await db.users.find_one({"id": p["sub"], "disabled": {"$ne": True}}, {"_id": 0, "password_hash": 0})
+    u = await db.users.find_one({"id": p["sub"], "disabled": {"$ne": True}}, {"_id": 0, "password_hash": 0, "pin_hash": 0})
     if not u or u["role"] != p["role"]:
         raise HTTPException(401, "Sign in required")
     return u
@@ -1929,7 +1994,15 @@ async def merchant_access(merchant_id: str, u: dict = Depends(current_user)) -> 
 
 
 async def seed_users():
-    await db.users.create_index("email", unique=True)
+    info = await db.users.index_information()
+    if "email_1" in info and "partialFilterExpression" not in info["email_1"]:
+        await db.users.drop_index("email_1")  # drivers have no email: uniqueness only applies to real emails
+    await db.users.create_index("email", unique=True, partialFilterExpression={"email": {"$type": "string"}})
+    await db.users.create_index("driver_id", unique=True, partialFilterExpression={"driver_id": {"$type": "string"}})
+    for did, pin in DEMO_DRIVER_PINS.items():
+        if not await db.users.find_one({"role": "driver", "driver_id": did}):
+            await db.users.insert_one({"id": str(uuid.uuid4()), "role": "driver", "driver_id": did, "pin_hash": hash_pw(pin),
+                                       "disabled": False, "created_at": now_iso()})
     email, pw = os.environ["ADMIN_EMAIL"].strip().lower(), os.environ["ADMIN_PASSWORD"]
     admin = await db.users.find_one({"email": email})
     if not admin:
@@ -1948,13 +2021,13 @@ class LoginIn(BaseModel):
     password: str
 
 
-@api_router.post("/auth/login")
-async def login(body: LoginIn, request: Request):
-    email = body.email.strip().lower()
+def client_ip(request: Request) -> str:
     # the ingress appends the real client IP as the LAST X-Forwarded-For hop; earlier hops are client-controlled
-    ip = (request.headers.get("x-forwarded-for", "").split(",")[-1].strip() or (request.client.host if request.client else "-"))
-    # per email+IP (5 tries) and per email from anywhere (20 tries), so rotating IPs cannot brute-force one account
-    limits = [(f"{email}:{ip}", LOGIN_MAX_FAILS), (f"{email}:*", LOGIN_MAX_FAILS * 4)]
+    return request.headers.get("x-forwarded-for", "").split(",")[-1].strip() or (request.client.host if request.client else "-")
+
+
+async def check_lockout(limits: List[tuple]) -> dict:
+    """Raise 429 while any key is locked; returns the live attempt docs (old failures expire)."""
     now = datetime.now(timezone.utc)
     atts = {}
     for key, _ in limits:
@@ -1963,19 +2036,98 @@ async def login(body: LoginIn, request: Request):
             mins = max(1, math.ceil((datetime.fromisoformat(att["locked_until"]) - now).total_seconds() / 60))
             raise HTTPException(429, f"Too many attempts — try again in {mins} min")
         if att and datetime.fromisoformat(att["updated_at"]) < now - timedelta(minutes=LOGIN_LOCK_MIN):
-            att = None  # old failures expire
+            att = None
         atts[key] = att
+    return atts
+
+
+async def record_failure(limits: List[tuple], atts: dict):
+    now = datetime.now(timezone.utc)
+    for key, cap in limits:
+        fails = (atts.get(key) or {}).get("fails", 0) + 1
+        upd = {"key": key, "fails": fails, "updated_at": now.isoformat(), "locked_until": None}
+        if fails >= cap:
+            upd.update(fails=0, locked_until=(now + timedelta(minutes=LOGIN_LOCK_MIN)).isoformat())
+        await db.login_attempts.update_one({"key": key}, {"$set": upd}, upsert=True)
+
+
+async def clear_lockout(limits: List[tuple]):
+    await db.login_attempts.delete_many({"key": {"$in": [k for k, _ in limits if not k.startswith("drvip:")]}})
+
+
+class DriverLoginIn(BaseModel):
+    phone: str
+    pin: str
+
+
+PIN_RE = re.compile(r"^\d{6}$")
+WEAK_PINS = {"123456", "654321", "123123", "121212", "112233", "000000"}
+
+
+@api_router.post("/auth/driver-login")
+async def driver_login(body: DriverLoginIn, request: Request):
+    """Driver sign-in with phone + 6-digit PIN. A PIN has only 1M combinations, so limits are tight:
+    5 tries per phone per device IP, 10 per phone from anywhere, 30 per IP across all phones."""
+    phone = normalize_phone(body.phone) or body.phone.strip()
+    ip = client_ip(request)
+    limits = [(f"drv:{phone}:{ip}", 5), (f"drv:{phone}:*", 10), (f"drvip:{ip}", 30)]
+    atts = await check_lockout(limits)
+    d = await db.drivers.find_one({"phone": phone}, {"_id": 0})
+    u = await db.users.find_one({"role": "driver", "driver_id": d["id"]}, {"_id": 0}) if d else None
+    ok = check_pw(body.pin.strip(), (u or {}).get("pin_hash") or DUMMY_HASH) and bool(PIN_RE.match(body.pin.strip()))
+    if not (d and u and ok) or u.get("disabled"):
+        await record_failure(limits, atts)
+        raise HTTPException(401, "Wrong phone number or PIN")
+    await clear_lockout(limits)
+    await db.users.update_one({"id": u["id"]}, {"$set": {"last_login_at": now_iso()}})
+    await remember_public_base(request)
+    user = {"id": u["id"], "role": "driver", "driver_id": d["id"], "driver_name": d["name"], "phone": d["phone"], "email": None, "merchant_id": None}
+    return {"token": issue_token(u["id"], "driver"), "user": user}
+
+
+class PinIn(BaseModel):
+    pin: str
+
+
+@api_router.get("/admin/driver-accounts", dependencies=ADMIN_ONLY)
+async def driver_accounts():
+    users = {u["driver_id"]: u for u in await db.users.find({"role": "driver"}, {"_id": 0, "pin_hash": 0}).to_list(500)}
+    return [{"id": d["id"], "name": d["name"], "phone": d["phone"], "vehicle": d["vehicle"],
+             "has_pin": d["id"] in users, "last_login_at": (users.get(d["id"]) or {}).get("last_login_at")}
+            for d in await db.drivers.find({}, {"_id": 0}).sort("id", 1).to_list(500)]
+
+
+@api_router.put("/admin/drivers/{driver_id}/pin", dependencies=ADMIN_ONLY)
+async def set_driver_pin(driver_id: str, body: PinIn):
+    pin = body.pin.strip()
+    if not PIN_RE.match(pin):
+        raise HTTPException(400, "PIN must be exactly 6 digits")
+    if pin in WEAK_PINS or len(set(pin)) == 1:
+        raise HTTPException(400, "PIN is too easy to guess — pick another")
+    d = await db.drivers.find_one({"id": driver_id}, {"_id": 0})
+    if not d:
+        raise HTTPException(404, "Driver not found")
+    await db.users.update_one({"role": "driver", "driver_id": driver_id},
+                              {"$set": {"pin_hash": hash_pw(pin), "disabled": False},
+                               "$setOnInsert": {"id": str(uuid.uuid4()), "role": "driver", "driver_id": driver_id, "created_at": now_iso()}},
+                              upsert=True)
+    await db.login_attempts.delete_many({"key": {"$regex": f"^drv:{re.escape(d['phone'])}:"}})
+    return {"ok": True}
+
+
+@api_router.post("/auth/login")
+async def login(body: LoginIn, request: Request):
+    email = body.email.strip().lower()
+    ip = client_ip(request)
+    # per email+IP (5 tries) and per email from anywhere (20 tries), so rotating IPs cannot brute-force one account
+    limits = [(f"{email}:{ip}", LOGIN_MAX_FAILS), (f"{email}:*", LOGIN_MAX_FAILS * 4)]
+    atts = await check_lockout(limits)
     u = await db.users.find_one({"email": email}, {"_id": 0})
     ok = check_pw(body.password, u["password_hash"] if u else DUMMY_HASH)
     if not u or not ok or u.get("disabled"):
-        for key, cap in limits:
-            fails = (atts[key] or {}).get("fails", 0) + 1
-            upd = {"key": key, "fails": fails, "updated_at": now.isoformat(), "locked_until": None}
-            if fails >= cap:
-                upd.update(fails=0, locked_until=(now + timedelta(minutes=LOGIN_LOCK_MIN)).isoformat())
-            await db.login_attempts.update_one({"key": key}, {"$set": upd}, upsert=True)
+        await record_failure(limits, atts)
         raise HTTPException(401, "Wrong email or password")
-    await db.login_attempts.delete_many({"key": {"$in": [k for k, _ in limits]}})
+    await clear_lockout(limits)
     await remember_public_base(request)
     user = {k: v for k, v in u.items() if k != "password_hash"}
     if user.get("merchant_id"):
@@ -1985,6 +2137,9 @@ async def login(body: LoginIn, request: Request):
 
 @api_router.get("/auth/me")
 async def auth_me(u: dict = Depends(current_user)):
+    if u.get("driver_id"):
+        d = await db.drivers.find_one({"id": u["driver_id"]}, {"_id": 0})
+        u["driver_name"] = d["name"] if d else None
     if u.get("merchant_id"):
         m = await db.merchants.find_one({"id": u["merchant_id"]}, {"_id": 0})
         u["merchant_name"] = m["name"] if m else None
@@ -2507,6 +2662,129 @@ async def send_weekly_now(merchant_id: str, request: Request, _: dict = Depends(
     return {**(await weekly_email_status(merchant_id)), "sent": log}
 
 
+# ---------------------------------------------------------------- merchant problem alerts (failed / running late)
+LATE_GRACE_MIN = 5  # predicted arrival must be this far past the window end before we alert
+
+
+async def maybe_late_alerts(route: Route, stops: List[Stop]):
+    """Once per stop: email the merchant when the live ETA passes the end of the delivery window."""
+    if route.status != "active" or route.service_date != today_str() or not route.driver_id:
+        return
+    open_ = [s for s in stops if s.status in ("pending", "arrived")]
+    cand = {s.id for s in open_ if s.merchant_id and s.window_end and not s.merchant_late_alert_at}
+    if not cand:
+        return
+    d = await db.drivers.find_one({"id": route.driver_id}, {"_id": 0})
+    start = {"lat": d["lat"], "lng": d["lng"]} if d else DEPOT
+    base = plan_base(route.service_date)
+    for s, x in zip(open_, schedule(start, [o.model_dump() for o in open_], base)):
+        if s.id in cand and x["late_min"] > LATE_GRACE_MIN:
+            claimed = await db.stops.update_one({"id": s.id, "merchant_late_alert_at": None}, {"$set": {"merchant_late_alert_at": now_iso()}})
+            if claimed.modified_count:
+                eta = (base + timedelta(minutes=x["arrive_min"])).isoformat()
+                spawn(send_merchant_alert(s, "late", eta=eta, late_min=round(x["late_min"])))
+
+
+async def late_alert_watcher():
+    """Every minute: re-check today's active routes so late alerts go out even when the driver app is idle."""
+    while True:
+        try:
+            for r in await db.routes.find({"status": "active", "service_date": today_str()}, {"_id": 0}).to_list(200):
+                route = Route(**r)
+                await maybe_late_alerts(route, await get_stops(route.id))
+        except Exception as e:
+            logger.error(f"Late alert watcher error: {e}")
+        await asyncio.sleep(60)
+
+
+ALERT_COPY = {
+    "late": ("is running late", "Our live ETA is past the delivery window. The driver is still on the way."),
+    "delivered_late": ("was delivered late", "The drop was completed after the end of the delivery window."),
+    "failed": ("could not be delivered", "The driver could not complete this drop."),
+}
+
+
+def merchant_alert_html(store: str, st: Stop, kind: str, driver: str, eta: Optional[str], late_min: Optional[int]) -> str:
+    e = escape
+    head, lead = ALERT_COPY[kind]
+    rows = [("Tracking code", st.tracking_code), ("Customer", st.customer_name), ("Address", st.address),
+            ("Window", f"{st.window_start}–{st.window_end}" if st.window_end else "—"), ("Driver", driver)]
+    if kind == "late":
+        rows.append(("New ETA", f"{local_fmt(eta)[-5:]} (about {late_min} min late)"))
+    if kind == "delivered_late":
+        rows.append(("Delivered at", local_fmt(st.delivered_at)[-5:]))
+    if kind == "failed":
+        rows.append(("Reason", st.fail_reason or "Not given"))
+    trs = "".join(f'<tr><td style="padding:6px 0;border-bottom:1px solid #e5e5e5;color:#555">{e(k)}</td>'
+                  f'<td style="padding:6px 0;border-bottom:1px solid #e5e5e5;text-align:right;font-weight:bold">{e(str(v))}</td></tr>' for k, v in rows)
+    return (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f4"><tr><td align="center" style="padding:24px">'
+            f'<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border:2px solid #0a0a0a;font-family:Arial,sans-serif;color:#0a0a0a">'
+            f'<tr><td style="background:#e11d1d;color:#ffffff;padding:16px 24px;font-size:18px;font-weight:bold;letter-spacing:1px">DROP {e(st.tracking_code)} {e(head.upper())}</td></tr>'
+            f'<tr><td style="padding:24px"><p style="margin:0 0 4px;font-size:16px;font-weight:bold">{e(store)}</p>'
+            f'<p style="margin:0 0 16px;color:#555">{e(lead)}</p>'
+            f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">{trs}</table>'
+            f'<p style="margin:16px 0 0;color:#777;font-size:12px">Times are San Francisco time. You get one email per affected drop — switch these alerts off in the Merchant console.</p>'
+            f'</td></tr></table></td></tr></table>')
+
+
+async def send_merchant_alert(st: Stop, kind: str, eta: Optional[str] = None, late_min: Optional[int] = None):
+    """Email every login of the store about one problem drop. Logged in db.merchant_alerts."""
+    log = {"id": str(uuid.uuid4()), "merchant_id": st.merchant_id, "stop_id": st.id, "tracking_code": st.tracking_code,
+           "customer_name": st.customer_name, "kind": kind, "eta": eta, "late_min": late_min, "reason": st.fail_reason,
+           "created_at": now_iso(), "status": "sent", "error": None, "recipients": []}
+    try:
+        m = await get_merchant_or_404(st.merchant_id)
+        if m.get("problem_alerts") is False:
+            log["status"] = "off"
+        else:
+            users = await db.users.find({"merchant_id": st.merchant_id, "role": "merchant", "disabled": {"$ne": True}}, {"_id": 0}).to_list(20)
+            r = await db.routes.find_one({"id": st.route_id}, {"_id": 0, "driver_id": 1}) if st.route_id else None
+            d = await db.drivers.find_one({"id": (r or {}).get("driver_id")}, {"_id": 0, "name": 1}) if r else None
+            driver = d["name"].split(" ")[0] if d else "—"
+            html = merchant_alert_html(m["name"], st, kind, driver, eta, late_min)
+            subject = f"{m['name']}: drop {st.tracking_code} {ALERT_COPY[kind][0]}"
+            demo = {em for _, em, _ in DEMO_MERCHANT_USERS}
+            errors = []
+            for u in users:
+                to = TEST_INBOX if u["email"] in demo else u["email"]
+                try:
+                    eid = await send_email(to=to, subject=subject, html=html)
+                    log["recipients"].append({"login": u["email"], "to": to, "email_id": eid, "status": "sent"})
+                except Exception as ex:
+                    errors.append(str(ex))
+                    log["recipients"].append({"login": u["email"], "to": to, "email_id": None, "status": "failed"})
+            if not users:
+                log.update(status="failed", error="Store has no login email")
+            elif errors:
+                log.update(status="failed" if len(errors) == len(users) else "partial", error=errors[0])
+    except Exception as ex:
+        logger.error(f"Merchant alert {kind} for {st.tracking_code} failed: {ex}")
+        log.update(status="failed", error=str(ex)[:200])
+    await db.merchant_alerts.insert_one(dict(log))
+
+
+class AlertsIn(BaseModel):
+    enabled: bool
+
+
+async def merchant_alerts_status(merchant_id: str) -> dict:
+    m = await get_merchant_or_404(merchant_id)
+    recent = await db.merchant_alerts.find({"merchant_id": merchant_id}, {"_id": 0, "recipients": 0}).sort("created_at", -1).to_list(10)
+    return {"enabled": m.get("problem_alerts", True), "recent": recent}
+
+
+@api_router.get("/merchants/{merchant_id}/alerts")
+async def get_merchant_alerts(merchant_id: str, _: dict = Depends(merchant_access)):
+    return await merchant_alerts_status(merchant_id)
+
+
+@api_router.put("/merchants/{merchant_id}/alerts")
+async def set_merchant_alerts(merchant_id: str, body: AlertsIn, _: dict = Depends(merchant_access)):
+    await get_merchant_or_404(merchant_id)
+    await db.merchants.update_one({"id": merchant_id}, {"$set": {"problem_alerts": body.enabled}})
+    return await merchant_alerts_status(merchant_id)
+
+
 @api_router.get("/digest", dependencies=ADMIN_ONLY)
 async def daily_digest(date: Optional[str] = None):
     """End-of-day ops digest for one depot day: pace, deliveries by hour, late drops, failures and complaints."""
@@ -2589,7 +2867,17 @@ async def ws_track(ws: WebSocket, code: str):
 
 
 @api_router.websocket("/ws/route/{route_id}")
-async def ws_route(ws: WebSocket, route_id: str):
+async def ws_route(ws: WebSocket, route_id: str, token: str = ""):
+    try:
+        p = decode_token(token, "session")
+        u = await db.users.find_one({"id": p["sub"], "disabled": {"$ne": True}}, {"_id": 0})
+        r = await db.routes.find_one({"id": route_id}, {"_id": 0, "driver_id": 1})
+        ok = bool(u) and (u["role"] == "admin" or (u["role"] == "driver" and r and r.get("driver_id") == u.get("driver_id")))
+    except HTTPException:
+        ok = False
+    if not ok:
+        await ws.close(code=4401)
+        return
     room = f"route:{route_id}"
     await hub.join(room, ws)
     try:

@@ -4,7 +4,10 @@ import * as SecureStore from "expo-secure-store";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Signed-in admin / merchant session. Kept in memory for api() and persisted on the device.
-export type SessionUser = { id: string; email: string; role: "admin" | "merchant"; merchant_id: string | null; merchant_name?: string | null };
+export type SessionUser = {
+  id: string; email: string | null; role: "admin" | "merchant" | "driver"; merchant_id: string | null; merchant_name?: string | null;
+  driver_id?: string | null; driver_name?: string | null;
+};
 type Session = { token: string; user: SessionUser } | null;
 
 const KEY = "multidrop_session";
