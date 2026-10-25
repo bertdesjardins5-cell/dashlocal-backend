@@ -8,7 +8,7 @@ import { api } from "@/src/api";
 import { Btn, ErrorBlock, Header, Loading, Mono, Pill, useToast } from "@/src/ui";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
-type Review = { id: string; quote: string; person: string | null; shop: string; published: boolean; created_at: string };
+type Review = { id: string; quote: string; person: string | null; shop: string; published: boolean; created_at: string; from_shop?: boolean };
 const EMPTY = { quote: "", person: "", shop: "", published: true };
 
 // Admin: manage shop quotes shown on the public landing page (newest 6 published appear).
@@ -21,6 +21,22 @@ export default function ReviewsScreen() {
   const [form, setForm] = useState(EMPTY);
   const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const stores = useQuery({ queryKey: ["merchants"], queryFn: () => api<{ id: string; name: string }[]>("/merchants") });
+  const requests = useQuery({ queryKey: ["review-requests"], queryFn: () => api<{ id: string; shop: string; status: string; created_at: string }[]>("/admin/review-requests") });
+  const [store, setStore] = useState<string | null>(null);
+  const sendRequest = async () => {
+    setBusy("request");
+    try {
+      await api("/admin/review-requests", { method: "POST", body: { merchant_id: store } });
+      toast.show("REVIEW LINK EMAILED", "green");
+      setStore(null);
+      requests.refetch();
+    } catch (e: any) {
+      toast.show(e.message, "red");
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const save = async () => {
     setBusy("save");
@@ -89,6 +105,21 @@ export default function ReviewsScreen() {
             <Btn testID="review-save" label={editing ? "SAVE" : "ADD REVIEW"} icon="checkmark" loading={busy === "save"} disabled={!form.quote.trim() || !form.shop.trim()} onPress={save} style={{ flex: 2 }} />
           </View>
         </View>
+        <View style={s.block} testID="review-request-section">
+          <Mono style={s.label}>ASK A SHOP FOR A REVIEW</Mono>
+          <Mono style={s.meta}>Emails the store a one-time link. Their quote arrives hidden here until you publish it.</Mono>
+          <View style={s.chips}>
+            {(stores.data ?? []).map((m) => (
+              <Pressable key={m.id} testID={`review-request-store-${m.id}`} onPress={() => setStore(m.id)} style={[s.chip, store === m.id && { backgroundColor: colors.surfaceInverse }]}>
+                <Mono style={[s.chipText, store === m.id && { color: colors.onSurfaceInverse }]}>{m.name}</Mono>
+              </Pressable>
+            ))}
+          </View>
+          <Btn testID="review-request-send" label="EMAIL REVIEW LINK" icon="mail" variant="dark" loading={busy === "request"} disabled={!store} onPress={sendRequest} />
+          {(requests.data ?? []).slice(0, 5).map((r) => (
+            <Mono key={r.id} style={s.meta} testID={`review-request-${r.id}`}>{r.shop} · {r.status === "submitted" ? "REVIEW RECEIVED" : "LINK SENT"} · {new Date(r.created_at).toLocaleDateString()}</Mono>
+          ))}
+        </View>
         <Mono style={s.section}>ALL REVIEWS</Mono>
         {q.isLoading ? <Loading /> : q.error ? <ErrorBlock message={(q.error as Error).message} onRetry={q.refetch} /> : !q.data?.length ? (
           <Mono style={[s.meta, { padding: spacing.lg }]} testID="reviews-empty">No reviews yet. The landing page hides the reviews section until one is published.</Mono>
@@ -97,7 +128,7 @@ export default function ReviewsScreen() {
             <View style={{ flex: 1, gap: spacing.xs }}>
               <Mono style={s.quote}>“{r.quote}”</Mono>
               <Mono style={s.meta}>{r.shop}{r.person ? ` · ${r.person}` : ""}</Mono>
-              <Pill label={r.published ? "published" : "hidden"} tone={r.published ? "green" : "light"} />
+              <Pill label={r.published ? "published" : r.from_shop ? "needs approval" : "hidden"} tone={r.published ? "green" : r.from_shop ? "yellow" : "light"} />
             </View>
             <View style={{ gap: spacing.xs }}>
               <Pressable testID={`review-toggle-${r.id}`} accessibilityLabel={r.published ? "Hide review" : "Publish review"} disabled={busy === r.id} onPress={() => toggle(r)} style={s.icon}><Ionicons name={r.published ? "eye-off" : "eye"} size={20} color={colors.onSurface} /></Pressable>
@@ -123,4 +154,7 @@ const useStyles = makeStyles((c) => ({
   item: { flexDirection: "row", gap: spacing.md, padding: spacing.lg, borderBottomWidth: 2, borderColor: c.border },
   quote: { fontSize: 14, lineHeight: 20 },
   icon: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: c.border },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  chip: { minHeight: 44, paddingHorizontal: spacing.md, borderWidth: 2, borderColor: c.border, justifyContent: "center" },
+  chipText: { fontSize: 12, fontWeight: "700" },
 }));

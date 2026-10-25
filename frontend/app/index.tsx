@@ -59,7 +59,7 @@ export default function Landing() {
               <Text style={[s.heroTitle, wide && { fontSize: 54, lineHeight: 62 }]} testID="landing-hero-title">Your shop’s deliveries, done today.</Text>
               <Text style={s.heroBody}>DashLocal picks up from small businesses and delivers across town the same day, with live tracking your customers will love.</Text>
               <View style={[s.ctaRow, !wide && { flexDirection: "column" }]}>
-                <BrandButton testID="landing-cta-merchant" label="Start delivering with us" icon="arrow-forward" onPress={() => router.push("/sign-in/merchant")} />
+                <BrandButton testID="landing-cta-merchant" label="Start delivering with us" icon="arrow-forward" onPress={() => router.push("/sign-up")} />
                 <BrandButton testID="landing-cta-staff" label="Admin & driver sign-in" variant="outline" onPress={() => router.push("/sign-in/staff")} style={s.heroOutline} />
               </View>
             </Animated.View>
@@ -134,6 +134,7 @@ export default function Landing() {
               <Text style={s.h3}>For merchants</Text>
               <Text style={s.body}>Upload orders, fix flagged rows, follow every drop, download reports and see your weekly bill.</Text>
               <BrandButton testID="landing-merchant-sign-in" label="Merchant sign-in" icon="arrow-forward" onPress={() => router.push("/sign-in/merchant")} />
+              <BrandButton testID="landing-merchant-sign-up" label="New shop? Request an account" variant="outline" onPress={() => router.push("/sign-up")} />
             </View>
             <View style={[s.card, wide && { flex: 1 }]}>
               <View style={[s.cardIcon, { backgroundColor: colors.brandCharcoal }]}><Ionicons name="people-outline" size={24} color={colors.onBrandCharcoal} /></View>

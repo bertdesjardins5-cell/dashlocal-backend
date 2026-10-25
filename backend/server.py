@@ -2323,7 +2323,7 @@ async def current_user(request: Request) -> dict:
     if not h.lower().startswith("bearer ") or not h[7:].strip():
         raise HTTPException(401, "Sign in required")
     p = decode_token(h[7:].strip(), "session")
-    u = await db.users.find_one({"id": p["sub"], "disabled": {"$ne": True}}, {"_id": 0, "password_hash": 0, "pin_hash": 0})
+    u = await db.users.find_one({"id": p["sub"], "disabled": {"$ne": True}}, {"_id": 0, "password_hash": 0, "pin_hash": 0, "pw_nonce": 0})
     if not u or u["role"] != p["role"]:
         raise HTTPException(401, "Sign in required")
     return u
@@ -2530,7 +2530,7 @@ async def login(body: LoginIn, request: Request):
         raise HTTPException(401, "Wrong email or password")
     await clear_lockout(limits)
     await remember_public_base(request)
-    user = {k: v for k, v in u.items() if k != "password_hash"}
+    user = {k: v for k, v in u.items() if k not in ("password_hash", "pw_nonce")}
     if user.get("merchant_id"):
         user["merchant_name"] = (await get_merchant_or_404(user["merchant_id"]))["name"]
     return {"token": issue_token(u["id"], u["role"]), "user": user}
@@ -2567,7 +2567,7 @@ def check_password(p: str):
 
 @api_router.get("/admin/merchant-accounts")
 async def merchant_accounts(_: dict = Depends(admin_user)):
-    users = await db.users.find({"role": "merchant"}, {"_id": 0, "password_hash": 0}).to_list(500)
+    users = await db.users.find({"role": "merchant"}, {"_id": 0, "password_hash": 0, "pw_nonce": 0}).to_list(500)
     out = []
     for m in await db.merchants.find({}, {"_id": 0}).sort("id", 1).to_list(500):
         out.append({**m, "accounts": [x for x in users if x["merchant_id"] == m["id"]],
@@ -3604,6 +3604,240 @@ async def ws_route(ws: WebSocket, route_id: str, token: str = ""):
         pass
     finally:
         hub.leave(room, ws)
+
+
+# ---------------------------------------------------------------- review requests + merchant sign-up requests
+REVIEW_LINK_DAYS = 14
+SETPW_LINK_HOURS = 72
+
+
+def demo_inbox(email: str) -> str:
+    """Seeded demo logins are not real inboxes; route their mail to the provider's test inbox."""
+    return TEST_INBOX if email in {em for _, em, _ in DEMO_MERCHANT_USERS} else email
+
+
+async def app_base(request: Request) -> str:
+    await remember_public_base(request)
+    base = (await db.settings.find_one({"key": "public_base"}, {"_id": 0}) or {}).get("value")
+    if not base:
+        raise HTTPException(400, "App address unknown yet — open the app from its public link and try again")
+    return base
+
+
+def brand_email(title: str, body_html: str, cta: Optional[tuple] = None) -> str:
+    btn = (f'<p style="margin:24px 0"><a href="{escape(cta[1])}" style="background:#2B8932;color:#fff;padding:14px 22px;'
+           f'border-radius:10px;text-decoration:none;font-family:Arial,sans-serif;font-weight:bold">{escape(cta[0])}</a></p>') if cta else ""
+    return (f'<!doctype html><html><body style="margin:0;background:#F5F5F5;padding:24px">'
+            f'<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:16px;padding:28px;color:#333335">'
+            f'<div style="font-family:Arial,sans-serif;font-weight:bold;font-size:20px"><span style="color:#333335">DASH</span><span style="color:#D7262E">LOCAL</span></div>'
+            f'<h1 style="font-family:Arial,sans-serif;font-size:22px;margin:20px 0 8px">{escape(title)}</h1>'
+            f'<div style="font-family:Georgia,serif;font-size:16px;line-height:1.6">{body_html}</div>{btn}'
+            f'<p style="font-family:Georgia,serif;font-size:13px;color:#5C5C5E">Same-day local delivery for small businesses.</p></div></body></html>')
+
+
+async def notify_admin(subject: str, body_html: str, base: Optional[str]):
+    """Best effort: email the dispatch admin; never blocks the request."""
+    to = os.environ.get("ADMIN_NOTIFY_EMAIL") or os.environ.get("ADMIN_EMAIL")
+    if not to:
+        return
+    try:
+        await send_email(to=to, subject=subject, html=brand_email(subject, body_html, ("Open the admin panel", f"{base}/admin") if base else None))
+    except Exception as e:
+        logger.warning(f"Admin notify failed: {e}")
+
+
+class ReviewRequestIn(BaseModel):
+    merchant_id: str
+
+
+@api_router.post("/admin/review-requests", dependencies=ADMIN_ONLY)
+async def send_review_request(body: ReviewRequestIn, request: Request):
+    """Email a store a private link to write its own quote; it lands hidden until the admin publishes it."""
+    m = await get_merchant_or_404(body.merchant_id)
+    users = await db.users.find({"merchant_id": m["id"], "role": "merchant", "disabled": {"$ne": True}}, {"_id": 0}).to_list(20)
+    if not users:
+        raise HTTPException(400, "This store has no login email yet")
+    base = await app_base(request)
+    rid = str(uuid.uuid4())
+    link = f"{base}/review/{issue_token(rid, 'merchant', purpose='review', minutes=REVIEW_LINK_DAYS * 24 * 60)}"
+    html = brand_email(f"How is DashLocal working for {m['name']}?",
+                       f"<p>We'd love a short quote about delivering with DashLocal. With your OK, it may appear on our website for other small businesses to read.</p>"
+                       f"<p>The link works once and lasts {REVIEW_LINK_DAYS} days.</p>", ("Write a quick review", link))
+    sent, errors = [], []
+    for u in users:
+        try:
+            await send_email(to=demo_inbox(u["email"]), subject=f"A quick review of DashLocal? — {m['name']}", html=html)
+            sent.append(u["email"])
+        except Exception as e:
+            errors.append(str(e))
+    if not sent:
+        raise HTTPException(502, f"Email could not be sent: {errors[0] if errors else 'unknown error'}")
+    doc = {"id": rid, "merchant_id": m["id"], "shop": m["name"], "emails": sent, "status": "sent", "created_at": now_iso(), "submitted_at": None}
+    await db.review_requests.insert_one(dict(doc))
+    return doc
+
+
+@api_router.get("/admin/review-requests", dependencies=ADMIN_ONLY)
+async def list_review_requests():
+    return await db.review_requests.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
+
+
+def link_payload(token: str, purpose: str) -> dict:
+    """Decode an emailed link token with a message that makes sense on a public page."""
+    try:
+        return decode_token(token, purpose)
+    except HTTPException as e:
+        raise HTTPException(400, "This link has expired — ask DashLocal for a new one" if "expired" in str(e.detail) else "This link isn't valid")
+
+
+async def open_review_request(token: str) -> dict:
+    rid = link_payload(token, "review")["sub"]
+    rr = await db.review_requests.find_one({"id": rid}, {"_id": 0})
+    if not rr:
+        raise HTTPException(404, "This review link is no longer valid")
+    return rr
+
+
+@api_router.get("/review-requests/{token}")
+async def get_review_request(token: str):
+    rr = await open_review_request(token)
+    return {"shop": rr["shop"], "status": rr["status"]}
+
+
+class ReviewSubmitIn(BaseModel):
+    quote: str
+    person: Optional[str] = None
+
+
+@api_router.post("/review-requests/{token}")
+async def submit_review(token: str, body: ReviewSubmitIn, request: Request):
+    rr = await open_review_request(token)
+    if rr["status"] != "sent":
+        raise HTTPException(400, "Thanks — a review was already sent with this link")
+    t = clean_testimonial(TestimonialIn(quote=body.quote, person=body.person, shop=rr["shop"], published=False))
+    res = await db.review_requests.update_one({"id": rr["id"], "status": "sent"}, {"$set": {"status": "submitted", "submitted_at": now_iso()}})
+    if not res.modified_count:
+        raise HTTPException(400, "Thanks — a review was already sent with this link")
+    doc = {"id": str(uuid.uuid4()), **t, "from_shop": True, "merchant_id": rr["merchant_id"], "created_at": now_iso(), "updated_at": now_iso()}
+    await db.testimonials.insert_one(dict(doc))
+    await notify_admin(f"New review from {rr['shop']} to approve", f"<p>“{escape(t['quote'])}”</p><p>Publish it from Shop reviews in the admin panel.</p>",
+                       (await db.settings.find_one({"key": "public_base"}, {"_id": 0}) or {}).get("value"))
+    return {"ok": True}
+
+
+class SignupIn(BaseModel):
+    store_name: str
+    contact_name: str
+    email: str
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    message: Optional[str] = None
+
+
+@api_router.post("/signup-requests")
+async def request_signup(body: SignupIn, request: Request):
+    """Public: a shop asks for a DashLocal account. The admin approves it from the admin panel."""
+    clip = lambda v, n: " ".join((v or "").split())[:n]
+    doc = {"store_name": clip(body.store_name, 80), "contact_name": clip(body.contact_name, 60), "email": body.email.strip().lower()[:120],
+           "phone": clip(body.phone, 30) or None, "address": clip(body.address, 160) or None, "message": clip(body.message, 500) or None}
+    if not doc["store_name"] or not doc["contact_name"]:
+        raise HTTPException(400, "Store name and your name are required")
+    if not EMAIL_RE.match(doc["email"]):
+        raise HTTPException(400, "Enter a valid email")
+    ip = client_ip(request)
+    hour_ago = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    if await db.signup_requests.count_documents({"ip": ip, "created_at": {"$gte": hour_ago}}) >= 5:
+        raise HTTPException(429, "Too many requests — try again in an hour")
+    if await db.signup_requests.find_one({"email": doc["email"], "status": "pending"}) or await db.users.find_one({"email": doc["email"]}):
+        return {"ok": True}  # same answer either way: don't reveal which emails already have accounts
+    await db.signup_requests.insert_one({**doc, "id": str(uuid.uuid4()), "status": "pending", "ip": ip, "created_at": now_iso()})
+    base = None
+    try:
+        base = await app_base(request)
+    except HTTPException:
+        pass
+    asyncio.create_task(notify_admin(f"New shop sign-up request: {doc['store_name']}",
+                       f"<p><b>{escape(doc['store_name'])}</b> — {escape(doc['contact_name'])}</p><p>{escape(doc['message'] or '')}</p>"
+                       "<p>Approve or decline it from Sign-up requests in the admin panel.</p>", base))
+    return {"ok": True}
+
+
+@api_router.get("/admin/signup-requests", dependencies=ADMIN_ONLY)
+async def list_signups():
+    return await db.signup_requests.find({}, {"_id": 0, "ip": 0}).sort("created_at", -1).to_list(200)
+
+
+@api_router.post("/admin/signup-requests/{sid}/approve", dependencies=ADMIN_ONLY)
+async def approve_signup(sid: str, request: Request):
+    """Create the store + its login (no password yet) and email a one-time set-password link."""
+    sr = await db.signup_requests.find_one({"id": sid}, {"_id": 0})
+    if not sr:
+        raise HTTPException(404, "Request not found")
+    if sr["status"] != "pending":
+        raise HTTPException(400, f"Request already {sr['status']}")
+    if await db.users.find_one({"email": sr["email"]}):
+        raise HTTPException(409, "An account with this email already exists")
+    base = await app_base(request)
+    m = {"id": f"mer-{uuid.uuid4().hex[:8]}", "name": sr["store_name"], "contact": sr["email"]}
+    nonce = secrets.token_urlsafe(12)
+    user = {"id": str(uuid.uuid4()), "email": sr["email"], "role": "merchant", "name": sr["contact_name"], "merchant_id": m["id"],
+            "disabled": False, "created_at": now_iso(), "pw_nonce": nonce, "password_hash": hash_pw(secrets.token_urlsafe(24))}
+    await db.merchants.insert_one(dict(m))
+    try:
+        await db.users.insert_one(user)
+    except DuplicateKeyError:
+        await db.merchants.delete_one({"id": m["id"]})
+        raise HTTPException(409, "An account with this email already exists")
+    link = f"{base}/set-password/{issue_token(user['id'], 'merchant', purpose='setpw', minutes=SETPW_LINK_HOURS * 60, n=nonce)}"
+    status = "sent"
+    try:
+        await send_email(to=demo_inbox(sr["email"]), subject="Your DashLocal store is ready",
+                         html=brand_email(f"Welcome to DashLocal, {sr['contact_name'].split(' ')[0]}",
+                                          f"<p>Your store <b>{escape(sr['store_name'])}</b> is approved. Choose a password to sign in and upload your first orders.</p>"
+                                          f"<p>The link works once and lasts {SETPW_LINK_HOURS} hours.</p>", ("Choose your password", link)))
+    except Exception as e:
+        status = f"failed: {e}"
+    await db.signup_requests.update_one({"id": sid}, {"$set": {"status": "approved", "merchant_id": m["id"], "decided_at": now_iso(), "email_status": status}})
+    return {"ok": True, "merchant_id": m["id"], "email_status": status}
+
+
+@api_router.post("/admin/signup-requests/{sid}/decline", dependencies=ADMIN_ONLY)
+async def decline_signup(sid: str):
+    res = await db.signup_requests.update_one({"id": sid, "status": "pending"}, {"$set": {"status": "declined", "decided_at": now_iso()}})
+    if not res.matched_count:
+        raise HTTPException(404, "No pending request with this id")
+    return {"ok": True}
+
+
+async def setpw_user(token: str) -> dict:
+    p = link_payload(token, "setpw")
+    u = await db.users.find_one({"id": p["sub"], "disabled": {"$ne": True}}, {"_id": 0})
+    if not u or not u.get("pw_nonce") or not secrets.compare_digest(u["pw_nonce"], str(p.get("n", ""))):
+        raise HTTPException(400, "This link was already used or has been replaced — ask DashLocal for a new one")
+    return u
+
+
+@api_router.get("/auth/set-password/{token}")
+async def setpw_info(token: str):
+    u = await setpw_user(token)
+    m = await db.merchants.find_one({"id": u.get("merchant_id")}, {"_id": 0}) or {}
+    return {"email": u["email"], "store_name": m.get("name")}
+
+
+class SetPasswordIn(BaseModel):
+    token: str
+    password: str
+
+
+@api_router.post("/auth/set-password")
+async def setpw(body: SetPasswordIn, request: Request):
+    u = await setpw_user(body.token)
+    check_password(body.password)
+    await db.users.update_one({"id": u["id"]}, {"$set": {"password_hash": hash_pw(body.password), "last_login_at": now_iso()}, "$unset": {"pw_nonce": ""}})
+    await remember_public_base(request)
+    user = {k: v for k, v in u.items() if k not in ("password_hash", "pw_nonce")}
+    user["merchant_name"] = (await db.merchants.find_one({"id": u.get("merchant_id")}, {"_id": 0}) or {}).get("name")
+    return {"token": issue_token(u["id"], u["role"]), "user": user}
 
 
 app.include_router(api_router)

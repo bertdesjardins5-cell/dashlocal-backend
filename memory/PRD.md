@@ -85,3 +85,10 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 
 ## Shop reviews (Jun 2026)
 - Public GET /api/testimonials returns the newest 6 published. Admin CRUD is at /api/admin/testimonials, with the /admin/reviews screen linked from the control centre (delete needs a second tap to confirm). The landing section is hidden until a review is published. No quotes are seeded.
+
+## Review requests + merchant sign-up (Jun 2026)
+- Admin: POST /api/admin/review-requests {merchant_id} emails the store logins a one-time /review/{token} link (14 days); requests are listed at GET /api/admin/review-requests. The public GET/POST /api/review-requests/{token} creates a hidden testimonial (from_shop=true, "needs approval" in the admin reviews screen) and emails the admin.
+- Public POST /api/signup-requests (5 per IP per hour; same answer for emails that already exist) emails the admin. Admin GET /api/admin/signup-requests, POST /{id}/approve (creates the store and a login, emails a one-time /set-password/{token} link valid 72h), POST /{id}/decline. Screen: /admin/signups.
+- GET/POST /api/auth/set-password[/token] sets the password, signs the user in and opens the portal. Admin notices go to ADMIN_NOTIFY_EMAIL or ADMIN_EMAIL. Demo store emails go to the delivered@resend.dev test inbox.
+- The landing hero CTA now goes to /sign-up; the merchant card has a "Request an account" button.
+- ADMIN_NOTIFY_EMAIL=bertdesjardins@hotmail.com (backend/.env). The delivery of this notice is unverified: the email provider returned 429 rate_limited after a test burst.
