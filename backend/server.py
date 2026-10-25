@@ -2437,6 +2437,55 @@ async def driver_login(body: DriverLoginIn, request: Request):
     return {"token": issue_token(u["id"], "driver"), "user": user}
 
 
+# ---- shop testimonials for the public landing page (admin-managed)
+class TestimonialIn(BaseModel):
+    quote: str
+    person: Optional[str] = None
+    shop: str
+    published: bool = True
+
+
+def clean_testimonial(body: TestimonialIn) -> dict:
+    quote, shop = " ".join(body.quote.split())[:400], " ".join(body.shop.split())[:80]
+    if not quote or not shop:
+        raise HTTPException(400, "A quote and the shop name are required")
+    return {"quote": quote, "shop": shop, "person": (" ".join((body.person or "").split())[:60] or None), "published": body.published}
+
+
+@api_router.get("/testimonials")
+async def public_testimonials():
+    """Published shop quotes for the landing page (newest first, max 6)."""
+    return await db.testimonials.find({"published": True}, {"_id": 0, "id": 1, "quote": 1, "person": 1, "shop": 1}).sort("created_at", -1).to_list(6)
+
+
+@api_router.get("/admin/testimonials", dependencies=ADMIN_ONLY)
+async def admin_testimonials():
+    return await db.testimonials.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
+
+
+@api_router.post("/admin/testimonials", dependencies=ADMIN_ONLY)
+async def create_testimonial(body: TestimonialIn):
+    doc = {"id": str(uuid.uuid4()), **clean_testimonial(body), "created_at": now_iso(), "updated_at": now_iso()}
+    await db.testimonials.insert_one(dict(doc))
+    return doc
+
+
+@api_router.put("/admin/testimonials/{tid}", dependencies=ADMIN_ONLY)
+async def update_testimonial(tid: str, body: TestimonialIn):
+    res = await db.testimonials.update_one({"id": tid}, {"$set": {**clean_testimonial(body), "updated_at": now_iso()}})
+    if not res.matched_count:
+        raise HTTPException(404, "Review not found")
+    return await db.testimonials.find_one({"id": tid}, {"_id": 0})
+
+
+@api_router.delete("/admin/testimonials/{tid}", dependencies=ADMIN_ONLY)
+async def delete_testimonial(tid: str):
+    if not (await db.testimonials.delete_one({"id": tid})).deleted_count:
+        raise HTTPException(404, "Review not found")
+    return {"ok": True}
+
+
+
 class PinIn(BaseModel):
     pin: str
 

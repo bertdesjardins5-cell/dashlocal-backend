@@ -82,3 +82,6 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - `/sign-in/merchant` sends the merchant to /merchant/{id}. `/sign-in/staff` has an Admin/Driver toggle: admin goes to /admin, driver to /driver/{id}. SignInForm and DriverSignInForm are restyled to the brand (also used by the gated layouts).
 - The CSV column delivery_note (aliases gate_code, customer_note, dropoff_note, door_note) prefills the order's customer note and upserts the store's saved note.
 - GET /api/stops/{id} (driver/admin) returns doorstep_hint {photo_url signed, delivered_at}: the latest earlier delivered proof photo for the same phone and address.
+
+## Shop reviews (Jun 2026)
+- Public GET /api/testimonials returns the newest 6 published. Admin CRUD is at /api/admin/testimonials, with the /admin/reviews screen linked from the control centre (delete needs a second tap to confirm). The landing section is hidden until a review is published. No quotes are seeded.

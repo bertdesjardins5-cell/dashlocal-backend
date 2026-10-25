@@ -11,6 +11,8 @@ import BrandHeader, { Kicker } from "@/src/components/brand/BrandHeader";
 import BrandButton from "@/src/components/brand/BrandButton";
 import { LogoMark } from "@/src/components/brand/Logo";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/src/api";
 
 const HERO = "https://images.unsplash.com/photo-1575663620136-5ebbfcc2c597?crop=entropy&cs=srgb&fm=jpg&q=80&w=1600";
 
@@ -36,6 +38,7 @@ export default function Landing() {
   const wide = width >= 820;
   const [code, setCode] = useState("");
   const track = () => code.trim() && router.push(`/customer/${code.trim().toUpperCase()}`);
+  const reviews = useQuery({ queryKey: ["testimonials"], queryFn: () => api<{ id: string; quote: string; person: string | null; shop: string }[]>("/testimonials") });
 
   return (
     <View style={s.root} testID="landing-screen">
@@ -97,6 +100,29 @@ export default function Landing() {
             </View>
           </View>
         </View>
+
+        {/* Shop reviews (admin-managed; hidden until one is published) */}
+        {reviews.data?.length ? (
+          <View style={[s.container, s.section]} testID="landing-reviews">
+            <Kicker>From our shops</Kicker>
+            <Text style={s.h2}>Small businesses on DashLocal</Text>
+            <View style={[s.grid, wide && { flexDirection: "row", flexWrap: "wrap" }]}>
+              {reviews.data.map((r) => (
+                <View key={r.id} style={[s.review, wide && { flexGrow: 1, flexBasis: "30%" }]} testID={`landing-review-${r.id}`}>
+                  <Text style={s.quoteMark}>“</Text>
+                  <Text style={s.quote}>{r.quote}</Text>
+                  <View style={s.reviewBy}>
+                    <View style={s.reviewDot}><Ionicons name="storefront-outline" size={16} color={colors.onBrandSky} /></View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.reviewShop}>{r.shop}</Text>
+                      {r.person ? <Text style={s.reviewPerson}>{r.person}</Text> : null}
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : null}
 
         {/* Sign-in options */}
         <View style={[s.container, s.section]} testID="landing-sign-in-options">
@@ -174,6 +200,13 @@ const useStyles = makeStyles((c) => ({
   band: { backgroundColor: c.brandSoftGray },
   perk: { flexDirection: "row", gap: 16, padding: 20, borderRadius: 16, backgroundColor: c.surface },
   card: { gap: 12, padding: 24, borderRadius: 20, backgroundColor: c.surface, borderWidth: 1, borderColor: c.brandLine },
+  review: { gap: 12, padding: 24, borderRadius: 20, backgroundColor: c.surface, borderWidth: 1, borderColor: c.brandLine },
+  quoteMark: { fontFamily: fonts.brandHeading, fontSize: 44, lineHeight: 44, color: c.brandGold, marginBottom: -12 },
+  quote: { fontFamily: fonts.brandBody, fontSize: 17, lineHeight: 27, color: c.brandCharcoal },
+  reviewBy: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 4 },
+  reviewDot: { width: 32, height: 32, borderRadius: 16, backgroundColor: c.brandSky, alignItems: "center", justifyContent: "center" },
+  reviewShop: { fontFamily: fonts.brandHeading, fontSize: 15, color: c.brandCharcoal },
+  reviewPerson: { fontFamily: fonts.brandBody, fontSize: 14, color: c.brandMuted },
   cardIcon: { width: 52, height: 52, borderRadius: 14, alignItems: "center", justifyContent: "center" },
   trackPill: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, borderRadius: 22, borderWidth: 1.5, borderColor: c.brandGold },
   trackPillText: { fontFamily: fonts.brandHeadingMedium, fontSize: 14, color: c.brandCharcoal },
