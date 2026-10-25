@@ -3270,7 +3270,7 @@ async def set_merchant_alerts(merchant_id: str, body: AlertsIn, _: dict = Depend
 
 
 # ---------------------------------------------------------------- pricing & weekly merchant bills (CAD, collected outside the app)
-PRICING_DEFAULT = {"currency": "CAD", "base_fee": 8.00, "included_km": 5.0, "per_km": 1.25, "priority_fee": 6.00,
+PRICING_DEFAULT = {"currency": "CAD", "base_fee": 8.00, "included_km": 5.0, "per_km": 1.25, "priority_fee": 16.00,
                    "charge_failed": True, "tax_pct": 0.0}
 PRICING_LIMITS = {"base_fee": 1000, "included_km": 500, "per_km": 100, "priority_fee": 1000, "tax_pct": 30}
 PRICING_NAMES = {"base_fee": "Per-delivery fee", "included_km": "Km included", "per_km": "Extra per km",
