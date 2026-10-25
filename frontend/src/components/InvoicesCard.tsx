@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Linking, Platform, Pressable, TextInput, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
 import { api, BACKEND_URL, dayLabel } from "@/src/api";
 import { money } from "@/src/components/BillCard";
 import { Btn, Display, Mono, Pill } from "@/src/ui";
@@ -16,8 +17,9 @@ type Filter = "all" | "unpaid" | "paid";
 const LIMIT = 10;
 
 // Merchant: one invoice per completed delivery (fee + 13% HST), balances, PDF download, billing address.
-export default function InvoicesCard({ merchantId, notify }: { merchantId: string; notify: (m: string, tone?: "dark" | "red" | "green") => void }) {
+export default function InvoicesCard({ merchantId, notify, paidSession }: { merchantId: string; notify: (m: string, tone?: "dark" | "red" | "green") => void; paidSession?: string }) {
   const s = useStyles();
+  const router = useRouter();
   const { colors } = useTheme();
   const [filter, setFilter] = useState<Filter>("all");
   const [open, setOpen] = useState<string | null>(null);
@@ -27,6 +29,8 @@ export default function InvoicesCard({ merchantId, notify }: { merchantId: strin
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [note, setNote] = useState("");
   const toggleSel = (id: string) => setSel((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const months = Array.from({ length: 6 }, (_, i) => { const t = new Date(); t.setDate(1); t.setMonth(t.getMonth() - i); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}`; });
+  const [month, setMonth] = useState(months[0]);
   const q = useQuery({ queryKey: ["invoices", merchantId, filter], queryFn: () => api<Resp>(`/merchants/${merchantId}/invoices${filter === "all" ? "" : `?status=${filter}`}`), refetchInterval: 30000 });
   const d = q.data;
 
@@ -43,6 +47,67 @@ export default function InvoicesCard({ merchantId, notify }: { merchantId: strin
       setBusy(null);
     }
   };
+  const openUrl = async (path: string) => {
+    const url = path.startsWith("http") ? path : `${BACKEND_URL}${path}`;
+    if (Platform.OS === "web") window.location.href = url;
+    else await Linking.openURL(url);
+  };
+  const downloadStatement = async () => {
+    setBusy("statement");
+    try {
+      const r = await api<{ path: string }>(`/merchants/${merchantId}/statements/link`, { method: "POST", body: { month } });
+      await openUrl(r.path);
+    } catch (e: any) {
+      notify(e.message, "red");
+    } finally {
+      setBusy(null);
+    }
+  };
+  const payCard = async () => {
+    setBusy("card");
+    try {
+      const r = await api<{ url: string }>(`/merchants/${merchantId}/invoices/checkout`, { method: "POST", body: { ids: Array.from(sel) } });
+      await openUrl(r.url); // Stripe's secure card page; we come back to the portal with ?paid=<session>
+    } catch (e: any) {
+      notify(e.message, "red");
+      setBusy(null);
+    }
+  };
+  // Back from Stripe: check the payment with the server (it asks Stripe) until it is settled.
+  useEffect(() => {
+    if (!paidSession || paidSession === "cancel") {
+      if (paidSession === "cancel") {
+        notify("CARD PAYMENT CANCELLED · NOTHING WAS CHARGED", "dark");
+        router.setParams({ paid: undefined });
+      }
+      return;
+    }
+    let stop = false;
+    (async () => {
+      for (let i = 0; i < 10 && !stop; i++) {
+        try {
+          const r = await api<{ status: string; amount: number; count: number; credit: number }>(`/merchants/${merchantId}/payments/${paidSession}`);
+          if (r.status === "paid") {
+            if (r.credit > 0) notify(`PAYMENT RECEIVED · ${money(r.credit)} WAS ALREADY PAID · DASHLOCAL WILL REFUND IT`, "dark");
+            else notify(`PAYMENT RECEIVED · ${money(r.amount)} · ${r.count} INVOICE${r.count === 1 ? "" : "S"} PAID`, "green");
+            q.refetch();
+            router.setParams({ paid: undefined });
+            return;
+          }
+          if (r.status === "expired") {
+            router.setParams({ paid: undefined });
+            return notify("CARD PAYMENT EXPIRED · NOTHING WAS CHARGED", "red");
+          }
+        } catch {}
+        await new Promise((res) => setTimeout(res, 2000));
+      }
+      if (!stop) notify("STILL CONFIRMING YOUR PAYMENT · CHECK BACK IN A MINUTE", "dark");
+    })();
+    return () => {
+      stop = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paidSession]);
   const report = async () => {
     setBusy("report");
     try {
@@ -119,8 +184,8 @@ export default function InvoicesCard({ merchantId, notify }: { merchantId: strin
                 <View style={s.lineRow}><Mono style={s.main}>TOTAL</Mono><Mono style={s.main}>{money(inv.total)}</Mono></View>
                 {inv.paid_at ? <Mono style={s.meta}>PAID {dayLabel(inv.paid_at.slice(0, 10))}{inv.paid_note ? ` · ${inv.paid_note}` : ""}</Mono> : null}
                 {inv.status === "reported" && inv.report ? <Mono style={s.meta}>YOU REPORTED PAYMENT {dayLabel(inv.report.at.slice(0, 10))} · {inv.report.note} · WAITING FOR DASHLOCAL TO CONFIRM</Mono> : null}
-                {inv.status === "unpaid" ? (
-                  <Btn testID={`invoice-select-${inv.number}`} label={sel.has(inv.id) ? "SELECTED FOR PAYMENT" : "I PAID THIS"} icon={sel.has(inv.id) ? "checkbox" : "square-outline"} variant="outline" onPress={() => toggleSel(inv.id)} />
+                {inv.status !== "paid" ? (
+                  <Btn testID={`invoice-select-${inv.number}`} label={sel.has(inv.id) ? "SELECTED TO PAY" : "SELECT TO PAY"} icon={sel.has(inv.id) ? "checkbox" : "square-outline"} variant="outline" onPress={() => toggleSel(inv.id)} />
                 ) : null}
                 <Btn testID={`invoice-download-${inv.number}`} label="DOWNLOAD PDF" icon="document-text" variant="outline" loading={busy === inv.id} onPress={() => download(inv)} />
               </View>
@@ -130,25 +195,37 @@ export default function InvoicesCard({ merchantId, notify }: { merchantId: strin
         {d.invoices.length > LIMIT && !all ? (
           <Pressable testID="invoices-show-all" onPress={() => setAll(true)} style={s.more}><Mono style={s.chipText}>SHOW ALL {d.invoices.length}</Mono></Pressable>
         ) : null}
-        {sel.size || d.invoices.some((i) => i.status === "unpaid") ? (
+        {sel.size || d.invoices.some((i) => i.status !== "paid") ? (
           <View style={s.payBox} testID="invoices-report-box">
-            <Mono style={s.title}>PAID BY E-TRANSFER OR CHEQUE?</Mono>
+            <Mono style={s.title}>PAY OUTSTANDING INVOICES</Mono>
             {sel.size ? null : (
-              <Btn testID="invoices-select-all-unpaid" label="SELECT ALL UNPAID" variant="outline" onPress={() => setSel(new Set(d.invoices.filter((i) => i.status === "unpaid").map((i) => i.id)))} />
+              <Btn testID="invoices-select-all-unpaid" label="SELECT ALL UNPAID" variant="outline" onPress={() => setSel(new Set(d.invoices.filter((i) => i.status !== "paid").map((i) => i.id)))} />
             )}
             {sel.size ? (
               <>
                 <Mono style={s.meta}>{sel.size} INVOICE{sel.size === 1 ? "" : "S"} · {money(d.invoices.filter((i) => sel.has(i.id)).reduce((a, i) => a + i.total, 0))}</Mono>
-                <TextInput testID="invoices-report-note" value={note} onChangeText={setNote} placeholder="How you paid, e.g. e-Transfer ref 8841" placeholderTextColor={colors.muted} style={s.input} />
                 <View style={s.row}>
-              <Btn testID="invoices-report-clear" label="CLEAR" variant="outline" onPress={() => setSel(new Set())} style={{ flex: 1 }} />
-                  <Btn testID="invoices-report-submit" label="TELL DASHLOCAL I PAID" icon="send" loading={busy === "report"} disabled={!note.trim()} onPress={report} style={{ flex: 2 }} />
+                  <Btn testID="invoices-report-clear" label="CLEAR" variant="outline" onPress={() => setSel(new Set())} style={{ flex: 1 }} />
+                  <Btn testID="invoices-pay-card" label="PAY BY CARD" icon="card" loading={busy === "card"} onPress={payCard} style={{ flex: 2 }} />
                 </View>
+                <Mono style={s.meta}>OR, IF YOU PAID BY E-TRANSFER OR CHEQUE:</Mono>
+                <TextInput testID="invoices-report-note" value={note} onChangeText={setNote} placeholder="How you paid, e.g. e-Transfer ref 8841" placeholderTextColor={colors.muted} style={s.input} />
+                <Btn testID="invoices-report-submit" label="TELL DASHLOCAL I PAID" icon="send" variant="outline" loading={busy === "report"} disabled={!note.trim()} onPress={report} />
               </>
             ) : null}
           </View>
         ) : null}
         {d.invoices.length === 0 ? <Mono style={s.meta} testID="invoices-empty">{filter === "all" ? "AN INVOICE IS CREATED FOR EACH COMPLETED DELIVERY" : `NO ${filter.toUpperCase()} INVOICES`}</Mono> : null}
+
+        <Mono style={[s.title, { marginTop: spacing.sm }]}>MONTHLY STATEMENT (PDF)</Mono>
+        <View style={[s.row, { flexWrap: "wrap" }]}>
+          {months.map((mo) => (
+            <Pressable key={mo} testID={`statement-month-${mo}`} onPress={() => setMonth(mo)} style={[s.chip, month === mo && { backgroundColor: colors.surfaceInverse }]}>
+              <Mono style={[s.chipText, month === mo && { color: colors.onSurfaceInverse }]}>{new Date(`${mo}-15T12:00:00`).toLocaleDateString("en-CA", { month: "short", year: "numeric" }).toUpperCase()}</Mono>
+            </Pressable>
+          ))}
+        </View>
+        <Btn testID="statement-download" label="DOWNLOAD STATEMENT" icon="document-text" variant="outline" loading={busy === "statement"} onPress={downloadStatement} />
 
         <Mono style={[s.title, { marginTop: spacing.sm }]}>BILLING ADDRESS ON INVOICES</Mono>
         {addr === null ? (

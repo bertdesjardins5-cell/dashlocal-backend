@@ -26,7 +26,7 @@ type Detail = {
 };
 
 export default function MerchantHome() {
-  const { merchantId } = useLocalSearchParams<{ merchantId: string }>();
+  const { merchantId, paid } = useLocalSearchParams<{ merchantId: string; paid?: string }>();
   const s = useStyles();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -163,7 +163,7 @@ export default function MerchantHome() {
           ) : null}
 
           <Mono style={s.section}>INVOICES · CAD + HST</Mono>
-          <InvoicesCard merchantId={merchantId} notify={toast.show} />
+          <InvoicesCard merchantId={merchantId} notify={toast.show} paidSession={paid} />
 
           <Mono style={s.section}>DELIVERY REPORT</Mono>
           <ReportDownload merchantId={merchantId} notify={toast.show} />

@@ -1,0 +1,42 @@
+{
+  "summary": "Tested Monthly Statement PDF and Stripe card payments for invoices, on both backend and frontend. New suite tests/test_statement_card_pay.py: 14/14 pass. Regression tests/test_invoices_hst.py: 23/23 pass. The full Stripe hosted checkout was automated with Playwright (card 4242, 12/34, CVC 123, US 94110). The flow went from the portal to checkout.stripe.com (CA$18.08 for DL-000003 and DL-000004) and back to /merchant/mer-1?paid=cs_... The 'PAYMENT RECEIVED · CA$18.08 · 2 INVOICES PAID' toast appeared, outstanding fell from CA$54.24 to CA$36.16, and the DB shows paid_by='card' with stripe_session and a payment_intent. ?paid=cancel shows the 'CARD PAYMENT CANCELLED · NOTHING WAS CHARGED' toast. Statement month chips (6 months) and DOWNLOAD STATEMENT work: DashLocal-statement-2026-10.pdf and -2026-09.pdf downloaded. One HIGH bug: open Stripe sessions are never expired, so invoices that are already paid can be charged again.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/merchants/{id}/invoices/checkout + settle_session", "issue": "Possible double charge, reproduced. Each PAY BY CARD tap creates a new Stripe session, and older open sessions for the same invoices are never expired. I paid session A for DL-000003/4, then completed an older open session B for the same 2 invoices, which a shop can reach with the browser Back button or an old tab. Stripe charged CA$18.08 a second time. settle_session marked session B 'paid' but changed no invoices, so the extra money is not recorded anywhere (no credit, no admin alert). The UI still showed 'PAYMENT RECEIVED · CA$18.08 · 2 INVOICES PAID'.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/merchants/{id}/payments/{session_id}", "issue": "stripe.checkout.Session.retrieve has no try/except. If Stripe or the proxy has an error, this returns 500 instead of a clean 424/503 (the UI swallows it and retries)."},
+      {"endpoint": "POST /api/admin/reset", "issue": "Reset does not clear db.payment_sessions. Reset also restarts invoice numbering, so old sessions point at invoice ids that no longer exist."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "InvoicesCard paid-session toast", "issue": "The ?paid=cs_... (or ?paid=cancel) param stays in the URL. Reloading or revisiting the page shows the PAYMENT RECEIVED or CANCELLED toast again. Clear the param after handling, e.g. router.setParams({paid: undefined}).", "testID": "invoices-card", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Merchant portal > Invoices", "issues": ["To choose an invoice for card payment the shop taps 'I PAID THIS'. That label is misleading before payment. Use 'SELECT TO PAY' or similar.", "The success toast covers the top of the screen over the stat tiles. It is readable but sits over content (minor)."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_statement_card_pay.py", "/app/test_reports/pytest/iter28_statement_card.xml", "/app/test_reports/pytest/iter28_invoices_hst.xml"],
+  "action_items": [
+    "HIGH: stop the double charge. (a) When creating a checkout, expire (stripe.checkout.Session.expire) or reuse any open payment_sessions that include the same invoice ids. (b) When a session settles as paid, expire the other open sessions that include its invoices. (c) If a paid session finds its invoices already paid, record an overpayment or credit, alert the admin to refund, and make the toast say so instead of 'N INVOICES PAID'.",
+    "Wrap Session.retrieve in settle_session with try/except and return 424/503 instead of 500.",
+    "Clear the ?paid= param after the toast is handled so a reload does not repeat it.",
+    "Have admin reset also clear db.payment_sessions.",
+    "Optional: rename 'I PAID THIS' to make clear it selects the invoice for card or e-Transfer payment."
+  ],
+  "critical_code_review_comments": [
+    "Good: the checkout amount is computed on the server from DB totals, paid/foreign/unknown ids are filtered out, settle checks amount_total == amount_cents and updates are guarded so they run once, and the statement token is purpose-scoped with sub and month checks (5 min).",
+    "server.py is 4370+ lines and should be split into modules (invoices/payments/statements).",
+    "Statement month chips use the device's local month, while invoice dates are UTC. Near month boundaries an invoice can appear in a different month than the shop expects (same issue as iteration 27's UTC dating)."
+  ],
+  "updated_files": ["/app/backend/tests/test_statement_card_pay.py (new)"],
+  "success_rate": {"backend": "100% (37/37: 14 new + 23 regression)", "frontend": "100% of requested flows (pay box, card checkout, return toast, cancel toast, statement chips/download)"},
+  "seed_data_creation": "Ran tests/seed_ui_iter27.py (the new suite auto-runs it if fewer than 3 outstanding mer-1 invoices exist this month). Temporary TEST_ invoices were inserted and deleted. Cleanup done: admin reset, payment_sessions cleared, no drv/trk login_attempts left.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The Stripe hosted checkout can be automated: #cardNumber, #cardExpiry, #cardCvc, #billingName, #billingPostalCode (US default; picking CA hides the postal field), and the submit button [data-testid=hosted-payment-submit-button]. The redirect back takes about 5s. Server clock is 2026-10. Run the invoice suites with -n 0. test_invoices_hst.py deletes invoices, so run it after test_statement_card_pay.py or let the new suite reseed. To re-test the double charge: create 2 sessions for the same invoices, pay one, then open the other's URL (stripe Session.retrieve(id).url) and pay it.",
+  "rca_of_issue": "Double charge: invoices_checkout always creates a new session and inserts a payment_sessions row, with no lookup of existing open sessions for those invoice ids. settle_session's update_many filters status != 'paid', so the second payment changes nothing, but Stripe has already taken the money. Fix: expire overlapping open sessions when creating or settling one, and handle overpayment when a session's invoices are already paid."
+}
