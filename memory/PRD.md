@@ -66,3 +66,8 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - Window, rating and share need the X-Order-Token for that stop, or the admin / the stop's driver. Customer responses are trimmed.
 - /api/files needs a signed per-file link (?t=) or a staff session (header or ?t=). Proof pages use signed links.
 - Not done (user's choice): CORS allowlist, removing the demo code list.
+
+## Customer notes, remembered unlock, launch settings (Jun 2026)
+- PUT /api/stops/{id}/customer-note (order token, admin or the stop's driver; pending only, max 200 chars). The driver manifest shows a banner for unseen notes; POST /api/stops/{id}/customer-note/seen clears it. The note is highlighted on the stop screen and the next-stop card.
+- The order unlock is stored on the device; the server rejects the order token 7 days after delivery.
+- CORS is limited to the CORS_ORIGINS list in backend/.env (dashlocal.app, www, and the preview URL). /api/track-codes and the demo list are removed.

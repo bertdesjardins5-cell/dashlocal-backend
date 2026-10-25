@@ -1,0 +1,35 @@
+{
+  "summary": "Tested the 3 new features: Customer Order Help (delivery note), Safer Launch Settings (CORS allow-list, /track-codes removed) and Remember Unlock (7-day expiry). Backend: 17/17 new tests pass (tests/test_customer_note_cors_unlock.py, -n0). Regression check of test_order_privacy_security.py and test_codes_coaching_expiry.py: 22/22 pass. Frontend at 375x667: all requested flows pass. /customer shows only the code entry. Unlocking MD1001 with 0100 shows the note section; saving 'Gate code 4321' shows the 'NOTE SENT TO YOUR DRIVER' toast; after a reload the order is still unlocked and the note is prefilled. On drv-1's manifest, customer-note-banner and next-stop-customer-note show the note, and GOT IT hides the banner. stop-customer-note shows on the stop detail screen. A note added while the driver is on the manifest appears as a banner in about 7s (the screen re-checks every 8s; it does not use the websocket). An arrived stop shows customer-note-locked. When a delivery is more than 7 days old, the saved unlock is dropped and the unlock box shows again. One bug found: the saved unlock is deleted on ANY error from /private, including a short network failure.",
+  "backend_issues": {"critical": [], "minor": [
+    {"endpoint": "PUT /api/stops/{id}/customer-note", "issue": "A note longer than 200 characters is cut to 200 without telling the user, instead of being rejected with a 422. This is fine because the UI input has maxLength 200; noted for API users."}
+  ]},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "customer/[code].tsx private refresh", "issue": "useEffect at app/customer/[code].tsx:76-82 calls .catch(() => setOrder(null)), so any failure of GET /track/{code}/private (offline, timeout, 5xx) deletes the saved unlock from storage. Reproduced: MD1002 unlocked, /private request aborted, page reloaded -> localStorage key dashlocal_order_MD1002 removed, verify box shown, and still locked after the network came back. This breaks 'Remember Unlock' on patchy mobile networks. Only clear on 401/403.", "testID": "verify-order", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "customer/[code].tsx", "issues": ["When an unlock expires (7 days after delivery), the customer is sent back to the last-4 box with no message explaining why; a toast such as 'Unlock expired — enter the last 4 digits again' would help."]},
+      {"screen": "driver/[driverId].tsx", "issues": ["The 'live alert' for a new customer note relies on the route re-check (8s when GPS is paused, 3s when active); /ws/route already broadcasts on note save, but the manifest does not listen to it. The alert works, with a delay of up to 8s."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_customer_note_cors_unlock.py", "/app/test_reports/pytest/pytest_iter20.xml"],
+  "action_items": [
+    "app/customer/[code].tsx:80: only call setOrder(null) when the /private error is 401/403 (expired or invalid token); keep the stored unlock on network or 5xx errors.",
+    "Optional: show a toast when a saved unlock is dropped because it expired.",
+    "Optional: on the driver manifest, subscribe to /ws/route/{id} (or poll faster) so the customer-note alert is truly live."
+  ],
+  "critical_code_review_comments": [
+    "check_order_token only expires the unlock based on delivered_at; failed orders keep a 60-day token (ORDER_TOKEN_MIN). Acceptable, but note it.",
+    "CustomerNote's 'dirty' check compares text.trim() with the saved note, but the server also collapses inner spaces, so typing extra inner spaces turns SAVE back on even though the result would not change. Cosmetic.",
+    "CORS: allow_origins is read from CORS_ORIGINS in env, and the preview URL is included; checked against localhost:8001 (dashlocal.app echoed back; evil.com gets no allow-origin header). The preview ingress still adds '*' itself, which the app can't control."
+  ],
+  "updated_files": ["/app/backend/tests/test_customer_note_cors_unlock.py (new)"],
+  "success_rate": {"backend": "100% (17/17 new + 22/22 regression)", "frontend": "95% (all requested flows pass; 1 medium bug in unlock persistence on network error)"},
+  "seed_data_creation": "Set notes on MD1001/MD1002/MD1003 and changed MD1001/MD1002 status in Mongo during testing; cleared lockouts and ran POST /api/admin/reset at the end (MD1001 is back to pending, no note).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n0. Some older test files need EXPO_PUBLIC_BACKEND_URL exported (export EXPO_PUBLIC_BACKEND_URL=https://arrivewise.preview.emergentagent.com). The driver route payload is under the 'route' key ({route:{stops:[...]}}). Python urllib calls to the preview URL get 403 (edge blocks them); use requests or in-page fetch. Last-4 for MD1002 is 0101, for MD1003 0102.",
+  "rca_of_issue": "Unlock lost offline: the /private refresh effect treats every rejected promise as an expired token and calls setOrder(null) -> saveUnlock(code, null) -> AsyncStorage.removeItem. Fix: inspect the error status (e.g. e.status === 401 || 403) before clearing."
+}

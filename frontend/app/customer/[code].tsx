@@ -11,12 +11,11 @@ import WindowPicker from "@/src/components/WindowPicker";
 import RatingPrompt from "@/src/components/RatingPrompt";
 import DeliveryProof from "@/src/components/DeliveryProof";
 import VerifyOrder from "@/src/components/VerifyOrder";
+import CustomerNote from "@/src/components/CustomerNote";
+import { loadUnlock, saveUnlock, Verified } from "@/src/orderUnlock";
 import RouteMap from "@/src/components/RouteMap";
 import { Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
-
-type Verified = OrderPrivate & { token: string };
-const verifiedCache = new Map<string, Verified>(); // keeps the unlock while the app is open
 
 export default function TrackOrder() {
   const { code } = useLocalSearchParams<{ code: string }>();
@@ -27,12 +26,14 @@ export default function TrackOrder() {
   const [wsUp, setWsUp] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const sheetRef = useRef<any>(null);
-  const [order, setOrderState] = useState<Verified | null>(() => verifiedCache.get(code) ?? null);
+  const [order, setOrderState] = useState<Verified | null>(null);
   const setOrder = (o: Verified | null) => {
-    if (o) verifiedCache.set(code, o);
-    else verifiedCache.delete(code);
+    saveUnlock(code, o);
     setOrderState(o);
   };
+  useEffect(() => {
+    loadUnlock(code).then((v) => v && setOrderState(v));
+  }, [code]);
   const orderHeaders = order ? { "X-Order-Token": order.token } : undefined;
 
   // Polling fallback if the socket drops
@@ -76,7 +77,11 @@ export default function TrackOrder() {
     if (!token || !status) return;
     api<OrderPrivate>(`/track/${code}/private`, { headers: { "X-Order-Token": token } })
       .then((p) => setOrder({ ...p, token }))
-      .catch(() => setOrder(null));
+      .catch((e: any) => {
+        if (e?.status !== 401 && e?.status !== 403) return; // network blip: keep the saved unlock
+        setOrder(null);
+        toast.show("YOUR UNLOCK EXPIRED · ENTER THE LAST 4 DIGITS AGAIN", "red");
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code, token, status, rating]);
   const [savingWin, setSavingWin] = useState(false);
@@ -145,6 +150,20 @@ export default function TrackOrder() {
             ) : (
               <>
                 <Mono style={s.meta} numberOfLines={1} testID="tracking-address">TO: {order.address}</Mono>
+                {!delivered && t.stop.status !== "failed" ? (
+                  <CustomerNote
+                    key={order.customer_note ?? ""}
+                    stopId={t.stop.id}
+                    note={order.customer_note}
+                    locked={t.stop.status !== "pending"}
+                    orderToken={order.token}
+                    onSaved={(n) => {
+                      setOrder({ ...order, customer_note: n });
+                      toast.show(n ? "NOTE SENT TO YOUR DRIVER" : "NOTE CLEARED", "green");
+                    }}
+                    onError={(m) => toast.show(m, "red")}
+                  />
+                ) : null}
                 {!delivered && t.stop.status !== "failed" ? (
                   <View style={{ marginHorizontal: -spacing.lg, gap: spacing.xs }} testID="customer-window-section">
                     <Mono style={[s.label, { paddingHorizontal: spacing.lg }]}>

@@ -111,12 +111,23 @@ async def require_any_driver(request: Request):
     raise HTTPException(403, "Driver sign-in required")
 
 
+ORDER_UNLOCK_AFTER_DELIVERY_DAYS = 7
+
+
+async def check_order_token(tok: str, stop_id: str):
+    """Valid order token for this stop; it stops working 7 days after the order is delivered."""
+    if decode_token(tok, "order")["sub"] != stop_id:
+        raise HTTPException(403, "This check is for a different order")
+    s = await db.stops.find_one({"id": stop_id}, {"_id": 0, "delivered_at": 1})
+    if s and s.get("delivered_at") and datetime.now(timezone.utc) - datetime.fromisoformat(s["delivered_at"]) > timedelta(days=ORDER_UNLOCK_AFTER_DELIVERY_DAYS):
+        raise HTTPException(401, "This order unlock has expired — enter the last 4 digits again")
+
+
 async def require_order_access(stop_id: str, request: Request):
     """Customer holding an order token for this stop (from the last-4-digits check), the stop's driver, or the admin."""
     tok = request.headers.get("x-order-token", "").strip()
     if tok:
-        if decode_token(tok, "order")["sub"] != stop_id:
-            raise HTTPException(403, "This check is for a different order")
+        await check_order_token(tok, stop_id)
         return {"role": "customer", "stop_id": stop_id}
     if not request.headers.get("authorization"):
         raise HTTPException(401, "Enter the last 4 digits of your phone to manage this order")
@@ -355,6 +366,9 @@ class Stop(BaseModel):
     merchant_fail_alert_at: Optional[str] = None  # "failed drop" email sent to the merchant (once)
     created_at: Optional[str] = None
     fail_reason: Optional[str] = None
+    customer_note: Optional[str] = None  # delivery note from the verified customer (gate code, "leave at back door")
+    customer_note_at: Optional[str] = None
+    customer_note_seen: bool = True  # False until the driver taps GOT IT on the manifest alert
 
 
 class Route(BaseModel):
@@ -500,7 +514,7 @@ def order_private(stop: "Stop") -> dict:
     """Extra order details for a customer who proved the order is theirs (last 4 phone digits)."""
     return {"customer_name": stop.customer_name, "address": stop.address, "lat": stop.lat, "lng": stop.lng,
             "pod_photo_url": file_url(stop.pod_photo_path) if stop.pod_photo_path else None,
-            "pod_signature": stop.pod_signature, "apology_code": stop.apology_code}
+            "pod_signature": stop.pod_signature, "apology_code": stop.apology_code, "customer_note": stop.customer_note}
 
 
 async def tracking_payload(code: str) -> dict:
@@ -1756,7 +1770,7 @@ class Last4In(BaseModel):
     last4: str
 
 
-ORDER_TOKEN_MIN = 120
+ORDER_TOKEN_MIN = 60 * 24 * 60  # remembered on the phone; also ends 7 days after delivery (check_order_token)
 
 
 @api_router.post("/track/{code}/verify")
@@ -1781,17 +1795,35 @@ async def track_private(code: str, request: Request):
     sdoc = await db.stops.find_one({"tracking_code": code.strip().upper()}, {"_id": 0})
     if not sdoc:
         raise HTTPException(404, "Tracking code not found")
-    if decode_token(request.headers.get("x-order-token", "").strip(), "order")["sub"] != sdoc["id"]:
-        raise HTTPException(403, "This check is for a different order")
+    await check_order_token(request.headers.get("x-order-token", "").strip(), sdoc["id"])
     return order_private(Stop(**sdoc))
 
 
-@api_router.get("/track-codes")
-async def track_codes():
-    """Demo helper listing tracking codes on active/planned routes (codes and status only, no customer details)."""
-    live = [r["id"] for r in await db.routes.find({"service_date": {"$gte": today_str()}}, {"_id": 0, "id": 1}).to_list(200)]
-    docs = await db.stops.find({"route_id": {"$in": live}}, {"_id": 0}).sort("seq", 1).to_list(200)
-    return [{"tracking_code": d["tracking_code"], "status": d["status"], "seq": d["seq"]} for d in docs]
+class CustomerNoteIn(BaseModel):
+    note: Optional[str] = None
+
+
+@api_router.put("/stops/{stop_id}/customer-note", dependencies=ORDER_ACCESS)
+async def set_customer_note(stop_id: str, body: CustomerNoteIn):
+    """Customer's delivery note for the driver (empty clears it). Locked once the driver has arrived."""
+    stop = await get_stop_or_404(stop_id)
+    if stop.status != "pending":
+        raise HTTPException(400, "The driver is already at your door — the note can't be changed now")
+    note = " ".join((body.note or "").split())[:200] or None
+    await db.stops.update_one({"id": stop_id}, {"$set": {"customer_note": note, "customer_note_at": now_iso() if note else None,
+                                                          "customer_note_seen": not note}})
+    if stop.route_id:
+        await broadcast_route(stop.route_id)
+    return {"customer_note": note}
+
+
+@api_router.post("/stops/{stop_id}/customer-note/seen", dependencies=STOP_DRIVER)
+async def seen_customer_note(stop_id: str):
+    stop = await get_stop_or_404(stop_id)
+    await db.stops.update_one({"id": stop_id}, {"$set": {"customer_note_seen": True}})
+    if stop.route_id:
+        await broadcast_route(stop.route_id)
+    return {"ok": True}
 
 
 def delivered_on_time(st: Stop) -> Optional[bool]:
@@ -3450,7 +3482,9 @@ async def ws_route(ws: WebSocket, route_id: str, token: str = ""):
 
 app.include_router(api_router)
 
-app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+# Only the app's own web addresses may call the API from a browser (phone apps send no Origin and are unaffected).
+CORS_ORIGINS = [o.strip().rstrip("/") for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+app.add_middleware(CORSMiddleware, allow_credentials=False, allow_origins=CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"])
 
 
 @app.on_event("shutdown")

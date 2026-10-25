@@ -76,10 +76,8 @@ class TestPublicTracking:
         assert d["path"] == []
         assert d["driver"]["name"] == "Marcus"
 
-    def test_track_codes_no_names(self, admin):
-        r = requests.get(f"{API}/track-codes", headers=NOAUTH)
-        assert r.status_code == 200 and len(r.json()) > 0
-        assert set(r.json()[0].keys()) == {"tracking_code", "status", "seq"}
+    def test_track_codes_removed(self, admin):
+        assert requests.get(f"{API}/track-codes", headers=NOAUTH).status_code == 404
 
     def test_ws_track_no_pii(self, admin):
         import asyncio, json, websockets

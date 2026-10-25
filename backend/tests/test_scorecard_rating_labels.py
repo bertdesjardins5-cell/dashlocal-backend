@@ -50,7 +50,8 @@ class TestHistoryIsolation:
         assert all(r.get("service_date", day(0)) >= day(0) for r in rs)
 
     def test_track_codes_exclude_history(self, api):
-        codes = [c["tracking_code"] for c in api.get(f"{API}/track-codes").json()]
+        rs = api.get(f"{API}/routes").json()
+        codes = [s["tracking_code"] for r in rs for s in api.get(f"{API}/routes/{r['id']}").json()["stops"]]
         assert codes and not any(c.startswith("MH") for c in codes)
 
     def test_history_stop_trackable_and_fictional(self, api):

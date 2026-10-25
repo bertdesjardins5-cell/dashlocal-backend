@@ -37,6 +37,9 @@ export type Stop = {
   fee?: { base: number; km: number; distance_fee: number; priority_fee: number; total: number; currency: string } | null;
   late_min?: number;
   fail_reason: string | null;
+  customer_note?: string | null;
+  customer_note_at?: string | null;
+  customer_note_seen?: boolean;
 };
 
 export type Driver = { id: string; name: string; phone: string; vehicle: string; lat: number; lng: number };
@@ -77,6 +80,7 @@ export type OrderPrivate = {
   pod_photo_url: string | null;
   pod_signature: string | null;
   apology_code: string | null;
+  customer_note: string | null;
 };
 
 export type Tracking = {
@@ -110,7 +114,7 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
       const j = await res.json();
       if (j.detail) msg = typeof j.detail === "string" ? j.detail : msg;
     } catch {}
-    throw new Error(msg);
+    throw Object.assign(new Error(msg), { status: res.status });
   }
   return res.json();
 }

@@ -79,6 +79,16 @@ export default function Manifest() {
     q.refetch();
   };
   const next = route?.stops.find((st) => st.id === route.next_stop_id);
+  // Live alert for new customer delivery notes (route refreshes every few seconds).
+  const newNotes = route?.stops.filter((st) => st.customer_note && st.customer_note_seen === false && st.status === "pending") ?? [];
+  const ackNotes = async () => {
+    try {
+      await Promise.all(newNotes.map((st) => api(`/stops/${st.id}/customer-note/seen`, { method: "POST" })));
+    } catch (e: any) {
+      toast.show(`COULD NOT CONFIRM: ${e.message}`, "red");
+    }
+    q.refetch();
+  };
   const remaining = route?.stops.filter((st) => st.id !== route.next_stop_id) ?? [];
 
   const onGeofence = useCallback((r: { geofence_arrived_stop_id: string | null }) => {
@@ -189,6 +199,18 @@ export default function Manifest() {
           </Pressable>
         </View>
       ) : null}
+      {newNotes.length ? (
+        <View style={s.coachBox} testID="customer-note-banner">
+          <Ionicons name="chatbox-ellipses" size={20} color={colors.onWarning} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <Mono style={s.coachKicker}>NEW CUSTOMER NOTE · STOP #{newNotes[0].seq}{newNotes.length > 1 ? ` · +${newNotes.length - 1} MORE` : ""}</Mono>
+            <Mono style={s.coachText} testID="customer-note-banner-text">{newNotes[0].customer_note}</Mono>
+          </View>
+          <Pressable testID="customer-note-ack-button" onPress={ackNotes} style={s.coachAck}>
+            <Mono style={s.coachAckText}>GOT IT</Mono>
+          </Pressable>
+        </View>
+      ) : null}
       {route && route.resequenced_at && route.resequence_seen === false ? (
         <View style={s.updateBox} testID="route-updated-banner">
           <Ionicons name="swap-vertical" size={20} color={colors.onBrandPrimary} />
@@ -263,6 +285,7 @@ export default function Manifest() {
                 <Mono style={s.heroAddr}>{next.address}</Mono>
                 <Mono style={s.heroAddr}>{next.postal_code} · {next.tracking_code}</Mono>
                 {next.notes ? <Mono style={s.heroNote}>NOTE: {next.notes}</Mono> : null}
+                {next.customer_note ? <Mono style={s.heroNote} testID="next-stop-customer-note">CUSTOMER: {next.customer_note}</Mono> : null}
                 {windowLabel(next) ? (
                   <Mono style={s.heroWindow} testID="next-stop-window">
                     WINDOW {windowLabel(next)} · ETA {fmtDepotTime(next.planned_eta)}{next.late_min ? ` · LATE ${next.late_min}M` : ""}

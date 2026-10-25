@@ -155,9 +155,7 @@ def test_contact_invalid_channel(api):
 
 # ---- tracking
 def test_track_and_codes(api):
-    codes = api.get(f"{API}/track-codes").json()
-    assert len(codes) > 0
-    code = codes[0]["tracking_code"]
+    code = api.get(f"{API}/drivers/drv-1/route").json()["route"]["stops"][0]["tracking_code"]
     r = api.get(f"{API}/track/{code}")
     assert r.status_code == 200
     body = r.json()
@@ -199,8 +197,7 @@ def test_websocket_track():
     except Exception:
         pytest.skip("websockets lib missing")
     s = requests.Session()
-    codes = s.get(f"{API}/track-codes").json()
-    code = codes[0]["tracking_code"]
+    code = "MD1001"
     ws_url = BASE_URL.replace("https://", "wss://").replace("http://", "ws://") + f"/api/ws/track/{code}"
     try:
         with connect(ws_url, open_timeout=10) as ws:

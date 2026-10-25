@@ -153,6 +153,12 @@ export default function StopDetail() {
               <Mono style={s.addr}>{stop.address}</Mono>
               <Mono style={s.meta}>{stop.postal_code} · ZONE {stop.zone.toUpperCase()}</Mono>
               {stop.notes ? <Mono style={s.note}>NOTE: {stop.notes}</Mono> : null}
+              {stop.customer_note ? (
+                <View style={s.custNote} testID="stop-customer-note">
+                  <Mono style={s.custNoteKicker}>NOTE FROM CUSTOMER</Mono>
+                  <Mono style={s.custNoteText}>{stop.customer_note}</Mono>
+                </View>
+              ) : null}
               {stop.arrival_method ? <Mono style={s.meta} testID="stop-arrival-method">ARRIVED VIA {stop.arrival_method.toUpperCase()}</Mono> : null}
               {stop.priority ? <Mono style={s.windowTag} testID="stop-priority">PRIORITY DELIVERY</Mono> : null}
               {windowLabel(stop) ? <Mono style={s.windowTag} testID="stop-window">DELIVER {windowLabel(stop)}</Mono> : null}
@@ -283,6 +289,9 @@ const useStyles = makeStyles((c) => ({
   addr: { fontSize: 16, fontWeight: "700" },
   meta: { fontSize: 12, color: c.muted },
   note: { fontSize: 13, backgroundColor: c.warning, color: c.onWarning, padding: spacing.sm, marginTop: spacing.sm },
+  custNote: { backgroundColor: c.brandPrimary, padding: spacing.sm, marginTop: spacing.sm, gap: 2, borderWidth: 2, borderColor: c.border },
+  custNoteKicker: { fontSize: 10, fontWeight: "700", letterSpacing: 1, color: c.onBrandPrimary },
+  custNoteText: { fontSize: 15, fontWeight: "700", color: c.onBrandPrimary },
   commRow: { flexDirection: "row", borderBottomWidth: 2, borderColor: c.border },
   commBtn: { flex: 1, minHeight: 64, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm },
   commText: { fontSize: 18 },
