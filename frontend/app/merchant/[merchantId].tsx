@@ -11,7 +11,8 @@ import WeeklyEmailCard from "@/src/components/WeeklyEmailCard";
 import SavedNotesCard from "@/src/components/SavedNotesCard";
 import WelcomeChecklist from "@/src/components/WelcomeChecklist";
 import ProblemAlertsCard from "@/src/components/ProblemAlertsCard";
-import BillCard, { money } from "@/src/components/BillCard";
+import { money } from "@/src/components/BillCard";
+import InvoicesCard from "@/src/components/InvoicesCard";
 import { api, API, dayLabel, Stop, windowLabel } from "@/src/api";
 import { uploadForm } from "@/src/utils/upload";
 import FixRowSheet, { ImportRow } from "@/src/components/FixRowSheet";
@@ -161,8 +162,8 @@ export default function MerchantHome() {
             </>
           ) : null}
 
-          <Mono style={s.section}>BILLING · CAD</Mono>
-          <BillCard merchantId={merchantId} notify={toast.show} />
+          <Mono style={s.section}>INVOICES · CAD + HST</Mono>
+          <InvoicesCard merchantId={merchantId} notify={toast.show} />
 
           <Mono style={s.section}>DELIVERY REPORT</Mono>
           <ReportDownload merchantId={merchantId} notify={toast.show} />

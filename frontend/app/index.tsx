@@ -25,7 +25,7 @@ const STEPS = [
 const PERKS = [
   { icon: "flash-outline" as const, title: "Same-day, every day", body: "Order by the afternoon, delivered by evening across the city." },
   { icon: "camera-outline" as const, title: "Proof at every door", body: "Photo, signature or parcel scan on each drop." },
-  { icon: "receipt-outline" as const, title: "Clear weekly bills", body: "Simple per-delivery pricing in CAD. No subscriptions." },
+  { icon: "receipt-outline" as const, title: "Clear invoices", body: "An invoice for every delivery, with HST shown. No subscriptions." },
   { icon: "chatbubble-ellipses-outline" as const, title: "Notes that reach the driver", body: "Gate codes and drop-off tips saved for your regulars." },
 ];
 
@@ -39,6 +39,7 @@ export default function Landing() {
   const [code, setCode] = useState("");
   const track = () => code.trim() && router.push(`/customer/${code.trim().toUpperCase()}`);
   const reviews = useQuery({ queryKey: ["testimonials"], queryFn: () => api<{ id: string; quote: string; person: string | null; shop: string }[]>("/testimonials") });
+  const rates = useQuery({ queryKey: ["rate-card"], queryFn: () => api<{ currency: string; base_fee: number; included_km: number; per_km: number; priority_fee: number; hst_pct: number }>("/rate-card") });
 
   return (
     <View style={s.root} testID="landing-screen">
@@ -101,6 +102,32 @@ export default function Landing() {
           </View>
         </View>
 
+        {/* Rate card */}
+        {rates.data ? (
+          <View style={s.band} testID="landing-rate-card">
+            <View style={[s.container, s.section]}>
+              <Kicker>Pricing</Kicker>
+              <Text style={s.h2}>Simple rates, no subscriptions</Text>
+              <View style={[s.grid, wide && { flexDirection: "row" }]}>
+                {[
+                  { k: "base", title: "Per delivery", v: `$${rates.data.base_fee.toFixed(2)}`, sub: `Includes the first ${rates.data.included_km} km` },
+                  { k: "km", title: "Extra distance", v: `$${rates.data.per_km.toFixed(2)}`, sub: `per km after ${rates.data.included_km} km` },
+                  { k: "priority", title: "Priority rush", v: `+$${rates.data.priority_fee.toFixed(2)}`, sub: "Goes out first on the route" },
+                ].map((r) => (
+                  <View key={r.k} style={[s.rate, wide && { flex: 1 }]} testID={`rate-${r.k}`}>
+                    <Text style={s.rateTitle}>{r.title}</Text>
+                    <Text style={s.rateVal}>{r.v}</Text>
+                    <Text style={s.body}>{r.sub}</Text>
+                  </View>
+                ))}
+              </View>
+              <Text style={[s.body, { marginTop: 12 }]} testID="rate-card-note">
+                Prices in {rates.data.currency} plus {rates.data.hst_pct}% HST. You get an invoice for every completed delivery, and you only pay for deliveries we complete. Volume pricing is available; ask us when you sign up.
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
         {/* Shop reviews (admin-managed; hidden until one is published) */}
         {reviews.data?.length ? (
           <View style={[s.container, s.section]} testID="landing-reviews">
@@ -132,7 +159,7 @@ export default function Landing() {
             <View style={[s.card, wide && { flex: 1 }]}>
               <View style={[s.cardIcon, { backgroundColor: colors.brandForest }]}><Ionicons name="storefront-outline" size={24} color={colors.onBrandForest} /></View>
               <Text style={s.h3}>For merchants</Text>
-              <Text style={s.body}>Upload orders, fix flagged rows, follow every drop, download reports and see your weekly bill.</Text>
+              <Text style={s.body}>Upload orders, fix flagged rows, follow every drop, download reports and see your invoices.</Text>
               <BrandButton testID="landing-merchant-sign-in" label="Merchant sign-in" icon="arrow-forward" onPress={() => router.push("/sign-in/merchant")} />
               <BrandButton testID="landing-merchant-sign-up" label="New shop? Request an account" variant="outline" onPress={() => router.push("/sign-up")} />
             </View>
@@ -202,6 +229,9 @@ const useStyles = makeStyles((c) => ({
   perk: { flexDirection: "row", gap: 16, padding: 20, borderRadius: 16, backgroundColor: c.surface },
   card: { gap: 12, padding: 24, borderRadius: 20, backgroundColor: c.surface, borderWidth: 1, borderColor: c.brandLine },
   review: { gap: 12, padding: 24, borderRadius: 20, backgroundColor: c.surface, borderWidth: 1, borderColor: c.brandLine },
+  rate: { gap: 6, padding: 24, borderRadius: 20, backgroundColor: c.surface, borderWidth: 1, borderColor: c.brandLine },
+  rateTitle: { fontFamily: fonts.brandHeadingMedium, fontSize: 14, color: c.brandForest, letterSpacing: 0.5 },
+  rateVal: { fontFamily: fonts.brandHeading, fontSize: 36, lineHeight: 44, color: c.brandCharcoal },
   quoteMark: { fontFamily: fonts.brandHeading, fontSize: 44, lineHeight: 44, color: c.brandGold, marginBottom: -12 },
   quote: { fontFamily: fonts.brandBody, fontSize: 17, lineHeight: 27, color: c.brandCharcoal },
   reviewBy: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 4 },

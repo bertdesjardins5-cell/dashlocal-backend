@@ -664,6 +664,8 @@ async def seed(force: bool = False):
     await db.import_rows.delete_many({})
     await db.merchant_alerts.delete_many({})
     await db.bill_payments.delete_many({})
+    await db.invoices.delete_many({})
+    await db.counters.delete_many({"key": "invoice"})
     await db.report_emails.delete_many({})
     await db.stops.delete_many({})
     await db.routes.delete_many({})
@@ -835,6 +837,7 @@ async def startup():
     spawn(weekly_scheduler())
     spawn(late_alert_watcher())
     spawn(review_reminder_watcher())
+    spawn(backfill_invoices())
     # imports interrupted by a restart: send unfinished rows back to the queue
     for j in await db.import_jobs.find({"status": "running"}, {"_id": 0, "id": 1}).to_list(100):
         spawn(process_import(j["id"]))
@@ -1622,6 +1625,12 @@ async def deliver(stop_id: str, body: DeliverIn):
         if delivered_on_time(done) is False and (await db.stops.update_one(
                 {"id": stop_id, "merchant_late_alert_at": None}, {"$set": {"merchant_late_alert_at": now_iso()}})).modified_count:
             spawn(send_merchant_alert(done, "delivered_late"))
+    if stop.merchant_id and (await db.merchants.update_one(
+            {"id": stop.merchant_id, "approved_via_signup": True, "first_delivery_email_at": None},
+            {"$set": {"first_delivery_email_at": now_iso()}})).modified_count:
+        spawn(send_first_delivery_email(stop.merchant_id))
+    if stop.merchant_id:
+        await create_invoice(stop_id)
     if stop.route_id:
         await maybe_complete_route(stop.route_id)
         await broadcast_route(stop.route_id)
@@ -3001,6 +3010,16 @@ def weekly_bill_html(b: dict, link: str) -> str:
             f'<p style="margin:0;color:#777;font-size:12px">Amounts in Canadian dollars. Payment is arranged directly with dispatch — we never ask for card details by email.</p>')
 
 
+def weekly_invoices_html(b: dict, portal: str) -> str:
+    """Weekly email section summarising the per-delivery invoices (fee + HST) and what is still outstanding."""
+    e = escape
+    return (f'<p style="margin:24px 0 8px;font-size:16px;font-weight:bold">Invoices this week</p>'
+            f'<p style="margin:0;color:#555">{b["count"]} invoice{"s" if b["count"] != 1 else ""} · subtotal {e(cad(b["subtotal"]))} · HST {e(cad(b["hst"]))} · '
+            f'<b>total {e(cad(b["total"]))}</b></p>'
+            f'<p style="margin:8px 0 0;font-weight:bold">Outstanding: {e(cad(b["outstanding"]))} ({b["unpaid_count"]} invoice{"s" if b["unpaid_count"] != 1 else ""})</p>'
+            f'<p style="margin:12px 0 0"><a href="{e(portal, quote=True)}" style="color:#e11d1d;font-weight:bold">View and download your invoices</a></p>')
+
+
 def weekly_email_html(store: str, since: str, until: str, s: dict, link: str, bill: Optional[dict] = None, statement: Optional[str] = None) -> str:
     e = escape
     rng = f"{nice_date(since)} – {nice_date(until)}"
@@ -3019,7 +3038,7 @@ def weekly_email_html(store: str, since: str, until: str, s: dict, link: str, bi
             f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">{rows}</table>'
             f'<p style="margin:24px 0 8px"><a href="{e(link, quote=True)}" style="display:inline-block;background:#e11d1d;color:#ffffff;padding:12px 20px;text-decoration:none;font-weight:bold">Download the full CSV report</a></p>'
             f'<p style="margin:0;color:#777;font-size:12px">The download link works for {WEEKLY_LINK_DAYS} days. It lists every drop with status, times, proof-of-delivery links and ratings.</p>'
-            + (weekly_bill_html(bill, statement) if bill and statement else "") +
+            + (weekly_invoices_html(bill, statement) if bill and statement else "") +
             f'</td></tr><tr><td style="padding:16px 24px;border-top:1px solid #e5e5e5;color:#888;font-size:12px">'
             f'Sent by {e(EMAIL_FROM_NAME)} every Monday morning. Turn this email off from the Merchant console. We never ask for your password by email.'
             f'</td></tr></table></td></tr></table>')
@@ -3041,12 +3060,13 @@ async def send_weekly_report(merchant_id: str, trigger: str) -> dict:
         tok = issue_token(f"weekly:{merchant_id}", "merchant", purpose="report", minutes=WEEKLY_LINK_DAYS * 24 * 60, mid=merchant_id, rng="lastweek")
         link = f"{base}/api/merchants/{merchant_id}/report.csv?token={tok}"
         summary = await weekly_summary(merchant_id, since, until)
-        bill = {**(await merchant_bill(merchant_id, since)), "outstanding": await merchant_outstanding(merchant_id)}
-        stok = issue_token(f"weekly:{merchant_id}", "merchant", purpose="statement", minutes=WEEKLY_LINK_DAYS * 24 * 60, mid=merchant_id, wk=since)
-        statement = f"{base}/api/merchants/{merchant_id}/statement.csv?token={stok}"
-        html = weekly_email_html(m["name"], since, until, summary, link, bill, statement)
-        subject = f"{m['name']}: weekly delivery report & statement ({nice_date(since)} – {nice_date(until)}) · {cad(bill['outstanding']['total'] or bill['total'])} due"
-        log["bill_total"], log["total_due"] = bill["total"], bill["outstanding"]["total"]
+        week_invs = await db.invoices.find({"merchant_id": merchant_id, "date": {"$gte": since, "$lte": until}}, {"_id": 0}).to_list(2000)
+        owed = invoice_summary(await db.invoices.find({"merchant_id": merchant_id}, {"_id": 0, "status": 1, "total": 1}).to_list(10000))
+        bill = {"count": len(week_invs), "subtotal": round(sum(i["subtotal"] for i in week_invs), 2), "hst": round(sum(i["hst"] for i in week_invs), 2),
+                "total": round(sum(i["total"] for i in week_invs), 2), "outstanding": owed["outstanding"], "unpaid_count": owed["unpaid_count"]}
+        html = weekly_email_html(m["name"], since, until, summary, link, bill, f"{base}/sign-in/merchant")
+        subject = f"{m['name']}: weekly delivery report & invoices ({nice_date(since)} – {nice_date(until)}) · {cad(bill['outstanding'])} outstanding"
+        log["bill_total"], log["total_due"] = bill["total"], bill["outstanding"]
         errors = []
         for u in users:
             to = TEST_INBOX if u.get("email") in {em for _, em, _ in DEMO_MERCHANT_USERS} else u["email"]
@@ -3607,6 +3627,243 @@ async def ws_route(ws: WebSocket, route_id: str, token: str = ""):
         hub.leave(room, ws)
 
 
+# ---------------------------------------------------------------- invoices with HST (one per completed delivery, CAD)
+BUSINESS_DEFAULT = {"name": "DashLocal", "address": "Business address — set in Admin › Invoices", "hst_number": "HST # — set in Admin › Invoices", "hst_pct": 13.0}
+
+
+async def get_business() -> dict:
+    doc = await db.settings.find_one({"key": "business"}, {"_id": 0}) or {}
+    return {**BUSINESS_DEFAULT, **(doc.get("value") or {})}
+
+
+async def next_invoice_number() -> str:
+    c = await db.counters.find_one_and_update({"key": "invoice"}, {"$inc": {"n": 1}}, upsert=True, return_document=True)
+    return f"DL-{c['n']:06d}"
+
+
+async def create_invoice(stop_id: str) -> Optional[dict]:
+    """Idempotent: one invoice per delivered merchant stop. Snapshots business + merchant details at issue time."""
+    s = await db.stops.find_one({"id": stop_id}, {"_id": 0})
+    if not s or s.get("status") != "delivered" or not s.get("merchant_id"):
+        return None
+    if existing := await db.invoices.find_one({"stop_id": stop_id}, {"_id": 0}):
+        return existing
+    m = await db.merchants.find_one({"id": s["merchant_id"]}, {"_id": 0}) or {}
+    biz = await get_business()
+    fee = s.get("fee") or compute_fee(s, await get_pricing(s["merchant_id"]))
+    lines = [{"description": "Same-day delivery fee", "amount": fee["base"]}]
+    if fee.get("distance_fee"):
+        lines.append({"description": f"Distance ({fee['km']} km)", "amount": fee["distance_fee"]})
+    if fee.get("priority_fee"):
+        lines.append({"description": "Priority surcharge", "amount": fee["priority_fee"]})
+    subtotal = round(sum(x["amount"] for x in lines), 2)
+    hst = round(subtotal * biz["hst_pct"] / 100, 2)
+    delivered = datetime.fromisoformat(s.get("delivered_at") or now_iso()).astimezone(TZ)
+    inv = {"id": str(uuid.uuid4()), "number": None, "merchant_id": s["merchant_id"], "stop_id": stop_id,
+           "date": delivered.date().isoformat(), "issued_at": now_iso(), "currency": "CAD",
+           "business": biz, "merchant": {"name": m.get("name", ""), "address": m.get("address")},
+           "delivery": {"tracking_code": s["tracking_code"], "customer_name": s["customer_name"], "address": s["address"],
+                        "delivered_at": s.get("delivered_at"), "delivered_local": delivered.strftime("%Y-%m-%d %H:%M"), "km": fee.get("km"), "priority": bool(s.get("priority"))},
+           "lines": lines, "subtotal": subtotal, "hst_pct": biz["hst_pct"], "hst": hst, "total": round(subtotal + hst, 2),
+           "status": "unpaid", "paid_at": None, "paid_note": None}
+    try:
+        inv["number"] = await next_invoice_number()
+        await db.invoices.insert_one(dict(inv))
+    except DuplicateKeyError:  # a parallel call already issued it
+        return await db.invoices.find_one({"stop_id": stop_id}, {"_id": 0})
+    return inv
+
+
+async def backfill_invoices():
+    await db.invoices.create_index("stop_id", unique=True)
+    await db.invoices.create_index("number", unique=True)
+    for s in await db.stops.find({"status": "delivered", "merchant_id": {"$ne": None}}, {"_id": 0, "id": 1}).to_list(5000):
+        await create_invoice(s["id"])
+
+
+def invoice_summary(invs: list) -> dict:
+    out = round(sum(i["total"] for i in invs if i["status"] in ("unpaid", "reported")), 2)
+    paid = round(sum(i["total"] for i in invs if i["status"] == "paid"), 2)
+    return {"outstanding": out, "paid": paid, "unpaid_count": sum(i["status"] in ("unpaid", "reported") for i in invs),
+            "reported_count": sum(i["status"] == "reported" for i in invs), "count": len(invs)}
+
+
+@api_router.get("/merchants/{merchant_id}/invoices")
+async def merchant_invoices(merchant_id: str, status: Optional[str] = None, _: dict = Depends(merchant_access)):
+    m = await get_merchant_or_404(merchant_id)
+    invs = await db.invoices.find({"merchant_id": merchant_id}, {"_id": 0}).sort("number", -1).to_list(2000)
+    # "unpaid" = everything still owed (including payments the shop reported but dispatch hasn't confirmed)
+    shown = [i for i in invs if not status or i["status"] == status or (status == "unpaid" and i["status"] == "reported")]
+    return {**invoice_summary(invs), "invoices": shown[:200], "billing_address": m.get("address"), "currency": "CAD"}
+
+
+class AddressIn(BaseModel):
+    address: str
+
+
+@api_router.put("/merchants/{merchant_id}/billing-address")
+async def set_billing_address(merchant_id: str, body: AddressIn, _: dict = Depends(merchant_access)):
+    """Address printed on new invoices (issued invoices keep the address they were issued with)."""
+    await get_merchant_or_404(merchant_id)
+    addr = " ".join(body.address.split())[:200]
+    if not addr:
+        raise HTTPException(400, "Enter the billing address")
+    await db.merchants.update_one({"id": merchant_id}, {"$set": {"address": addr}})
+    await db.invoices.update_many({"merchant_id": merchant_id, "merchant.address": None}, {"$set": {"merchant.address": addr}})
+    return {"billing_address": addr}
+
+
+@api_router.post("/merchants/{merchant_id}/invoices/{invoice_id}/link")
+async def invoice_link(merchant_id: str, invoice_id: str, u: dict = Depends(merchant_access)):
+    if not await db.invoices.find_one({"id": invoice_id, "merchant_id": merchant_id}, {"_id": 1}):
+        raise HTTPException(404, "Invoice not found")
+    tok = issue_token(invoice_id, u["role"], purpose="invoice", minutes=5)
+    return {"path": f"/api/invoices/{invoice_id}.pdf?token={tok}"}
+
+
+def invoice_pdf(inv: dict) -> bytes:
+    from io import BytesIO
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib import colors as rl
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=letter, leftMargin=0.8 * inch, rightMargin=0.8 * inch, topMargin=0.7 * inch, bottomMargin=0.7 * inch,
+                            title=f"Invoice {inv['number']}", author=inv["business"]["name"])
+    ss = getSampleStyleSheet()
+    body = ParagraphStyle("b", parent=ss["Normal"], fontName="Helvetica", fontSize=10, leading=14, textColor=rl.HexColor("#333335"))
+    small = ParagraphStyle("s", parent=body, fontSize=8.5, textColor=rl.HexColor("#5C5C5E"))
+    h = ParagraphStyle("h", parent=body, fontName="Helvetica-Bold", fontSize=22, leading=26)
+    e = lambda v: escape(str(v or ""))
+    money = lambda n: f"CA${n:,.2f}"
+    biz, mer, d = inv["business"], inv["merchant"], inv["delivery"]
+    logo = Paragraph('<font name="Helvetica-Bold" size="18" color="#333335">DASH</font><font name="Helvetica-Bold" size="18" color="#D7262E">LOCAL</font>', body)
+    head = Table([[logo, Paragraph("INVOICE", ParagraphStyle("r", parent=h, alignment=2))]], colWidths=[3.45 * inch, 3.45 * inch])
+    meta = Table([
+        [Paragraph(f"<b>{e(biz['name'])}</b><br/>{e(biz['address'])}<br/>HST Reg. No. {e(biz['hst_number'])}", body),
+         Paragraph(f"<b>Invoice #</b> {e(inv['number'])}<br/><b>Date</b> {e(inv['date'])}<br/><b>Status</b> {e(inv['status'].upper())}"
+                   + (f"<br/><b>Paid</b> {e(inv['paid_at'][:10])}" if inv.get("paid_at") else ""), ParagraphStyle("m", parent=body, alignment=2))],
+    ], colWidths=[3.45 * inch, 3.45 * inch])
+    bill_to = Paragraph(f"<b>BILL TO</b><br/>{e(mer['name'])}<br/>{e(mer.get('address') or 'Address not on file')}", body)
+    deliv = Paragraph(f"<b>DELIVERY</b> {e(d['tracking_code'])} · {e(d['customer_name'])} · {e(d['address'])}<br/>"
+                      f"Delivered {e(d.get('delivered_local') or (d.get('delivered_at') or '')[:16].replace('T', ' '))}{' · Priority' if d.get('priority') else ''}", body)
+    rows = [["Description", "Amount"]] + [[x["description"], money(x["amount"])] for x in inv["lines"]] + [
+        ["Subtotal", money(inv["subtotal"])], [f"HST ({inv['hst_pct']:g}%, Ontario)", money(inv["hst"])], ["Total owing (CAD)", money(inv["total"])]]
+    n = len(inv["lines"])
+    t = Table(rows, colWidths=[5.2 * inch, 1.7 * inch])
+    t.setStyle(TableStyle([
+        ("FONT", (0, 0), (-1, -1), "Helvetica", 10), ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 10),
+        ("BACKGROUND", (0, 0), (-1, 0), rl.HexColor("#F5F5F5")), ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.8, rl.HexColor("#333335")), ("LINEABOVE", (0, n + 1), (-1, n + 1), 0.5, rl.HexColor("#E5E5E5")),
+        ("FONT", (0, -1), (-1, -1), "Helvetica-Bold", 12), ("LINEABOVE", (0, -1), (-1, -1), 1.2, rl.HexColor("#2B8932")),
+        ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+    ]))
+    doc.build([head, Spacer(1, 14), meta, Spacer(1, 18), bill_to, Spacer(1, 12), deliv, Spacer(1, 16), t, Spacer(1, 24),
+               Paragraph("Thank you for delivering with DashLocal. Payment is arranged directly with dispatch; please quote the invoice number.", small)])
+    return buf.getvalue()
+
+
+@api_router.get("/invoices/{invoice_id}.pdf")
+async def download_invoice(invoice_id: str, token: str):
+    p = link_payload(token, "invoice")
+    if p["sub"] != invoice_id:
+        raise HTTPException(403, "This link is for a different invoice")
+    inv = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
+    if not inv:
+        raise HTTPException(404, "Invoice not found")
+    pdf = await run_in_threadpool(invoice_pdf, inv)
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="DashLocal-{inv["number"]}.pdf"', "Cache-Control": "no-store"})
+
+
+@api_router.get("/admin/invoices", dependencies=ADMIN_ONLY)
+async def admin_invoices(status: Optional[str] = None, merchant_id: Optional[str] = None):
+    q = {k: v for k, v in (("status", status), ("merchant_id", merchant_id)) if v}
+    invs = await db.invoices.find(q, {"_id": 0}).sort("number", -1).to_list(500)
+    alls = await db.invoices.find({}, {"_id": 0, "status": 1, "total": 1}).to_list(10000)
+    return {**invoice_summary(alls), "invoices": invs}
+
+
+class InvoicesPaidIn(BaseModel):
+    ids: List[str]
+    paid: bool = True
+    note: Optional[str] = None
+
+
+@api_router.post("/admin/invoices/mark-paid")
+async def mark_invoices_paid(body: InvoicesPaidIn, u: dict = Depends(admin_user)):
+    """Confirm payment (usually one the shop reported) or set invoices back to unpaid (e.g. reported payment not received)."""
+    if not body.ids:
+        raise HTTPException(400, "Pick at least one invoice")
+    note = " ".join((body.note or "").split())[:200]
+    invs = await db.invoices.find({"id": {"$in": body.ids[:500]}}, {"_id": 0}).to_list(500)
+    if body.paid:  # validate the whole batch first so a bad row never leaves it half-saved
+        for inv in invs:
+            if not (note or (inv.get("report") or {}).get("note")):
+                raise HTTPException(400, f"Add a payment note for {inv['number']} (e.g. e-Transfer reference)")
+    n = 0
+    for inv in invs:
+        if body.paid:
+            upd = {"status": "paid", "paid_at": now_iso(), "paid_note": note or inv["report"]["note"], "paid_by": u["email"]}
+        else:
+            upd = {"status": "unpaid", "paid_at": None, "paid_note": None, "paid_by": None, "report": None}
+        n += (await db.invoices.update_one({"id": inv["id"]}, {"$set": upd})).modified_count
+    return {"updated": n}
+
+
+class ReportPaidIn(BaseModel):
+    ids: List[str]
+    note: str
+
+
+@api_router.post("/merchants/{merchant_id}/invoices/report-paid")
+async def report_invoices_paid(merchant_id: str, body: ReportPaidIn, u: dict = Depends(merchant_access)):
+    """Shop says it paid (e-Transfer, cheque…). Invoices show 'payment reported' until an admin confirms."""
+    note = " ".join(body.note.split())[:200]
+    if not body.ids or not note:
+        raise HTTPException(400, "Pick invoices and add how you paid (e.g. e-Transfer reference)")
+    res = await db.invoices.update_many({"id": {"$in": body.ids[:500]}, "merchant_id": merchant_id, "status": "unpaid"},
+                                        {"$set": {"status": "reported", "report": {"note": note, "at": now_iso(), "by": u["email"]}}})
+    if res.modified_count:
+        biz_base = (await db.settings.find_one({"key": "public_base"}, {"_id": 0}) or {}).get("value")
+        m = await get_merchant_or_404(merchant_id)
+        spawn(notify_admin(f"{m['name']} reported a payment", f"<p>{res.modified_count} invoice(s) · “{escape(note)}”</p><p>Confirm it in Admin › Invoices.</p>", biz_base))
+    return {"updated": res.modified_count}
+
+
+class BusinessIn(BaseModel):
+    name: str
+    address: str
+    hst_number: str
+    hst_pct: float
+
+
+@api_router.get("/admin/business", dependencies=ADMIN_ONLY)
+async def read_business():
+    return await get_business()
+
+
+@api_router.put("/admin/business", dependencies=ADMIN_ONLY)
+async def update_business(body: BusinessIn):
+    """Details printed on new invoices; issued invoices keep what they were issued with."""
+    v = {"name": " ".join(body.name.split())[:80], "address": " ".join(body.address.split())[:200],
+         "hst_number": " ".join(body.hst_number.split())[:40], "hst_pct": round(body.hst_pct, 3)}
+    if not v["name"] or not v["address"] or not v["hst_number"]:
+        raise HTTPException(400, "Business name, address and HST number are required")
+    if not 0 <= v["hst_pct"] <= 30:
+        raise HTTPException(400, "HST % must be between 0 and 30")
+    await db.settings.update_one({"key": "business"}, {"$set": {"key": "business", "value": v}}, upsert=True)
+    return v
+
+
+@api_router.get("/rate-card")
+async def rate_card():
+    """Public: the standard prices shown on the landing page (stores may have custom rates)."""
+    p, biz = await get_pricing(), await get_business()
+    return {k: p[k] for k in ("currency", "base_fee", "included_km", "per_km", "priority_fee")} | {"hst_pct": biz["hst_pct"]}
+
+
 # ---------------------------------------------------------------- review requests + merchant sign-up requests
 REVIEW_LINK_DAYS = 14
 SETPW_LINK_HOURS = 72
@@ -3783,6 +4040,39 @@ async def run_review_reminders():
     return {"sent": await send_review_reminders()}
 
 
+GROWTH_TIPS = [
+    ("Upload orders every day", "Shops that send a CSV each morning get the smoothest routes. The template in your portal has every column."),
+    ("Save notes for your regulars", "Gate codes and drop-off tips you save are filled in on every new order for that customer."),
+    ("Share your tracking links", "Customers who can follow their order live call less and come back more."),
+    ("Use priority for rush orders", "Mark urgent orders as priority so they go out first (a small surcharge applies)."),
+    ("Watch your weekly email", "Your Monday report and statement show deliveries, on-time rate and what you owe."),
+]
+
+
+async def send_first_delivery_email(merchant_id: str):
+    """One-time follow-up after a newly approved shop's first delivery, with tips to grow."""
+    m = await db.merchants.find_one({"id": merchant_id}, {"_id": 0})
+    if not m:
+        return
+    users = await db.users.find({"merchant_id": merchant_id, "role": "merchant", "disabled": {"$ne": True}}, {"_id": 0, "email": 1}).to_list(20)
+    base = (await db.settings.find_one({"key": "public_base"}, {"_id": 0}) or {}).get("value")
+    tips = "".join(f"<li style=\"margin-bottom:10px\"><b>{escape(t)}</b><br>{escape(b)}</li>" for t, b in GROWTH_TIPS)
+    html = brand_email(f"Your first DashLocal delivery is done 🎉",
+                       f"<p>Congratulations, {escape(m['name'])}: your first order just reached its customer. A few tips to get the most from DashLocal:</p>"
+                       f"<ol style=\"padding-left:20px\">{tips}</ol><p>Questions? Just reply to this email.</p>",
+                       ("Open your portal", f"{base}/sign-in/merchant") if base else None)
+    ok = False
+    for u in users:
+        try:
+            await send_email(to=demo_inbox(u["email"]), subject=f"First delivery done — tips to grow, {m['name']}", html=html)
+            ok = True
+        except Exception as e:
+            logger.warning(f"First-delivery email failed for {merchant_id}: {e}")
+    # failed sends are retried on the shop's next delivery (first_delivery_email_at reopened)
+    await db.merchants.update_one({"id": merchant_id}, {"$set": {"first_delivery_email_status": "sent" if ok else "failed",
+                                                                  **({} if ok else {"first_delivery_email_at": None})}})
+
+
 @api_router.get("/merchants/{merchant_id}/checklist")
 async def merchant_checklist(merchant_id: str, _: dict = Depends(merchant_access)):
     """First-steps checklist for newly approved shops; each step ticks itself from real activity."""
@@ -3856,7 +4146,8 @@ async def approve_signup(sid: str, request: Request):
     if await db.users.find_one({"email": sr["email"]}):
         raise HTTPException(409, "An account with this email already exists")
     base = await app_base(request)
-    m = {"id": f"mer-{uuid.uuid4().hex[:8]}", "name": sr["store_name"], "contact": sr["email"], "onboarding": True}
+    m = {"id": f"mer-{uuid.uuid4().hex[:8]}", "name": sr["store_name"], "contact": sr["email"], "onboarding": True,
+         "approved_via_signup": True, "first_delivery_email_at": None, "address": sr.get("address")}
     nonce = secrets.token_urlsafe(12)
     user = {"id": str(uuid.uuid4()), "email": sr["email"], "role": "merchant", "name": sr["contact_name"], "merchant_id": m["id"],
             "disabled": False, "created_at": now_iso(), "pw_nonce": nonce, "password_hash": hash_pw(secrets.token_urlsafe(24))}

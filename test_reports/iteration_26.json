@@ -1,0 +1,39 @@
+{
+  "summary": "Backend-only test of the New Shop Welcome Email (the one-time email after a shop's first delivery, with tips to grow). New suite tests/test_first_delivery_email.py passes 11/11 (-n 0). (1) Approving a signup creates a merchant with approved_via_signup=true, first_delivery_email_at=null and no status. (2) The first stop came from a real merchant CSV import. It was attached to a dedicated TEST_FD route that is active and dated today. Delivering it (admin, signature) returns 200 with status delivered, delivered_at, pod_signature, arrived_at and arrival_method manual, and no _id. first_delivery_email_at is set, and within a few seconds first_delivery_email_status becomes 'sent' (provider 202, not a 429). The admin websocket /api/ws/route/{id} received the route broadcast showing the stop as delivered. (3) A second delivery for the same merchant leaves first_delivery_email_at unchanged and sends no new email. (4) Delivering a mer-1 stop leaves the mer-1 document byte-identical. A merchant without approved_via_signup is never flagged either. (5) Existing deliver behaviour is unchanged: re-delivering returns 400 'already delivered', no proof returns 400, a photo_path works, and the route auto-completes when all stops are done. Regressions: test_signup_review_requests.py passes 31/31 after updating 3 out-of-date assertions. link_payload has deliberately returned 400 for bad emailed links since iteration 25, so those were not regressions. test_welcome_checklist_reminders.py: 14/16 pass. The 2 reminder tests failed only on provider 429s (backend log: 'Email send failed: 429 rate_limited'). The provider was still returning 429 to single sends after waits of 3-4 minutes. The reminder code is not touched by this change.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/stops/{id}/deliver -> send_first_delivery_email", "issue": "first_delivery_email_at is claimed before the send. If every send fails (for example a provider 429, which was very frequent today), the status becomes 'failed' and the email is never retried, so that shop never gets its tips email. Consider retrying 'failed' ones, either on the next delivery or from a background loop, with a retry cap."},
+      {"endpoint": "send_first_delivery_email", "issue": "If the merchant has no active merchant users (all disabled), the status becomes 'failed' with no log line. Also, m is not None-checked: if the merchant is deleted before the task runs, it raises a TypeError inside spawn and the status is never written. This is low impact."},
+      {"endpoint": "approve_signup (backfill)", "issue": "Shops approved before this change have no approved_via_signup flag, so they will never get the email. If that matters, backfill from signup_requests.merchant_id where no stop has been delivered yet."},
+      {"endpoint": "send_first_delivery_email", "issue": "Lint nit: brand_email(f\"Your first DashLocal delivery is done 🎉\") is an f-string with no placeholders."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_first_delivery_email.py",
+    "/app/test_reports/pytest/pytest_first_delivery_email.xml",
+    "/app/test_reports/pytest/pytest_signup_review_iter26.xml",
+    "/app/test_reports/pytest/pytest_welcome_iter26.xml"
+  ],
+  "action_items": [
+    "Optional: retry first-delivery emails whose status is 'failed' (provider 429s are frequent), so new shops don't silently miss the email.",
+    "Optional: None-check the merchant and log when there are no recipients in send_first_delivery_email.",
+    "Optional: backfill approved_via_signup for shops approved earlier."
+  ],
+  "critical_code_review_comments": [
+    "The once-only guarantee is solid: an atomic update_one filtered on first_delivery_email_at=None plus approved_via_signup=True, so parallel deliveries cannot double-send. Demo or legacy merchants never match.",
+    "The email is spawned and does not block the deliver response. Tip text and the shop name are escaped. The CTA only appears when public_base is known.",
+    "server.py is well over 700 lines (about 4000). This is a long-standing issue: consider splitting it into modules."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_first_delivery_email.py (new)",
+    "/app/backend/tests/test_signup_review_requests.py (3 stale 401 assertions -> 400 to match link_payload since iter 25)"
+  ],
+  "success_rate": {"backend": "100% feature (11/11). Regressions 45/47; the 2 failures are provider 429 only", "frontend": "not tested (backend-only request)"},
+  "seed_data_creation": "None kept. The suite creates TEST_FD signups, merchants, users, a TEST_FD route and TEST_FD stops, then deletes them. Demo routes were not modified, so no admin reset was needed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run tests/test_first_delivery_email.py with -n 0. It inserts its own active route for today (copying service_date from drv-1's active route R-101), so the deliver checks never touch demo routes. Saving a file under backend/tests triggers a uvicorn WatchFiles reload, so don't create files while email tasks are in flight. The email provider 429s after about 3-4 sends in roughly 10s and sometimes needs more than 4 minutes to recover. Run the email-heavy suites (signup_review, then welcome reminders) one at a time, with long gaps between them. The welcome suite's cleanup deletes ALL review_requests and testimonials.",
+  "rca_of_issue": "The 2 test_signup_review_requests failures (400 vs 401) came from iteration 25's link_payload wrapper, which deliberately turns decode_token's 401 into a friendly 400 for public link pages. The tests were updated to match. The welcome reminder failures came from provider 429 rate_limited responses (confirmed in backend.err.log)."
+}

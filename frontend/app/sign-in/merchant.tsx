@@ -19,7 +19,7 @@ export default function MerchantSignIn() {
       <KeyboardAwareScrollView contentContainerStyle={s.wrap} keyboardShouldPersistTaps="handled" bottomOffset={24}>
         <View style={s.intro}>
           <Kicker>Merchant portal</Kicker>
-          <Text style={s.lead}>Upload orders, track every drop and see your weekly bill.</Text>
+          <Text style={s.lead}>Upload orders, track every drop and see your invoices.</Text>
         </View>
         <SignInForm scroll={false} role="merchant" title="Sign in to your store" hint="Use the email and password DashLocal set up for your store. Need an account? Ask your DashLocal admin."
           onSignedIn={(u) => u.merchant_id && router.replace(`/merchant/${u.merchant_id}`)} />

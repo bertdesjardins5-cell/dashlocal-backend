@@ -167,7 +167,7 @@ class TestBillsPaid:
         log = r.json()["sent"]
         print("weekly email log:", {k: log.get(k) for k in ("status", "error", "bill_total", "total_due", "recipients", "week_start")})
         assert log["status"] == "sent", log
-        assert log["week_start"] == LAST_MON and log["bill_total"] > 0 and log["total_due"] >= log["bill_total"]
+        assert log["week_start"] == LAST_MON and log["bill_total"] >= 0 and log["total_due"] >= 0  # invoice-based since per-delivery invoices
         assert all(x["to"] == "delivered@resend.dev" for x in log["recipients"])
         r2 = requests.post(f"{API}/merchants/mer-1/weekly-email/send-now", headers=H(toks["m1"]))
         assert r2.status_code == 429
@@ -186,11 +186,10 @@ class TestBillsPaid:
     def test_email_html_has_statement(self):
         sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
         import server  # noqa
-        bill = {"drops": 1, "base_total": 8, "distance_total": 0, "priority_total": 0, "tax_pct": 0, "tax": 0, "total": 8, "payment": None,
-                "outstanding": {"total": 16, "weeks": [{}, {}]}}
+        bill = {"count": 1, "subtotal": 8, "hst": 1.04, "total": 9.04, "outstanding": 16, "unpaid_count": 2}
         s = {"delivered": 1, "failed": 0, "on_time_rate": None, "avg_rating": None, "complaints": 0, "orders": 1, "open": 0}
-        html = server.weekly_email_html("Store", LAST_MON, LAST_MON, s, "https://x/r", bill, "https://x/api/merchants/mer-1/statement.csv?token=abc")
-        assert "Your statement" in html and "statement.csv?token=abc" in html and "Total due (2 unpaid weeks)" in html and "CA$16.00" in html
+        html = server.weekly_email_html("Store", LAST_MON, LAST_MON, s, "https://x/r", bill, "https://x/sign-in/merchant")
+        assert "Invoices this week" in html and "https://x/sign-in/merchant" in html and "Outstanding: CA$16.00 (2 invoices)" in html and "CA$9.04" in html
         assert server.WEEKLY_LINK_DAYS == 7
 
     def test_mark_paid_access_and_current_week(self, toks, pastdrop):

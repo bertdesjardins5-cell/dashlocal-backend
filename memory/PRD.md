@@ -96,3 +96,15 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 ## Welcome checklist + review reminders (Jun 2026)
 - Stores created by sign-up approval get merchant.onboarding=true. GET /api/merchants/{id}/checklist returns {show, steps[password, upload, note, delivered], done, total}; the steps tick themselves from real data. POST /checklist/dismiss hides it. Shown at the top of the merchant portal (WelcomeChecklist).
 - review_reminder_watcher runs hourly: links unused for 7+ days get exactly one reminder email (claimed atomically through reminded_at, skipped if under 12h remain). The fresh token keeps the original expiry. Manual trigger: POST /api/admin/review-requests/run-reminders. The admin screen shows "REMINDER SENT".
+
+## First-delivery growth email (Jun 2026)
+- Stores approved from sign-up get approved_via_signup=true and first_delivery_email_at=null. On the first POST /stops/{id}/deliver for that merchant, first_delivery_email_at is claimed atomically and send_first_delivery_email runs in the background: 5 GROWTH_TIPS, CTA to /sign-in/merchant, result in merchant.first_delivery_email_status. Demo/seeded stores never get it.
+
+## Invoices + HST + rate card (Jun 2026)
+- Each delivered merchant stop gets an invoice (create_invoice is idempotent with a unique stop_id index; numbers DL-000001 come from db.counters). It snapshots the business (settings.business: name, address, hst_number, hst_pct=13) and the merchant name and address, with lines for base, distance and priority, plus subtotal, HST and total. Existing deliveries are backfilled at startup. Admin reset clears invoices and the counter.
+- Status flow: unpaid -> reported (the shop says it paid, POST /merchants/{id}/invoices/report-paid {ids, note}, admin is emailed) -> paid (admin POST /admin/invoices/mark-paid {ids, paid, note}; if no note is given the shop's note is kept; paid=false rejects back to unpaid).
+- Merchant: GET /merchants/{id}/invoices?status= returns balances; PUT /billing-address; POST /invoices/{iid}/link returns a 5-min signed /api/invoices/{id}.pdf (reportlab).
+- Admin: /admin/invoices screen (To confirm / Unpaid / Paid tabs plus a business details form), GET/PUT /admin/business.
+- The merchant portal's BillCard is replaced by InvoicesCard. The weekly email now summarises the week's invoices and the outstanding balance. The admin weekly billing endpoints are still there but the merchant no longer uses them.
+- Public GET /api/rate-card (shared pricing plus hst_pct) feeds the landing "Pricing" section.
+- HST number and business address are still placeholders (the user skipped them); they can be edited in Admin › Invoices.

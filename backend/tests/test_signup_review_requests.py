@@ -168,7 +168,7 @@ class TestSetPassword:
 
     def test_review_purpose_token_rejected(self):
         tok = mint(STATE["user"]["id"], "review", n=STATE["user"]["pw_nonce"])
-        assert requests.get(f"{BASE_URL}/api/auth/set-password/{tok}", headers=NOAUTH).status_code == 401
+        assert requests.get(f"{BASE_URL}/api/auth/set-password/{tok}", headers=NOAUTH).status_code == 400  # link_payload: friendly 400 since iter 25
 
     def test_info(self):
         u = STATE["user"]
@@ -224,9 +224,9 @@ class TestReviewRequests:
         assert r.status_code == 200 and r.json() == {"shop": STATE["rr"]["shop"], "status": "sent"}
 
     def test_bad_tokens(self):
-        assert requests.get(f"{BASE_URL}/api/review-requests/garbage", headers=NOAUTH).status_code == 401
+        assert requests.get(f"{BASE_URL}/api/review-requests/garbage", headers=NOAUTH).status_code == 400
         assert requests.get(f"{BASE_URL}/api/review-requests/{mint('nope', 'review')}", headers=NOAUTH).status_code == 404
-        assert requests.get(f"{BASE_URL}/api/review-requests/{mint(STATE['rr']['id'], 'setpw')}", headers=NOAUTH).status_code == 401
+        assert requests.get(f"{BASE_URL}/api/review-requests/{mint(STATE['rr']['id'], 'setpw')}", headers=NOAUTH).status_code == 400
 
     def test_review_token_not_session(self):
         r = requests.get(f"{BASE_URL}/api/auth/me", headers={"Authorization": f"Bearer {STATE['rtok']}", **NOAUTH})
