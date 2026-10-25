@@ -43,8 +43,8 @@ def db():
 
 @pytest.fixture(scope="module")
 def toks(db):
-    t = {"admin": _login("admin@multidrop.app", "MultiDropAdmin2026"), "m1": _login("bakery@multidrop.app", "Bakery2026"),
-         "m2": _login("books@multidrop.app", "Books2026")}
+    t = {"admin": _login("admin@dashlocal.app", "DashLocalAdmin2026"), "m1": _login("bakery@dashlocal.app", "Bakery2026"),
+         "m2": _login("books@dashlocal.app", "Books2026")}
     assert requests.post(f"{API}/admin/reset", headers=H(t["admin"])).status_code == 200
     assert requests.put(f"{API}/admin/pricing", json=DEFAULTS, headers=H(t["admin"])).status_code == 200
     yield t
@@ -207,7 +207,7 @@ class TestBillsPaid:
         r = requests.put(u, json={"paid": True, "note": "TEST_ e-transfer"}, headers=H(toks["admin"]))
         assert r.status_code == 200, r.text
         p = r.json()["payment"]
-        assert p and p["paid_at"] and p["amount"] == r.json()["total"] and p["by"] == "admin@multidrop.app" and p["note"] == "TEST_ e-transfer"
+        assert p and p["paid_at"] and p["amount"] == r.json()["total"] and p["by"] == "admin@dashlocal.app" and p["note"] == "TEST_ e-transfer"
         b = requests.get(f"{API}/merchants/mer-1/bill", params={"week": LAST_MON}, headers=H(toks["m1"])).json()
         assert b["payment"]["amount"] == p["amount"]
         assert all(w["week_start"] != LAST_MON for w in b["outstanding"]["weeks"])
@@ -224,7 +224,7 @@ class TestBillsPaid:
         assert s["outstanding"] > 0 and s["unpaid_weeks"] >= 1 and adm["outstanding"] >= s["outstanding"]
 
     def test_reset_clears_payments(self, toks, db, pastdrop):
-        requests.put(f"{API}/admin/merchants/mer-1/bills/{LAST_MON}/paid", json={"paid": True}, headers=H(toks["admin"]))
+        requests.put(f"{API}/admin/merchants/mer-1/bills/{LAST_MON}/paid", json={"paid": True, "note": "TEST_ ref"}, headers=H(toks["admin"]))
         assert db.bill_payments.count_documents({}) >= 1
         assert requests.post(f"{API}/admin/reset", headers=H(toks["admin"])).status_code == 200
         assert db.bill_payments.count_documents({}) == 0

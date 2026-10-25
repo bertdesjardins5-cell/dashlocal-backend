@@ -158,8 +158,8 @@ def test_optimize_moves_urgent_stop_earlier(api):
     # make window tight: end ~ now + 10 min to force lateness at the end of the route
     now = datetime.now(TZ)
     end_min = now.minute + 12
-    if end_min < 60:
-        win = {"start": f"{h:02d}:00", "end": f"{h:02d}:{end_min:02d}"}
+    end_h, end_m = h + end_min // 60, end_min % 60
+    win = {"start": f"{h:02d}:00", "end": f"{end_h:02d}:{end_m:02d}"}
     assert api.put(f"{API}/stops/{last['id']}/window", json=win).status_code == 200
     before = get_route(api, rid)
     last_b = next(s for s in before["stops"] if s["id"] == last["id"])

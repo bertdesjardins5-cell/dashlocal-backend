@@ -3,6 +3,7 @@ import { Pressable, ScrollView, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { api, dayLabel, depotToday } from "@/src/api";
 import { Btn, Display, Mono } from "@/src/ui";
+import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
 
 type Preview = {
@@ -10,7 +11,10 @@ type Preview = {
   zones: { zone: string; count: number; driver: { id: string; name: string } | null }[];
   drivers: { id: string; name: string; vehicle: string; compass_zone: string | null }[];
 };
-type Result = { dispatched: number; routes: { route_id: string; route_name: string; driver_name: string; zones: string[]; stops: number; created: boolean; fallback: string[] }[] };
+type Result = {
+  dispatched: number; splits: { zone: string; from_id: string; helper_id: string; moved: number }[];
+  routes: { route_id: string; route_name: string; driver_name: string; zones: string[]; stops: number; created: boolean; fallback: string[]; helping: string[] }[];
+};
 
 const ZONES = ["North", "South", "East", "West"];
 
@@ -21,6 +25,7 @@ export default function AutoDispatch({ day, onDone, notify }: { day: string; onD
   const q = useQuery({ queryKey: ["dispatch-preview", day], queryFn: () => api<Preview>(`/dispatch/preview?date=${day}`), refetchInterval: 15000 });
   const [busy, setBusy] = useState<string | null>(null);
   const [last, setLast] = useState<Result | null>(null);
+  const [balance, setBalance] = useState(true);
   const p = q.data;
 
   const setZone = async (driverId: string, zone: string | null) => {
@@ -38,9 +43,9 @@ export default function AutoDispatch({ day, onDone, notify }: { day: string; onD
   const run = async () => {
     setBusy("run");
     try {
-      const r = await api<Result>("/routes/auto-dispatch", { method: "POST", body: { service_date: day } });
+      const r = await api<Result>("/routes/auto-dispatch", { method: "POST", body: { service_date: day, balance } });
       setLast(r);
-      notify(`${r.dispatched} ORDERS DISPATCHED TO ${r.routes.length} DRIVER${r.routes.length === 1 ? "" : "S"}`, "green");
+      notify(`${r.dispatched} ORDERS DISPATCHED TO ${r.routes.length} DRIVER${r.routes.length === 1 ? "" : "S"}${r.splits.length ? ` · ${r.splits.length} BUSY ZONE SPLIT` : ""}`, "green");
       q.refetch();
       onDone();
     } catch (e: any) {
@@ -84,12 +89,19 @@ export default function AutoDispatch({ day, onDone, notify }: { day: string; onD
           </View>
         ))}
         <Mono style={s.meta}>Zones split at the depot. A zone with no driver goes to whoever has the fewest stops. Drivers already on a route for {day === depotToday() ? "today" : dayLabel(day)} get the new stops added and re-optimised.</Mono>
+        <Pressable testID="auto-dispatch-balance" onPress={() => setBalance((b) => !b)} style={s.balanceRow}>
+          <Ionicons name={balance ? "checkbox" : "square-outline"} size={24} color={balance ? colors.brandPrimary : colors.onSurface} />
+          <View style={{ flex: 1 }}>
+            <Mono style={s.balanceText}>BALANCE BUSY ZONES</Mono>
+            <Mono style={s.meta}>If one driver would get 2× the stops of the lightest driver, part of the zone goes to that driver</Mono>
+          </View>
+        </Pressable>
         <Btn testID="auto-dispatch-button" label={`AUTO DISPATCH ${p.total} ORDERS`} icon="flash" loading={busy === "run"} disabled={p.total === 0} onPress={run} />
         {last ? (
           <View style={{ gap: 4 }} testID="auto-dispatch-result">
             {last.routes.map((r) => (
               <Mono key={r.route_id} style={s.meta} testID={`auto-dispatch-result-${r.route_id}`}>
-                {r.route_name} → {r.driver_name.split(" ")[0].toUpperCase()} · {r.stops} STOPS · {r.zones.join("+").toUpperCase()}{r.fallback.length ? " (NO DRIVER — FEWEST STOPS)" : ""}{r.created ? "" : " · ADDED TO EXISTING ROUTE"}
+                {r.route_name} → {r.driver_name.split(" ")[0].toUpperCase()} · {r.stops} STOPS · {r.zones.join("+").toUpperCase()}{r.fallback.length ? " (NO DRIVER — FEWEST STOPS)" : ""}{r.helping.length ? ` (HELPING WITH ${r.helping.join("+").toUpperCase()})` : ""}{r.created ? "" : " · ADDED TO EXISTING ROUTE"}
               </Mono>
             ))}
           </View>
@@ -112,4 +124,6 @@ const useStyles = makeStyles((c) => ({
   driverName: { width: 72, fontSize: 12, fontWeight: "700" },
   chip: { width: 44, height: 44, borderWidth: 2, borderColor: c.border, alignItems: "center", justifyContent: "center" },
   chipText: { fontSize: 13, fontWeight: "700" },
+  balanceRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 48 },
+  balanceText: { fontSize: 12, fontWeight: "700" },
 }));

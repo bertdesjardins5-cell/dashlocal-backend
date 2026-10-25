@@ -27,7 +27,7 @@ export default function RolePicker() {
         <Image source="https://images.pexels.com/photos/12970764/pexels-photo-12970764.jpeg?auto=compress&w=900" style={StyleSheetAbs} contentFit="cover" />
         <LinearGradient colors={["transparent", colors.surfaceInverse]} style={StyleSheetAbs} />
         <View style={[s.heroInner, { paddingTop: insets.top + spacing.xl }]}>
-          <Mono style={s.kicker}>MULTIDROP / OPS v1</Mono>
+          <Mono style={s.kicker}>DASHLOCAL / OPS v1</Mono>
           <Display style={s.title}>EVERY DROP.{"\n"}IN ORDER.</Display>
         </View>
       </View>

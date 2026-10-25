@@ -545,7 +545,7 @@ async def _send_nearby_sms(stop: Stop, stops_away: int, driver_name: str) -> str
     if not (os.environ.get("TWILIO_ACCOUNT_SID") and os.environ.get("TWILIO_AUTH_TOKEN") and os.environ.get("TWILIO_PHONE_NUMBER")):
         return "not_configured"
     where = "you're next" if stops_away == 0 else f"{stops_away} stop{'s' if stops_away > 1 else ''} away"
-    body = f"MultiDrop: {driver_name.split(' ')[0]} is {where} with your delivery {stop.tracking_code}. Track live in the app."
+    body = f"DashLocal: {driver_name.split(' ')[0]} is {where} with your delivery {stop.tracking_code}. Track live in the app."
     try:
         tw = TwilioClient(os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"])
         res = await run_in_threadpool(lambda: tw.messages.create(to=stop.customer_phone, from_=twilio_number(), body=body))
@@ -766,6 +766,13 @@ async def startup():
     await db.geocodes.create_index("key", unique=True)
     await db.stops.update_many({"nearby_sms_status": "sending"}, {"$set": {"nearby_sms_status": None}})  # interrupted by a restart: retry
     await seed()
+    # rename DashLocal -> DashLocal: move demo/admin logins to the new domain (passwords unchanged except admin, from .env)
+    for u in await db.users.find({"email": {"$regex": r"@multidrop\.app$"}}, {"_id": 0, "id": 1, "email": 1}).to_list(100):
+        new = u["email"].replace("@dashlocal.app", "@dashlocal.app")
+        if not await db.users.find_one({"email": new}):
+            await db.users.update_one({"id": u["id"]}, {"$set": {"email": new}})
+        else:
+            await db.users.delete_one({"id": u["id"]})
     for m in MERCHANTS:
         await db.merchants.update_one({"id": m["id"]}, {"$setOnInsert": m}, upsert=True)
     await seed_users()
@@ -787,7 +794,7 @@ async def startup():
 # ---------------------------------------------------------------- endpoints
 @api_router.get("/")
 async def root():
-    return {"message": "MultiDrop API"}
+    return {"message": "DashLocal API"}
 
 
 @api_router.post("/admin/reset")
@@ -904,6 +911,47 @@ def compass_of(p: dict) -> str:
 
 class AutoDispatchIn(BaseModel):
     service_date: Optional[str] = None
+    balance: bool = True  # split a busy zone with the least-loaded driver
+
+
+BALANCE_MIN_STOPS = 6  # zones smaller than this are never split
+BALANCE_RATIO = 2.0  # split when the zone driver would carry >= 2x the lightest driver's stops
+
+
+def bearing(p: dict) -> float:
+    return math.atan2(p["lat"] - DEPOT["lat"], (p["lng"] - DEPOT["lng"]) * math.cos(math.radians(DEPOT["lat"])))
+
+
+ZONE_CENTRE = {"North": math.pi / 2, "East": 0.0, "South": -math.pi / 2, "West": math.pi}
+
+
+def wedge_offset(p: dict, zone: str) -> float:
+    """Angle from the zone's centre line, wrapped to (-π, π] — contiguous across the West wrap-around."""
+    d = bearing(p) - ZONE_CENTRE[zone]
+    return math.atan2(math.sin(d), math.cos(d))
+
+
+def balance_plan(plan: Dict[str, Dict[str, list]], load: Dict[str, int]) -> list:
+    """Move the far side of a busy zone (a contiguous slice of its wedge) to the least-loaded driver until loads even out."""
+    splits = []
+    for _ in range(len(COMPASS)):
+        heavy = max(load, key=lambda d: load[d])
+        light = min((d for d in load if d != heavy), key=lambda d: load[d])
+        zones = plan.get(heavy, {})
+        if not zones or load[heavy] < BALANCE_RATIO * max(1, load[light]):
+            break
+        z = max(zones, key=lambda k: len(zones[k]))
+        stops = zones[z]
+        k = min((load[heavy] - load[light]) // 2, len(stops) - 1)
+        if len(stops) < BALANCE_MIN_STOPS or k < 1:
+            break
+        ordered = sorted(stops, key=lambda p: wedge_offset(p, z))
+        zones[z], moved = ordered[:-k], ordered[-k:]
+        plan.setdefault(light, {}).setdefault(z, []).extend(moved)
+        load[heavy] -= k
+        load[light] += k
+        splits.append({"zone": z, "from_id": heavy, "helper_id": light, "moved": k})
+    return splits
 
 
 class CompassZoneIn(BaseModel):
@@ -969,6 +1017,7 @@ async def _auto_dispatch(body: AutoDispatchIn):
         d = next((d for d in drivers if d.compass_zone == z), None) or min(drivers, key=lambda d: (load[d.id], d.id))
         plan.setdefault(d.id, {})[z] = by_zone[z]
         load[d.id] += len(by_zone[z])
+    splits = balance_plan(plan, load) if body.balance and len(drivers) > 1 else []
     out = []
     for did, zones in plan.items():
         stops = [s for z in COMPASS for s in zones.get(z, [])]
@@ -996,9 +1045,11 @@ async def _auto_dispatch(body: AutoDispatchIn):
                 await db.stops.update_one({"id": s["id"]}, {"$set": {"route_id": route.id, "seq": i + 1}})
             created = True
         drv = next(d for d in drivers if d.id == did)
+        helping = [x["zone"] for x in splits if x["helper_id"] == did]
         out.append({"route_id": route.id, "route_name": route.name, "driver_id": did, "driver_name": drv.name, "zones": list(zones),
-                    "stops": len(stops), "created": created, "fallback": [z for z in zones if drv.compass_zone != z]})
-    return {"service_date": service_date, "dispatched": len(docs), "routes": out}
+                    "stops": len(stops), "created": created, "fallback": [z for z in zones if drv.compass_zone != z and z not in helping],
+                    "helping": helping})
+    return {"service_date": service_date, "dispatched": len(docs), "routes": out, "splits": splits}
 
 
 @api_router.get("/routes", dependencies=ADMIN_ONLY)
@@ -1106,7 +1157,7 @@ async def verify_qr(stop_id: str, body: QrIn):
         raise HTTPException(400, f"Stop is already {stop.status}")
     await ensure_stop_actionable_today(stop)
     scanned = body.code.strip().upper()
-    if scanned.startswith("MULTIDROP:"):
+    if scanned.startswith(("DASHLOCAL:", "MULTIDROP:")):  # labels printed before the rename still scan
         scanned = scanned.split(":", 1)[1]
     if scanned != stop.tracking_code:
         raise HTTPException(400, f"Wrong parcel — scanned {scanned[:20]}, expected {stop.tracking_code}")
@@ -1138,9 +1189,9 @@ async def send_booking_sms(stop: "Stop", kind: str) -> str:
     if stop.window_end:
         when = f"{nice_date(stop.window_date or today_str())}, {stop.window_start}-{stop.window_end}"
         verb = "is booked for" if kind == "booked" else "has moved to"
-        body = f"MultiDrop: your delivery {stop.tracking_code} {verb} {when} (SF time). Reply or track your order in the app."
+        body = f"DashLocal: your delivery {stop.tracking_code} {verb} {when} (SF time). Reply or track your order in the app."
     else:
-        body = f"MultiDrop: the delivery window for {stop.tracking_code} was cleared. We'll deliver at any time on your route day."
+        body = f"DashLocal: the delivery window for {stop.tracking_code} was cleared. We'll deliver at any time on your route day."
     try:
         tw = TwilioClient(os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"])
         res = await run_in_threadpool(lambda: tw.messages.create(to=stop.customer_phone, from_=twilio_number(), body=body))
@@ -1241,7 +1292,7 @@ async def send_apology_sms(stop: "Stop") -> str:
     if not (os.environ.get("TWILIO_ACCOUNT_SID") and os.environ.get("TWILIO_AUTH_TOKEN") and os.environ.get("TWILIO_PHONE_NUMBER")):
         return "not_configured"
     first = stop.customer_name.split(" ")[0]
-    body = (f"MultiDrop: Sorry {first}, delivery {stop.tracking_code} wasn't up to standard. "
+    body = (f"DashLocal: Sorry {first}, delivery {stop.tracking_code} wasn't up to standard. "
             f"Here's {APOLOGY_DISCOUNT_PCT}% off your next delivery with code {stop.apology_code}. Our team will follow up.")
     try:
         tw = TwilioClient(os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"])
@@ -1399,7 +1450,7 @@ async def proof_page(token: str):
         return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex"><title>Link expired</title></head><body style="font-family:'Courier New',monospace;padding:24px">
 <h1 style="font-family:Arial,sans-serif">LINK EXPIRED</h1><p>Proof-of-delivery links last {PROOF_LINK_DAYS} days to protect your privacy.
-Open your order in the MultiDrop app to share a fresh link.</p></body></html>""", status_code=410)
+Open your order in the DashLocal app to share a fresh link.</p></body></html>""", status_code=410)
     esc = xml_escape
     when = datetime.fromisoformat(st.delivered_at).astimezone(TZ).strftime("%a %d %b %Y, %H:%M") if st.delivered_at else ""
     photo = f'<img src="/api/files/{esc(st.pod_photo_path)}" alt="Delivery photo">' if st.pod_photo_path else ""
@@ -1413,7 +1464,7 @@ header{{background:#0A0A0A;color:#fff;padding:20px}}h1{{font-family:Arial,sans-s
 .k{{color:#E60000;font-weight:bold;letter-spacing:2px;font-size:12px}}main{{padding:20px;max-width:560px}}
 .box{{border:2px solid #0A0A0A;margin:12px 0;padding:12px}}img{{width:100%;display:block}}svg{{width:100%;height:180px}}
 .ok{{background:#008000;color:#fff;padding:12px;font-weight:bold}}.m{{font-size:13px;margin:4px 0}}</style></head><body>
-<header><div class="k">MULTIDROP · PROOF OF DELIVERY</div><h1>{esc(st.tracking_code)}</h1></header><main>
+<header><div class="k">DASHLOCAL · PROOF OF DELIVERY</div><h1>{esc(st.tracking_code)}</h1></header><main>
 <p class="m"><b>{esc(st.customer_name)}</b></p><p class="m">{esc(st.address)}</p><p class="m">DELIVERED {esc(when)} (SF TIME)</p>
 {f'<div class="box">{photo}</div>' if photo else ''}{f'<div class="box"><div class="m">SIGNATURE</div>{sig}</div>' if sig else ''}{qr}
 </main></body></html>"""
@@ -1572,7 +1623,7 @@ async def contact(stop_id: str, body: ContactIn):
                      f"<Dial callerId=\"{proxy}\">{stop.customer_phone}</Dial></Response>")
             res = await run_in_threadpool(lambda: tw.calls.create(to=driver.phone, from_=proxy, twiml=twiml))
         else:
-            text = (body.message or "").strip() or f"MultiDrop: your driver {driver.name if driver else ''} is on the way with order {stop.tracking_code}."
+            text = (body.message or "").strip() or f"DashLocal: your driver {driver.name if driver else ''} is on the way with order {stop.tracking_code}."
             res = await run_in_threadpool(lambda: tw.messages.create(to=stop.customer_phone, from_=proxy, body=text[:600]))
     except TwilioRestException as e:
         logger.error(f"Twilio error: {e}")
@@ -1832,7 +1883,7 @@ async def route_labels(route_id: str, token: str = "", autoprint: int = 0):
     for load_no, x in enumerate(stops, 1):
         win = f"{x.window_date or ''} {x.window_start}-{x.window_end}".strip() if x.window_end else "ANY TIME"
         note = f'<div class="note">{esc(x.notes)}</div>' if x.notes else ''
-        cards.append(f"""<div class="label"><div class="qr">{qr_svg('MULTIDROP:' + x.tracking_code)}</div>
+        cards.append(f"""<div class="label"><div class="qr">{qr_svg('DASHLOCAL:' + x.tracking_code)}</div>
 <div class="info"><div class="tags"><span class="load">LOAD {load_no:02d}</span><span class="seq">DROP #{x.seq:02d}</span></div><div class="code">{esc(x.tracking_code)}</div>
 <div class="name">{esc(x.customer_name)}</div><div class="addr">{esc(x.address)}</div>
 <div class="meta">{esc(x.postal_code)} &middot; {esc(x.zone.upper())}</div><div class="win">WINDOW {esc(win)}</div>{note}</div></div>""")
@@ -1912,7 +1963,7 @@ async def analytics():
 MERCHANTS = [{"id": "mer-1", "name": "Mission Bakery Co.", "contact": "orders@missionbakery.example"},
              {"id": "mer-2", "name": "Bay Books", "contact": "hello@baybooks.example"}]
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-NOMINATIM_UA = os.environ.get("NOMINATIM_USER_AGENT", "multidrop-merchant-import/1.0 (ops@multidrop.app)")
+NOMINATIM_UA = os.environ.get("NOMINATIM_USER_AGENT", "dashlocal-merchant-import/1.0 (ops@dashlocal.app)")
 SF_VIEWBOX = "-122.53,37.83,-122.35,37.70"  # lookups are bounded to San Francisco
 IMPORT_MAX_ROWS = 200
 FLAGGED = ("invalid", "not_found", "lookup_failed")
@@ -2065,7 +2116,7 @@ JWT_ALG = "HS256"
 SESSION_HOURS = 12
 LOGIN_MAX_FAILS = 5
 LOGIN_LOCK_MIN = 15
-DEMO_MERCHANT_USERS = [("mer-1", "bakery@multidrop.app", "Bakery2026"), ("mer-2", "books@multidrop.app", "Books2026")]
+DEMO_MERCHANT_USERS = [("mer-1", "bakery@dashlocal.app", "Bakery2026"), ("mer-2", "books@dashlocal.app", "Books2026")]
 DEMO_DRIVER_PINS = {"drv-1": "482913", "drv-2": "730516", "drv-3": "264871"}
 
 
@@ -2430,7 +2481,7 @@ async def report_csv(merchant_id: str, token: str, request: Request):
 
 @api_router.get("/merchant-template.csv")
 async def merchant_template():
-    return Response(TEMPLATE_CSV, media_type="text/csv", headers={"Content-Disposition": 'attachment; filename="multidrop-orders-template.csv"'})
+    return Response(TEMPLATE_CSV, media_type="text/csv", headers={"Content-Disposition": 'attachment; filename="dashlocal-orders-template.csv"'})
 
 
 @api_router.get("/merchants")
@@ -2555,7 +2606,7 @@ async def dismiss_import_row(row_id: str, u: dict = Depends(current_user)):
 # ---------------------------------------------------------------- weekly merchant report emails (Emergent managed Resend)
 EMAIL_BASE_URL = "https://integrations.emergentagent.com"  # constant on purpose: survives deployment
 EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY", "")
-EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "MultiDrop")
+EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "DashLocal")
 EMAIL_REPLY_TO = os.environ.get("EMAIL_REPLY_TO")
 TEST_INBOX = "delivered@resend.dev"  # seeded demo store logins are not real inboxes
 WEEKLY_SEND_HOUR = 8  # Monday 08:00 depot (SF) time
@@ -3139,10 +3190,13 @@ async def mark_bill_paid(merchant_id: str, week: str, body: PaidIn, u: dict = De
     if until >= datetime.now(TZ).date().isoformat():
         raise HTTPException(400, "This week isn't over yet — bills can be marked paid from Monday")
     if body.paid:
+        note = (body.note or "").strip()
+        if not note:
+            raise HTTPException(400, "Add a payment note (e.g. e-Transfer reference or cheque number)")
         b = await merchant_bill(merchant_id, since)
         await db.bill_payments.update_one({"merchant_id": merchant_id, "week_start": since}, {"$set": {
             "merchant_id": merchant_id, "week_start": since, "amount": b["total"], "paid_at": now_iso(), "by": u["email"],
-            "note": (body.note or "").strip()[:200] or None}}, upsert=True)
+            "note": note[:200]}}, upsert=True)
     else:
         await db.bill_payments.delete_one({"merchant_id": merchant_id, "week_start": since})
     return await merchant_bill(merchant_id, since)

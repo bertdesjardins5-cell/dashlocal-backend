@@ -39,11 +39,11 @@ def dlogin(phone, pin):
 
 @pytest.fixture(scope="module")
 def toks():
-    admin = login("admin@multidrop.app", "MultiDropAdmin2026")
+    admin = login("admin@dashlocal.app", "DashLocalAdmin2026")
     assert raw("POST", f"{API}/admin/reset", headers=H(admin)).status_code == 200
     for d, (_, pin) in PINS.items():  # make sure demo PINs are in place / lockouts cleared
         raw("PUT", f"{API}/admin/drivers/{d}/pin", json={"pin": pin}, headers=H(admin))
-    t = {"admin": admin, "m1": login("bakery@multidrop.app", "Bakery2026"), "m2": login("books@multidrop.app", "Books2026")}
+    t = {"admin": admin, "m1": login("bakery@dashlocal.app", "Bakery2026"), "m2": login("books@dashlocal.app", "Books2026")}
     for d, (ph, pin) in PINS.items():
         r = dlogin(ph, pin)
         assert r.status_code == 200, r.text

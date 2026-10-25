@@ -143,7 +143,8 @@ class TestAutoDispatchToday:
         assert drv1_before and drv1_before["status"] == "active"
         before_ids = {s["id"] for s in drv1_before["stops"]}
 
-        r = requests.post(f"{API}/routes/auto-dispatch", json={"service_date": today}, headers=admin)
+        # balance off: this test checks plain zone->driver assignment (busy-zone split covered in test_bill_notes_balance_dispatch.py)
+        r = requests.post(f"{API}/routes/auto-dispatch", json={"service_date": today, "balance": False}, headers=admin)
         assert r.status_code == 200, r.text
         res = r.json()
         print("RESULT", res)
@@ -227,7 +228,7 @@ class TestFallback:
         assert r.status_code == 200, r.text
         res = r.json()
         for x in res["routes"]:
-            assert set(x["zones"]) == set(x["fallback"])
+            assert set(x["zones"]) == set(x["fallback"]) | set(x.get("helping", []))  # helped (split) zones are not fallback
         set_cov(admin, DEFAULT_COV)
 
 

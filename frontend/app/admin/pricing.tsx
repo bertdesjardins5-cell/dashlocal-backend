@@ -8,6 +8,7 @@ import { Btn, Display, Header, Loading, Mono, Pill, useToast } from "@/src/ui";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 import { money } from "@/src/components/BillCard";
 import StoreRatesSheet from "@/src/components/StoreRatesSheet";
+import PaymentConfirmSheet, { PayTarget } from "@/src/components/PaymentConfirmSheet";
 
 type Pricing = { currency: string; base_fee: number; included_km: number; per_km: number; priority_fee: number; charge_failed: boolean; tax_pct: number };
 type Billing = {
@@ -38,22 +39,9 @@ export default function PricingScreen() {
   const [form, setForm] = useState<Record<string, string>>({});
   const [chargeFailed, setChargeFailed] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [paying, setPaying] = useState<string | null>(null);
+  const [payFor, setPayFor] = useState<PayTarget | null>(null);
   const [ratesFor, setRatesFor] = useState<string | null>(null);
   const closeRates = useCallback(() => setRatesFor(null), []);
-
-  const markPaid = async (id: string, paid: boolean) => {
-    setPaying(id);
-    try {
-      await api(`/admin/merchants/${id}/bills/${bq.data?.week_start}/paid`, { method: "PUT", body: { paid } });
-      toast.show(paid ? "BILL MARKED PAID" : "BILL MARKED UNPAID", "green");
-      bq.refetch();
-    } catch (e: any) {
-      toast.show(e.message, "red");
-    } finally {
-      setPaying(null);
-    }
-  };
 
   useEffect(() => {
     if (pq.data) {
@@ -150,8 +138,8 @@ export default function PricingScreen() {
                       : m.can_mark_paid && m.total > 0 ? <Pill label="UNPAID" tone="red" /> : m.can_mark_paid ? null : <Pill label="WEEK IN PROGRESS" tone="light" />}
                     <View style={{ flex: 1 }} />
                     {m.can_mark_paid && (m.total > 0 || m.payment) ? (
-                      <Pressable testID={`billing-paid-${m.id}`} onPress={() => markPaid(m.id, !m.payment)} disabled={paying === m.id} style={s.smallBtn}>
-                        <Mono style={s.chipText}>{paying === m.id ? "…" : m.payment ? "MARK UNPAID" : "MARK PAID"}</Mono>
+                      <Pressable testID={`billing-paid-${m.id}`} onPress={() => setPayFor({ id: m.id, name: m.name, total: m.total, paid: !!m.payment, note: m.payment?.note })} style={s.smallBtn}>
+                        <Mono style={s.chipText}>{m.payment ? "MARK UNPAID" : "MARK PAID"}</Mono>
                       </Pressable>
                     ) : null}
                     <Pressable testID={`billing-rates-${m.id}`} onPress={() => setRatesFor(m.id)} style={[s.smallBtn, m.custom_rates && { backgroundColor: colors.surfaceInverse }]}>
@@ -164,6 +152,7 @@ export default function PricingScreen() {
           ) : <Loading />}
         </KeyboardAwareScrollView>
       )}
+      {payFor && bq.data ? <PaymentConfirmSheet target={payFor} week={bq.data.week_start} onClose={() => setPayFor(null)} onDone={() => { setPayFor(null); bq.refetch(); }} notify={toast.show} /> : null}
       {ratesFor ? <StoreRatesSheet merchantId={ratesFor} onClose={closeRates} onSaved={() => { setRatesFor(null); bq.refetch(); }} notify={toast.show} /> : null}
       {toast.node}
     </View>

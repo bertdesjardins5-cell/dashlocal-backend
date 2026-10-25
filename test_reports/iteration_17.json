@@ -1,0 +1,42 @@
+{
+  "summary": "Iteration 17: tested two features, payment notes on weekly bills and busy-zone balancing in auto dispatch, on the backend and the frontend. Backend: the new suite test_bill_notes_balance_dispatch.py passes 12/12, and the full regression run passes 216/216 after two older tests were updated for the new behaviour. Payment notes: marking a bill paid with a missing, empty, whitespace-only or null note returns 400 'Add a payment note' and nothing is saved. A valid note returns 200 and the note is stored trimmed and cut to 200 characters. The current week returns 400 even with a note, and {paid:false} removes the payment. Balancing (drv-1 covers North only; drv-2 and drv-3 cover nothing): the response includes splits [{zone:North, from_id:drv-1, helper_id:drv-2, moved:3}]. The helper has helping=[North], North is not in its fallback list, and every eligible order goes to exactly one route (3+9+6=18). Moved stops sit on the far side of the zone by bearing. With balance:false there are no splits. With DEFAULT coverage, North is now also split by default (drv-1 has 6 open Mission stops plus 6 North). Frontend at 375x667: the payment sheet passes every step (amount CA$8.00; empty note shows pay-confirm-error and saves nothing; cancel, backdrop and X close it with no change; with a note there is a toast and a 'PAID · <note>' pill; MARK UNPAID shows the recorded note and removes the payment). The auto-dispatch checkbox toggles and the request sends balance:false or true. Result lines show '(HELPING WITH NORTH)' and the toast shows '1 BUSY ZONE SPLIT'; with balance off, neither appears. One logic bug was confirmed with a synthetic unit check: splitting the West zone is not contiguous near due west (see rca_of_issue).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/routes/auto-dispatch (balance_plan)", "issue": "The split is not contiguous for the West zone. bearing() uses atan2, which jumps between +pi and -pi at due west. Sorting West stops by raw bearing and moving ordered[-k:] hands the helper a middle slice, while the heavy driver keeps both ends of the wedge. Confirmed with 8 synthetic West stops: kept [s2,s1,s0,s7], moved [s6,s5,s4,s3]. The seeded Sunset stops are all south of due west, so seed data does not trigger it. Reference: /app/backend/server.py:914-933"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/admin auto dispatch", "issues": ["The zone grid preview still shows North→MARCUS with 6 stops; it does not show the planned split before tapping", "The heavy driver's result line ('MARCUS · 3 STOPS · NORTH') does not say that part of North was handed to Priya", "The helper line shows zones as 'EAST+NORTH' while the route name says 'North+East' (zones come from dict insertion order, not COMPASS order)", "The auto-dispatch-balance Pressable has no accessibilityRole='checkbox' or accessibilityState={{checked}}"]},
+      {"screen": "/admin/pricing", "issues": ["The PAID pill puts the note through Pill's toUpperCase, so case-sensitive references are changed ('e-Transfer REF77' shows as 'E-TRANSFER REF77'). A 200-character note also makes the pill very tall because the Pill Text has no numberOfLines", "The PaymentConfirmSheet Modal uses animationType='slide', so the dimmed backdrop slides up with the sheet instead of fading in (cosmetic)", "11 leftover TEST_ merchants from earlier iterations (admin reset does not remove them) clutter the billing list"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_bill_notes_balance_dispatch.py", "/app/backend/tests/seed_ui_iter17.py", "/app/test_reports/pytest/iter17.xml", "/app/test_reports/pytest/iter17_full.xml"],
+  "action_items": [
+    "Fix the West-zone wrap-around in balance_plan: sort by the angle relative to the zone's centre bearing, normalised to (-pi, pi] (e.g. key = (bearing(s) - CENTER[z] + pi) % (2*pi)), so both the moved and kept slices are contiguous arcs",
+    "Optional UX: show the split on the heavy driver's result line (e.g. 'NORTH · 3 HANDED TO PRIYA'), and order r.zones by COMPASS order",
+    "Optional: add accessibilityRole and accessibilityState to the balance checkbox; show the payment note in its original case or limit the pill to numberOfLines={1}",
+    "Optional: make admin reset (or a cleanup step) remove TEST_ merchants left by earlier test runs"
+  ],
+  "critical_code_review_comments": [
+    "server.py is 3352 lines; it should be split into routers (dispatch, billing, auth) per the size guideline",
+    "Balance is on by default, so the default coverage (drv-1 North with an active Mission route) now splits North on every reset-day dispatch. This is intended per the spec, but two older tests in test_auto_dispatch.py assumed no split and were updated",
+    "mark_bill_paid validates the note well (strip, required, 200-character cap); the client-side check matches the server"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_bill_notes_balance_dispatch.py (new)",
+    "/app/backend/tests/seed_ui_iter17.py (new)",
+    "/app/backend/tests/test_store_rates_bills_paid.py (test_reset_clears_payments now sends a note)",
+    "/app/backend/tests/test_auto_dispatch.py (test_dispatch_today sends balance:false; test_all_uncovered allows helping zones)"
+  ],
+  "success_rate": {"backend": "100% (216/216 tests); one minor logic bug found by a synthetic check outside the suite", "frontend": "100% of requested flows"},
+  "seed_data_creation": "seed_ui_iter17.py resets the DB, sets drv-1 to North and drv-2/drv-3 to no zone, imports one TEST_ order for mer-1 and marks it delivered last week (CA$8 bill). Cleanup is done: admin reset, coverage restored to North/South/East, pricing set back to defaults, bill_payments emptied.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Export EXPO_PUBLIC_BACKEND_URL before running the full suite (some files read it at import time): export EXPO_PUBLIC_BACKEND_URL=https://arrivewise.preview.emergentagent.com && pytest tests/ -n 0 (about 5 min). Reset-day seed: North 6, East 6, West 6; drv-1's R-101 has 6 open Mission stops. drv-1 North only gives split North drv-1→drv-2 moved 3. The synthetic seam check imports server.balance_plan directly.",
+  "rca_of_issue": "West seam: bearing = atan2(dy, dx·cos lat). Due west is ±pi, so the West wedge covers [3pi/4, pi] ∪ [-pi, -3pi/4]. Sorted ascending, the list runs SW→W(south) and then NW→W(north). Taking the last k stops gives the slice just north of due west, and the heavy driver keeps the SW and NW ends. Repro: in python, import server and call balance_plan({'a':{'West':stops}}, {'a':8,'b':0}) with stops at lng-0.05 and dy in [-0.004..0.005]. Fix: measure the angle from the zone's centre direction (N=pi/2, E=0, S=-pi/2, W=pi), wrapped to (-pi, pi]."
+}

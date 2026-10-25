@@ -17,7 +17,7 @@ def api():
     s = requests.Session()
     assert s.post(f"{API}/admin/reset").status_code == 200
     # merchant endpoints now need a sign-in token (iteration 11) -> sign in as admin
-    lr = s.post(f"{API}/auth/login", json={"email": "admin@multidrop.app", "password": "MultiDropAdmin2026"})
+    lr = s.post(f"{API}/auth/login", json={"email": "admin@dashlocal.app", "password": "DashLocalAdmin2026"})
     assert lr.status_code == 200, lr.text
     s.headers["Authorization"] = f"Bearer {lr.json()['token']}"
     return s

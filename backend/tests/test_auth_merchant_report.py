@@ -12,9 +12,9 @@ import requests
 
 BASE_URL = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/")
 API = f"{BASE_URL}/api"
-ADMIN = ("admin@multidrop.app", "MultiDropAdmin2026")
-M1 = ("bakery@multidrop.app", "Bakery2026")
-M2 = ("books@multidrop.app", "Books2026")
+ADMIN = ("admin@dashlocal.app", "DashLocalAdmin2026")
+M1 = ("bakery@dashlocal.app", "Bakery2026")
+M2 = ("books@dashlocal.app", "Books2026")
 
 
 def _login(email, pw):
@@ -37,7 +37,7 @@ class TestAuth:
     def test_login_admin_and_merchants(self):
         a = _login(*ADMIN)
         assert a["user"]["role"] == "admin" and "password_hash" not in a["user"] and "_id" not in a["user"]
-        m = _login(" Bakery@Multidrop.app ", M1[1])  # case/space-insensitive email
+        m = _login(" Bakery@DashLocal.app ", M1[1])  # case/space-insensitive email
         assert m["user"]["role"] == "merchant" and m["user"]["merchant_id"] == "mer-1"
         assert m["user"]["merchant_name"]
         assert _login(*M2)["user"]["merchant_id"] == "mer-2"

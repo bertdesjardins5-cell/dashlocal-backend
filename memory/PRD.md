@@ -1,4 +1,4 @@
-# MultiDrop — Multidrop Delivery App (PRD)
+# DashLocal — Multidrop Delivery App (PRD)
 
 ## Original problem statement
 Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, real-time GPS sync (WebSockets) to customer tracking. Three tiers — Driver (manifest w/ Next Stop, PoD photo/e-signature/QR, one-tap masked call/text via Twilio), Customer (dynamic ETA, live map, "2 stops away"/"arrived" alerts), Admin (batch/zone by neighborhood/postal, drag-and-drop re-sequencing, analytics drops/hr & route deviation).
@@ -53,3 +53,9 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - 2026-06: Bills paid/unpaid — db.bill_payments {merchant_id, week_start, amount, paid_at, by, note}; PUT /api/admin/merchants/{id}/bills/{week}/paid {paid, note} (finished weeks only, 400 for current week). Outstanding = unpaid finished weeks (≤26 back) with total > 0; shown per store + all stores on admin, and TOTAL DUE banner on merchant BillCard.
 - 2026-06: Weekly statement email — the Monday 08:00 report email now includes last week's statement (fees, distance, priority, tax, total, paid flag, total due across unpaid weeks) + 7-day statement CSV link (purpose "statement"); subject shows amount due.
 - 2026-06: Zone auto dispatch — compass_of(stop) splits by N/S/E/W wedges around the DEPOT (fixed city centre). drivers.compass_zone (demo: drv-1 North, drv-2 South, drv-3 East; West uncovered). GET /api/dispatch/preview?date=, PUT /api/admin/drivers/{id}/compass-zone {zone|null}, POST /api/routes/auto-dispatch {service_date} → one route per driver; uncovered zone → driver with fewest open stops; driver with an open route that day gets stops appended + re-optimised (active → ROUTE UPDATED banner). Admin dashboard AUTO DISPATCH block (zone counts, coverage chips, one button); manual neighbourhood batching kept.
+- 2026-06: Balance busy zones — POST /routes/auto-dispatch {balance: true default}: balance_plan moves the far side (by bearing) of the heaviest driver's largest zone to the lightest driver when heavy >= 2x lightest and zone >= 6 stops (repeat ≤4). Response: splits [{zone, from_id, helper_id, moved}], routes[].helping. Admin checkbox "BALANCE BUSY ZONES".
+- 2026-06: Bill payment confirmation — PaymentConfirmSheet: shows store/week/amount; marking paid requires a payment note (backend 400 if blank); marking unpaid asks to confirm.
+
+## Test suite note (Jun 2026)
+- Fixed time-of-day flakiness in tests/test_qr_windows.py::test_optimize_moves_urgent_stop_earlier (tight window now rolls over the hour correctly).
+- Full backend suite: 216/216 pass when run serially (`pytest tests -n0`). Parallel runs (-n 2) cause cross-test failures because suites share one backend and call /api/admin/reset.
