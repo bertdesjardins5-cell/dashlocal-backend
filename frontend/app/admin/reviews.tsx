@@ -22,7 +22,7 @@ export default function ReviewsScreen() {
   const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const stores = useQuery({ queryKey: ["merchants"], queryFn: () => api<{ id: string; name: string }[]>("/merchants") });
-  const requests = useQuery({ queryKey: ["review-requests"], queryFn: () => api<{ id: string; shop: string; status: string; created_at: string }[]>("/admin/review-requests") });
+  const requests = useQuery({ queryKey: ["review-requests"], queryFn: () => api<{ id: string; shop: string; status: string; created_at: string; reminded_at?: string | null; reminder_status?: string }[]>("/admin/review-requests") });
   const [store, setStore] = useState<string | null>(null);
   const sendRequest = async () => {
     setBusy("request");
@@ -117,7 +117,7 @@ export default function ReviewsScreen() {
           </View>
           <Btn testID="review-request-send" label="EMAIL REVIEW LINK" icon="mail" variant="dark" loading={busy === "request"} disabled={!store} onPress={sendRequest} />
           {(requests.data ?? []).slice(0, 5).map((r) => (
-            <Mono key={r.id} style={s.meta} testID={`review-request-${r.id}`}>{r.shop} · {r.status === "submitted" ? "REVIEW RECEIVED" : "LINK SENT"} · {new Date(r.created_at).toLocaleDateString()}</Mono>
+            <Mono key={r.id} style={s.meta} testID={`review-request-${r.id}`}>{r.shop} · {r.status === "submitted" ? "REVIEW RECEIVED" : r.reminder_status === "failed" ? "REMINDER FAILED" : r.reminded_at ? "REMINDER SENT" : "LINK SENT"} · {new Date(r.created_at).toLocaleDateString()}</Mono>
           ))}
         </View>
         <Mono style={s.section}>ALL REVIEWS</Mono>

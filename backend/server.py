@@ -834,6 +834,7 @@ async def startup():
         await db.drivers.update_one({"id": did, "compass_zone": {"$exists": False}}, {"$set": {"compass_zone": z}})
     spawn(weekly_scheduler())
     spawn(late_alert_watcher())
+    spawn(review_reminder_watcher())
     # imports interrupted by a restart: send unfinished rows back to the queue
     for j in await db.import_jobs.find({"status": "running"}, {"_id": 0, "id": 1}).to_list(100):
         spawn(process_import(j["id"]))
@@ -3671,8 +3672,8 @@ async def send_review_request(body: ReviewRequestIn, request: Request):
         except Exception as e:
             errors.append(str(e))
     if not sent:
-        raise HTTPException(502, f"Email could not be sent: {errors[0] if errors else 'unknown error'}")
-    doc = {"id": rid, "merchant_id": m["id"], "shop": m["name"], "emails": sent, "status": "sent", "created_at": now_iso(), "submitted_at": None}
+        raise HTTPException(424, f"Email could not be sent: {errors[0] if errors else 'unknown error'}")
+    doc = {"id": rid, "merchant_id": m["id"], "shop": m["name"], "emails": sent, "status": "sent", "created_at": now_iso(), "submitted_at": None, "reminded_at": None}
     await db.review_requests.insert_one(dict(doc))
     return doc
 
@@ -3722,6 +3723,83 @@ async def submit_review(token: str, body: ReviewSubmitIn, request: Request):
     await db.testimonials.insert_one(dict(doc))
     await notify_admin(f"New review from {rr['shop']} to approve", f"<p>“{escape(t['quote'])}”</p><p>Publish it from Shop reviews in the admin panel.</p>",
                        (await db.settings.find_one({"key": "public_base"}, {"_id": 0}) or {}).get("value"))
+    return {"ok": True}
+
+
+REVIEW_REMINDER_DAYS = 7
+
+
+async def send_review_reminders() -> int:
+    """One gentle reminder per review link still unused after 7 days (the link keeps its original expiry)."""
+    now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(days=REVIEW_REMINDER_DAYS)).isoformat()
+    base = (await db.settings.find_one({"key": "public_base"}, {"_id": 0}) or {}).get("value")
+    if not base:
+        return 0
+    sent = 0
+    for rr in await db.review_requests.find({"status": "sent", "created_at": {"$lte": cutoff}, "reminded_at": None}, {"_id": 0}).to_list(100):
+        left = timedelta(days=REVIEW_LINK_DAYS) - (now - datetime.fromisoformat(rr["created_at"]))
+        if left <= timedelta(hours=12):
+            continue  # too close to expiry to be useful
+        # claim first so two workers never double-send
+        if not (await db.review_requests.update_one({"id": rr["id"], "reminded_at": None}, {"$set": {"reminded_at": now_iso()}})).modified_count:
+            continue
+        link = f"{base}/review/{issue_token(rr['id'], 'merchant', purpose='review', minutes=int(left.total_seconds() // 60))}"
+        days_left = max(1, round(left.total_seconds() / 86400))
+        html = brand_email(f"Still happy to share a few words, {rr['shop']}?",
+                           "<p>Just a friendly nudge: a sentence or two about delivering with DashLocal helps other small businesses find us. "
+                           f"No pressure at all — the link stays open for {days_left} more day{'s' if days_left != 1 else ''}.</p>",
+                           ("Write a quick review", link))
+        ok = False
+        for em in rr.get("emails", []):
+            try:
+                await send_email(to=demo_inbox(em), subject=f"A quick review of DashLocal? — {rr['shop']}", html=html)
+                ok = True
+            except Exception as e:
+                logger.warning(f"Review reminder failed for {rr['id']}: {e}")
+        attempts = rr.get("reminder_attempts", 0) + 1
+        # failed sends (e.g. provider rate limit) are retried on the next hourly run, up to 3 tries
+        upd = {"reminder_status": "sent" if ok else "failed", "reminder_attempts": attempts}
+        if not ok and attempts < 3:
+            upd["reminded_at"] = None
+        await db.review_requests.update_one({"id": rr["id"]}, {"$set": upd})
+        sent += ok
+    return sent
+
+
+async def review_reminder_watcher():
+    await asyncio.sleep(30)
+    while True:
+        try:
+            await send_review_reminders()
+        except Exception as e:
+            logger.warning(f"Review reminder loop error: {e}")
+        await asyncio.sleep(3600)
+
+
+@api_router.post("/admin/review-requests/run-reminders", dependencies=ADMIN_ONLY)
+async def run_review_reminders():
+    """Manual trigger of the hourly reminder check (testing/ops)."""
+    return {"sent": await send_review_reminders()}
+
+
+@api_router.get("/merchants/{merchant_id}/checklist")
+async def merchant_checklist(merchant_id: str, _: dict = Depends(merchant_access)):
+    """First-steps checklist for newly approved shops; each step ticks itself from real activity."""
+    m = await get_merchant_or_404(merchant_id)
+    steps = [
+        {"key": "password", "label": "Choose your password", "done": True},
+        {"key": "upload", "label": "Upload your first orders (CSV)", "done": bool(await db.import_jobs.find_one({"merchant_id": merchant_id}, {"_id": 1}))},
+        {"key": "note", "label": "Save a delivery note for a regular customer", "done": bool(await db.saved_notes.find_one({"merchant_id": merchant_id}, {"_id": 1}))},
+        {"key": "delivered", "label": "Get your first delivery completed", "done": bool(await db.stops.find_one({"merchant_id": merchant_id, "status": "delivered"}, {"_id": 1}))},
+    ]
+    return {"show": bool(m.get("onboarding")), "steps": steps, "done": sum(s["done"] for s in steps), "total": len(steps)}
+
+
+@api_router.post("/merchants/{merchant_id}/checklist/dismiss")
+async def dismiss_checklist(merchant_id: str, _: dict = Depends(merchant_access)):
+    await get_merchant_or_404(merchant_id)
+    await db.merchants.update_one({"id": merchant_id}, {"$set": {"onboarding": False}})
     return {"ok": True}
 
 
@@ -3778,7 +3856,7 @@ async def approve_signup(sid: str, request: Request):
     if await db.users.find_one({"email": sr["email"]}):
         raise HTTPException(409, "An account with this email already exists")
     base = await app_base(request)
-    m = {"id": f"mer-{uuid.uuid4().hex[:8]}", "name": sr["store_name"], "contact": sr["email"]}
+    m = {"id": f"mer-{uuid.uuid4().hex[:8]}", "name": sr["store_name"], "contact": sr["email"], "onboarding": True}
     nonce = secrets.token_urlsafe(12)
     user = {"id": str(uuid.uuid4()), "email": sr["email"], "role": "merchant", "name": sr["contact_name"], "merchant_id": m["id"],
             "disabled": False, "created_at": now_iso(), "pw_nonce": nonce, "password_hash": hash_pw(secrets.token_urlsafe(24))}

@@ -9,6 +9,7 @@ import { clearSession, getToken, useSession } from "@/src/session";
 import ReportDownload from "@/src/components/ReportDownload";
 import WeeklyEmailCard from "@/src/components/WeeklyEmailCard";
 import SavedNotesCard from "@/src/components/SavedNotesCard";
+import WelcomeChecklist from "@/src/components/WelcomeChecklist";
 import ProblemAlertsCard from "@/src/components/ProblemAlertsCard";
 import BillCard, { money } from "@/src/components/BillCard";
 import { api, API, dayLabel, Stop, windowLabel } from "@/src/api";
@@ -118,6 +119,8 @@ export default function MerchantHome() {
               </View>
             ))}
           </View>
+
+          <WelcomeChecklist merchantId={merchantId} refreshKey={q.dataUpdatedAt} notify={toast.show} />
 
           <Mono style={s.section}>IMPORT ORDERS FROM CSV</Mono>
           <View style={s.block}>

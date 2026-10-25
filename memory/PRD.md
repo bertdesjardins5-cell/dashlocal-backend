@@ -92,3 +92,7 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - GET/POST /api/auth/set-password[/token] sets the password, signs the user in and opens the portal. Admin notices go to ADMIN_NOTIFY_EMAIL or ADMIN_EMAIL. Demo store emails go to the delivered@resend.dev test inbox.
 - The landing hero CTA now goes to /sign-up; the merchant card has a "Request an account" button.
 - ADMIN_NOTIFY_EMAIL=bertdesjardins@hotmail.com (backend/.env). The delivery of this notice is unverified: the email provider returned 429 rate_limited after a test burst.
+
+## Welcome checklist + review reminders (Jun 2026)
+- Stores created by sign-up approval get merchant.onboarding=true. GET /api/merchants/{id}/checklist returns {show, steps[password, upload, note, delivered], done, total}; the steps tick themselves from real data. POST /checklist/dismiss hides it. Shown at the top of the merchant portal (WelcomeChecklist).
+- review_reminder_watcher runs hourly: links unused for 7+ days get exactly one reminder email (claimed atomically through reminded_at, skipped if under 12h remain). The fresh token keeps the original expiry. Manual trigger: POST /api/admin/review-requests/run-reminders. The admin screen shows "REMINDER SENT".

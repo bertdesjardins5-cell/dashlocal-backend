@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Pressable, TextInput, View } from "react-native";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { api } from "@/src/api";
 import { Btn, Mono } from "@/src/ui";
@@ -13,6 +13,7 @@ export default function SavedNotesCard({ merchantId, notify }: { merchantId: str
   const s = useStyles();
   const { colors } = useTheme();
   const q = useQuery({ queryKey: ["saved-notes", merchantId], queryFn: () => api<SavedNote[]>(`/merchants/${merchantId}/saved-notes`) });
+  const qc = useQueryClient();
   const [phone, setPhone] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -24,6 +25,7 @@ export default function SavedNotesCard({ merchantId, notify }: { merchantId: str
       setPhone("");
       setNote("");
       await q.refetch();
+      qc.invalidateQueries({ queryKey: ["checklist", merchantId] });
       notify("NOTE SAVED · ADDED TO THEIR NEXT ORDERS", "green");
     } catch (e: any) {
       notify(e.message, "red");
