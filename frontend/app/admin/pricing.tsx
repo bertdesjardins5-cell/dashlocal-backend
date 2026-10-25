@@ -1,17 +1,21 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, Switch, TextInput, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, dayLabel } from "@/src/api";
-import { Btn, Display, Header, Loading, Mono, useToast } from "@/src/ui";
+import { Btn, Display, Header, Loading, Mono, Pill, useToast } from "@/src/ui";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 import { money } from "@/src/components/BillCard";
+import StoreRatesSheet from "@/src/components/StoreRatesSheet";
 
 type Pricing = { currency: string; base_fee: number; included_km: number; per_km: number; priority_fee: number; charge_failed: boolean; tax_pct: number };
 type Billing = {
-  week_start: string; week_end: string; currency: string; total: number; drops: number; weeks: string[];
-  stores: { id: string; name: string; drops: number; subtotal: number; tax: number; total: number; open_orders: { count: number; estimate: number } }[];
+  week_start: string; week_end: string; currency: string; total: number; drops: number; weeks: string[]; outstanding: number;
+  stores: {
+    id: string; name: string; drops: number; subtotal: number; tax: number; total: number; open_orders: { count: number; estimate: number };
+    payment: { paid_at: string; note: string | null; amount: number } | null; can_mark_paid: boolean; outstanding: number; unpaid_weeks: number; custom_rates: boolean;
+  }[];
 };
 
 const FIELDS: { k: keyof Omit<Pricing, "currency" | "charge_failed">; label: string; unit: string }[] = [
@@ -34,6 +38,22 @@ export default function PricingScreen() {
   const [form, setForm] = useState<Record<string, string>>({});
   const [chargeFailed, setChargeFailed] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [paying, setPaying] = useState<string | null>(null);
+  const [ratesFor, setRatesFor] = useState<string | null>(null);
+  const closeRates = useCallback(() => setRatesFor(null), []);
+
+  const markPaid = async (id: string, paid: boolean) => {
+    setPaying(id);
+    try {
+      await api(`/admin/merchants/${id}/bills/${bq.data?.week_start}/paid`, { method: "PUT", body: { paid } });
+      toast.show(paid ? "BILL MARKED PAID" : "BILL MARKED UNPAID", "green");
+      bq.refetch();
+    } catch (e: any) {
+      toast.show(e.message, "red");
+    } finally {
+      setPaying(null);
+    }
+  };
 
   useEffect(() => {
     if (pq.data) {
@@ -111,20 +131,40 @@ export default function PricingScreen() {
               <View style={s.totalRow} testID="billing-total">
                 <Mono style={s.meta}>{dayLabel(bq.data.week_start)} – {dayLabel(bq.data.week_end)} · {bq.data.drops} BILLED DROPS</Mono>
                 <Display style={{ fontSize: 22 }}>{money(bq.data.total)}</Display>
+                <Mono style={[s.meta, bq.data.outstanding > 0 && { color: colors.brandPrimary, fontWeight: "700" }]} testID="billing-outstanding">
+                  STILL OWED (ALL STORES, UNPAID PAST WEEKS): {money(bq.data.outstanding)}
+                </Mono>
               </View>
               {bq.data.stores.map((m) => (
-                <View key={m.id} style={s.store} testID={`billing-store-${m.id}`}>
-                  <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                    <Display style={{ fontSize: 16 }} numberOfLines={1}>{m.name}</Display>
-                    <Mono style={s.meta}>{m.drops} DROPS · {money(m.subtotal)} + TAX {money(m.tax)}{m.open_orders.count ? ` · ${m.open_orders.count} OPEN ≈ ${money(m.open_orders.estimate)}` : ""}</Mono>
+                <View key={m.id} style={s.storeBlock} testID={`billing-store-${m.id}`}>
+                  <View style={s.storeTop}>
+                    <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                      <Display style={{ fontSize: 16 }} numberOfLines={1}>{m.name}</Display>
+                      <Mono style={s.meta}>{m.drops} DROPS · {money(m.subtotal)} + TAX {money(m.tax)}{m.open_orders.count ? ` · ${m.open_orders.count} OPEN ≈ ${money(m.open_orders.estimate)}` : ""}</Mono>
+                      {m.outstanding > 0 ? <Mono style={s.owed} testID={`billing-owed-${m.id}`}>OWES {money(m.outstanding)} · {m.unpaid_weeks} UNPAID WEEK{m.unpaid_weeks === 1 ? "" : "S"}</Mono> : null}
+                    </View>
+                    <Display style={{ fontSize: 16 }}>{money(m.total)}</Display>
                   </View>
-                  <Display style={{ fontSize: 16 }}>{money(m.total)}</Display>
+                  <View style={s.actions}>
+                    {m.payment ? <Pill label={`PAID ${dayLabel(m.payment.paid_at.slice(0, 10))}${m.payment.note ? ` · ${m.payment.note}` : ""}`} tone="green" />
+                      : m.can_mark_paid && m.total > 0 ? <Pill label="UNPAID" tone="red" /> : m.can_mark_paid ? null : <Pill label="WEEK IN PROGRESS" tone="light" />}
+                    <View style={{ flex: 1 }} />
+                    {m.can_mark_paid && (m.total > 0 || m.payment) ? (
+                      <Pressable testID={`billing-paid-${m.id}`} onPress={() => markPaid(m.id, !m.payment)} disabled={paying === m.id} style={s.smallBtn}>
+                        <Mono style={s.chipText}>{paying === m.id ? "…" : m.payment ? "MARK UNPAID" : "MARK PAID"}</Mono>
+                      </Pressable>
+                    ) : null}
+                    <Pressable testID={`billing-rates-${m.id}`} onPress={() => setRatesFor(m.id)} style={[s.smallBtn, m.custom_rates && { backgroundColor: colors.surfaceInverse }]}>
+                      <Mono style={[s.chipText, m.custom_rates && { color: colors.onSurfaceInverse }]}>{m.custom_rates ? "CUSTOM RATES" : "RATES"}</Mono>
+                    </Pressable>
+                  </View>
                 </View>
               ))}
             </>
           ) : <Loading />}
         </KeyboardAwareScrollView>
       )}
+      {ratesFor ? <StoreRatesSheet merchantId={ratesFor} onClose={closeRates} onSaved={() => { setRatesFor(null); bq.refetch(); }} notify={toast.show} /> : null}
       {toast.node}
     </View>
   );
@@ -144,4 +184,9 @@ const useStyles = makeStyles((c) => ({
   chipText: { fontSize: 12, fontWeight: "700" },
   totalRow: { padding: spacing.lg, gap: 4, borderBottomWidth: 2, borderColor: c.border },
   store: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.lg, borderBottomWidth: 2, borderColor: c.border },
+  storeBlock: { padding: spacing.lg, gap: spacing.sm, borderBottomWidth: 2, borderColor: c.border },
+  storeTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  actions: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" },
+  owed: { fontSize: 11, fontWeight: "700", color: c.brandPrimary },
+  smallBtn: { minHeight: 44, paddingHorizontal: spacing.md, borderWidth: 2, borderColor: c.border, justifyContent: "center" },
 }));

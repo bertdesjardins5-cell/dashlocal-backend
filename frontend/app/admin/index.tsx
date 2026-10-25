@@ -10,6 +10,8 @@ import AlertTrends from "@/src/components/AlertTrends";
 import ApologyCodes from "@/src/components/ApologyCodes";
 import DailyDigest from "@/src/components/DailyDigest";
 import { clearSession } from "@/src/session";
+import AutoDispatch from "@/src/components/AutoDispatch";
+import { queryClient } from "@/src/query-client";
 import Badges, { Badge } from "@/src/components/Badges";
 import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
@@ -42,7 +44,7 @@ export default function AdminDashboard() {
     queryFn: () => api<{ driver: Driver; on_time_rate: number | null; drops_per_hour: number; delivered: number; avg_rating: number | null; trend: number[]; badges: Badge[] }[]>("/scorecards"),
   });
 
-  const refresh = () => { an.refetch(); zones.refetch(); routes.refetch(); drivers.refetch(); cards.refetch(); };
+  const refresh = () => { an.refetch(); zones.refetch(); routes.refetch(); drivers.refetch(); cards.refetch(); queryClient.invalidateQueries({ queryKey: ["dispatch-preview"] }); };
 
   const batch = async (zone: string) => {
     const driver_id = assign[zone];
@@ -169,7 +171,7 @@ export default function AdminDashboard() {
             );
           })}
 
-          <Mono style={s.section}>UNASSIGNED · BATCH BY ZONE & DAY</Mono>
+          <Mono style={s.section}>UNASSIGNED · DISPATCH BY DAY</Mono>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ height: 56, flexGrow: 0, borderBottomWidth: 2, borderColor: colors.border }} contentContainerStyle={{ gap: spacing.sm, alignItems: "center", paddingHorizontal: spacing.lg }}>
             {days.map((d, i) => (
               <Pressable key={d} testID={`batch-day-${i}`} onPress={() => setDay(d)} style={[s.chip, d === day && { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary }]}>
@@ -177,6 +179,9 @@ export default function AdminDashboard() {
               </Pressable>
             ))}
           </ScrollView>
+          <Mono style={s.section}>AUTO DISPATCH · NORTH / SOUTH / EAST / WEST</Mono>
+          <AutoDispatch day={day} onDone={refresh} notify={toast.show} />
+          <Mono style={s.section}>MANUAL · BATCH BY NEIGHBOURHOOD</Mono>
           {zones.data?.length === 0 ? <Mono style={s.emptyText}>ALL ORDERS ASSIGNED</Mono> : null}
           {zones.data?.map((z) => (
             <View key={z.zone} style={s.zone} testID={`zone-${z.zone}`}>

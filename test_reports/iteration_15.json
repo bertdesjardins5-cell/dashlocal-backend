@@ -1,0 +1,46 @@
+{
+  "summary": "Iteration 15 tested per-store prices, marking bills paid or unpaid with outstanding totals, and the Monday weekly email with the statement. Backend: the new suite test_store_rates_bills_paid.py passed 16/16. Regression on test_pricing_billing.py and test_admin_gating_weekly_email.py passed 26/26. ONE real email was sent (send-now for mer-1 to delivered@resend.dev, status sent, bill_total 8.5, total_due 8.5). Frontend was checked at 390x844. On /admin/pricing these all work: billing-outstanding, billing-owed-<id>, WEEK IN PROGRESS on the current week with no paid button, MARK PAID / MARK UNPAID on billing-week-1 with PAID/UNPAID pills, and the totals update. The store-rates sheet works: shared placeholders, partial save, the CUSTOM RATES label, the charge-failed switch, out-of-range error toast, USE SHARED, and close via X and backdrop. On /merchant/mer-1 these all work: the bill-outstanding TOTAL DUE banner, UNPAID and PAID pills per past week, and the weekly-email card text mentioning the bill statement. No functional bugs. Only minor or design issues, listed below. No deprecated Expo packages were found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "merchant_bill (GET /api/merchants/{id}/bill, outstanding, statement)", "issue": "Past weeks are recalculated with the store's CURRENT tax_pct and charge_failed (get_pricing(merchant_id) at server.py:2900, 2914, 2921). Changing a store's custom tax or charge-failed setting therefore changes old statements and outstanding totals, even though the UI says rates apply to new orders only. Only per-order fees are snapshotted."},
+      {"endpoint": "PUT /api/admin/merchants/{id}/bills/{week}/paid", "issue": "The payment stores the amount at the time it was marked. If that week's bill changes later (failed drops, tax), the week is still treated as fully paid and is excluded from outstanding. A week with a CA$0 bill can also be marked paid through the API (the UI hides the button)."},
+      {"endpoint": "send_weekly_report subject (server.py:2630)", "issue": "The subject uses cad(outstanding.total or bill.total) + ' due'. When last week is already paid and nothing is owed, it still says 'CA$X due' using the paid amount. It should say 'paid' or 'CA$0.00 due' in that case."},
+      {"endpoint": "POST /api/admin/reset", "issue": "Reset clears bill_payments but does not clear merchants.pricing_override, so custom rates survive a reset. This may be intended; it should be documented or cleared."},
+      {"endpoint": "GET /api/admin/billing", "issue": "merchant_outstanding runs merchant_bill once per week (up to 26) for each merchant, about 4 database queries each. This is fast at 12 merchants (0.15s) but grows as stores × weeks."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "admin/pricing", "issues": [
+        "The MARK PAID / MARK UNPAID toggle has no confirmation and no way to add a note. The API supports a note, but the UI only sends {paid}.",
+        "Week chips read 'WK 12 MON', 'WK 28 MON' with no month, which is unclear across months (the merchant BillCard has the same issue).",
+        "10 leftover TEST_Store merchants from earlier iterations clutter the billing list (sorted by id)."
+      ]},
+      {"screen": "StoreRatesSheet", "issues": ["The placeholder that shows the shared value (e.g. '8') sits in the same right-aligned box at the same size as real input, so it can be mistaken for a saved custom value. Consider a lighter colour or a 'shared' hint inside the box."]},
+      {"screen": "BillCard / pricing PAID pill", "issues": ["The PAID date uses paid_at.slice(0,10), which is the UTC date and can be off by a day from SF time. '1 DROPS' is not pluralised correctly."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_store_rates_bills_paid.py", "/app/backend/tests/seed_ui_iter15.py", "/app/test_reports/pytest/iter15_store_rates_bills.xml"],
+  "action_items": [
+    "Optional: snapshot tax_pct and charge_failed per order or per week, so changing store rates does not rewrite past statements and outstanding totals.",
+    "Fix the weekly email subject so it does not say 'CA$X due' when last week is paid and nothing is owed.",
+    "Optional: add a confirmation and a note field for MARK PAID; show the month in the week chips; use the SF date for the PAID pill.",
+    "Optional: clear pricing_override on admin reset, or document that custom rates survive a reset; clean up the leftover TEST_Store merchants."
+  ],
+  "critical_code_review_comments": [
+    "Store-rate validation reuses PRICING_LIMITS and PRICING_NAMES. A rejected update does not overwrite the saved override (verified).",
+    "mark_bill_paid correctly blocks the current week (until >= today -> 400) and checks that the merchant exists before the week (bad merchant 404, bad week 400).",
+    "The statement token in the email has purpose 'statement', mid, wk = last week, and is valid for WEEKLY_LINK_DAYS = 7. statement.csv rejects tokens with purpose 'report' (401) and tokens for another store (403)."
+  ],
+  "updated_files": ["/app/backend/tests/test_store_rates_bills_paid.py (new)", "/app/backend/tests/seed_ui_iter15.py (new)"],
+  "success_rate": {"backend": "100% (16/16 new, 26/26 regression)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "seed_ui_iter15.py imported TEST_UI15A and TEST_UI15B (mer-1) and TEST_UI15C (mer-2), and set them delivered 1-2 weeks ago in Mongo. They remain, so the outstanding totals are visible (mer-1 CA$16, mer-2 CA$8). Cleanup is done: mer-1 and mer-2 custom rates cleared, shared pricing back to 8/5/1.25/6/true/0, bill_payments emptied, demo driver PINs confirmed working.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest -n 0 with EXPO_PUBLIC_BACKEND_URL exported from frontend/.env. test_store_rates_bills_paid.py resets the DB, imports 1 CSV row, moves it to last week in Mongo, sends ONE real weekly email (send-now has a 5-minute cooldown, so a rerun within 5 minutes fails the send test with 429), and cleans up after itself. A toast at the top can block force-clicks near the top of the screen; tap the store-rates backdrop with page.mouse.click(195,150). Environment clock: Sun 2026-10-25 SF.",
+  "rca_of_issue": ""
+}

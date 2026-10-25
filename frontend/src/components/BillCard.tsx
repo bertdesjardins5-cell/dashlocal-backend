@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { api, BACKEND_URL, dayLabel } from "@/src/api";
-import { Btn, Display, Mono } from "@/src/ui";
+import { Btn, Display, Mono, Pill } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
 
 export const money = (n: number) => `CA$${n.toFixed(2)}`;
@@ -12,6 +12,8 @@ type Bill = {
   week_start: string; week_end: string; current_week: boolean; tax_pct: number; lines: Line[]; drops: number;
   base_total: number; distance_total: number; priority_total: number; subtotal: number; tax: number; total: number;
   open_orders: { count: number; estimate: number }; weeks: string[];
+  payment: { paid_at: string; note: string | null } | null; can_mark_paid: boolean;
+  outstanding: { total: number; weeks: { week_start: string; total: number }[] };
 };
 
 const LIMIT = 8;
@@ -56,7 +58,16 @@ export default function BillCard({ merchantId, notify }: { merchantId: string; n
         ))}
       </ScrollView>
       <View style={s.block}>
-        <Mono style={s.meta}>{b.current_week ? "RUNNING BILL · " : "STATEMENT · "}{dayLabel(b.week_start)} – {dayLabel(b.week_end)}</Mono>
+        {b.outstanding.total > 0 ? (
+          <View style={s.owed} testID="bill-outstanding">
+            <Mono style={s.owedText}>TOTAL DUE {money(b.outstanding.total)}</Mono>
+            <Mono style={s.owedSub}>{b.outstanding.weeks.length} UNPAID WEEK{b.outstanding.weeks.length === 1 ? "" : "S"}: {b.outstanding.weeks.map((w) => dayLabel(w.week_start)).join(", ")}</Mono>
+          </View>
+        ) : null}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+          <Mono style={[s.meta, { flex: 1 }]}>{b.current_week ? "RUNNING BILL · " : "STATEMENT · "}{dayLabel(b.week_start)} – {dayLabel(b.week_end)}</Mono>
+          {b.payment ? <Pill label={`PAID ${dayLabel(b.payment.paid_at.slice(0, 10))}`} tone="green" /> : b.can_mark_paid && b.total > 0 ? <Pill label="UNPAID" tone="red" /> : null}
+        </View>
         <Display style={s.total} testID="bill-total">{money(b.total)}</Display>
         <Mono style={s.meta} testID="bill-breakdown">
           {b.drops} DROPS · FEES {money(b.base_total)} · DISTANCE {money(b.distance_total)} · PRIORITY {money(b.priority_total)} · TAX {b.tax_pct}% {money(b.tax)}
@@ -78,7 +89,7 @@ export default function BillCard({ merchantId, notify }: { merchantId: string; n
         ) : null}
         {b.lines.length === 0 ? <Mono style={s.meta}>NO COMPLETED DROPS THIS WEEK</Mono> : null}
         <Btn testID="bill-download" label="DOWNLOAD STATEMENT" icon="document-text" variant="outline" loading={busy} onPress={download} />
-        <Mono style={s.meta}>Bills run Monday–Sunday (SF time). Payment is arranged directly with dispatch.</Mono>
+        <Mono style={s.meta}>Bills run Monday–Sunday (SF time) and are emailed with your Monday report. Payment is arranged directly with dispatch.</Mono>
       </View>
     </View>
   );
@@ -96,4 +107,7 @@ const useStyles = makeStyles((c) => ({
   line: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 44, borderTopWidth: 1, borderColor: c.surfaceSecondary },
   lineMain: { fontSize: 13, fontWeight: "700" },
   more: { minHeight: 44, justifyContent: "center", alignItems: "center", borderWidth: 2, borderColor: c.border },
+  owed: { backgroundColor: c.brandPrimary, padding: spacing.md, gap: 2 },
+  owedText: { color: c.onBrandPrimary, fontSize: 15, fontWeight: "700" },
+  owedSub: { color: c.onBrandPrimary, fontSize: 11 },
 }));

@@ -296,6 +296,7 @@ class Driver(BaseModel):
     lat: float
     lng: float
     updated_at: Optional[str] = None
+    compass_zone: Optional[str] = None  # North / South / East / West the driver covers for auto dispatch
 
 
 class Stop(BaseModel):
@@ -334,6 +335,7 @@ class Stop(BaseModel):
     nearby_sms_status: Optional[str] = None  # "driver is 2 stops away" text: sending | sent | skipped_fictional | not_configured | failed
     nearby_sms_at: Optional[str] = None
     merchant_id: Optional[str] = None  # set when the order came from a merchant CSV import
+    compass_zone: Optional[str] = None  # North / South / East / West of the depot (set by auto dispatch)
     priority: bool = False  # priority delivery: served first on the route, carries a surcharge
     fee: Optional[dict] = None  # price snapshot when the order was created / re-priced (merchant orders)
     merchant_late_alert_at: Optional[str] = None  # "running late" email sent to the merchant (once)
@@ -609,14 +611,15 @@ async def seed(force: bool = False):
     await db.import_jobs.delete_many({})
     await db.import_rows.delete_many({})
     await db.merchant_alerts.delete_many({})
+    await db.bill_payments.delete_many({})
     await db.report_emails.delete_many({})
     await db.stops.delete_many({})
     await db.routes.delete_many({})
     rnd = random.Random(42)
     drivers = [
-        Driver(id="drv-1", name="Marcus Reid", phone="+14155550101", vehicle="VAN-07", lat=DEPOT["lat"], lng=DEPOT["lng"], updated_at=now_iso()),
-        Driver(id="drv-2", name="Priya Nair", phone="+14155550102", vehicle="VAN-12", lat=DEPOT["lat"], lng=DEPOT["lng"], updated_at=now_iso()),
-        Driver(id="drv-3", name="Diego Santos", phone="+14155550103", vehicle="BIKE-03", lat=DEPOT["lat"], lng=DEPOT["lng"], updated_at=now_iso()),
+        Driver(id="drv-1", name="Marcus Reid", phone="+14155550101", vehicle="VAN-07", lat=DEPOT["lat"], lng=DEPOT["lng"], updated_at=now_iso(), compass_zone="North"),
+        Driver(id="drv-2", name="Priya Nair", phone="+14155550102", vehicle="VAN-12", lat=DEPOT["lat"], lng=DEPOT["lng"], updated_at=now_iso(), compass_zone="South"),
+        Driver(id="drv-3", name="Diego Santos", phone="+14155550103", vehicle="BIKE-03", lat=DEPOT["lat"], lng=DEPOT["lng"], updated_at=now_iso(), compass_zone="East"),
     ]
     await db.drivers.insert_many([d.model_dump() for d in drivers])
     stops, n = [], 0
@@ -766,9 +769,10 @@ async def startup():
     for m in MERCHANTS:
         await db.merchants.update_one({"id": m["id"]}, {"$setOnInsert": m}, upsert=True)
     await seed_users()
-    pricing = await get_pricing()
     for d in await db.stops.find({"merchant_id": {"$ne": None}, "fee": None}, {"_id": 0}).to_list(5000):
-        await db.stops.update_one({"id": d["id"]}, {"$set": {"fee": compute_fee(d, pricing)}})  # orders from before pricing existed
+        await db.stops.update_one({"id": d["id"]}, {"$set": {"fee": compute_fee(d, await get_pricing(d["merchant_id"]))}})  # orders from before pricing existed
+    for did, z in (("drv-1", "North"), ("drv-2", "South"), ("drv-3", "East")):  # demo coverage for auto dispatch
+        await db.drivers.update_one({"id": did, "compass_zone": {"$exists": False}}, {"$set": {"compass_zone": z}})
     spawn(weekly_scheduler())
     spawn(late_alert_watcher())
     # imports interrupted by a restart: send unfinished rows back to the queue
@@ -880,8 +884,121 @@ async def zones(date: Optional[str] = None):
 @api_router.post("/routes/batch", dependencies=ADMIN_ONLY)
 async def batch(body: BatchIn):
     await get_driver_or_404(body.driver_id)
-    route = await create_batch(body.zone, body.driver_id, service_date=body.service_date)
+    async with _dispatch_lock:
+        route = await create_batch(body.zone, body.driver_id, service_date=body.service_date)
     return await route_detail(route)
+
+
+# ---------------------------------------------------------------- zone-based auto dispatch (N / S / E / W of the depot)
+COMPASS = ("North", "South", "East", "West")
+
+
+def compass_of(p: dict) -> str:
+    """Wedge around the depot (fixed city-centre point): whichever of N/S/E/W the drop points to most."""
+    dy = p["lat"] - DEPOT["lat"]
+    dx = (p["lng"] - DEPOT["lng"]) * math.cos(math.radians(DEPOT["lat"]))
+    if abs(dy) >= abs(dx):
+        return "North" if dy >= 0 else "South"
+    return "East" if dx >= 0 else "West"
+
+
+class AutoDispatchIn(BaseModel):
+    service_date: Optional[str] = None
+
+
+class CompassZoneIn(BaseModel):
+    zone: Optional[str] = None
+
+
+@api_router.put("/admin/drivers/{driver_id}/compass-zone", dependencies=ADMIN_ONLY)
+async def set_compass_zone(driver_id: str, body: CompassZoneIn):
+    if body.zone is not None and body.zone not in COMPASS:
+        raise HTTPException(400, f"zone must be one of {', '.join(COMPASS)} or empty")
+    await get_driver_or_404(driver_id)
+    await db.drivers.update_one({"id": driver_id}, {"$set": {"compass_zone": body.zone}})
+    return (await get_driver_or_404(driver_id)).model_dump()
+
+
+@api_router.get("/dispatch/preview", dependencies=ADMIN_ONLY)
+async def dispatch_preview(date: Optional[str] = None):
+    """Unassigned orders for the day split by N/S/E/W, with the driver each zone would go to."""
+    service_date = check_service_date(date)
+    docs = await db.stops.find(eligible_query(service_date), {"_id": 0, "lat": 1, "lng": 1}).to_list(5000)
+    counts = {z: 0 for z in COMPASS}
+    for d in docs:
+        counts[compass_of(d)] += 1
+    drivers = [Driver(**d) for d in await db.drivers.find({}, {"_id": 0}).sort("id", 1).to_list(100)]
+    return {"service_date": service_date, "total": len(docs),
+            "zones": [{"zone": z, "count": counts[z], "driver": next(({"id": d.id, "name": d.name} for d in drivers if d.compass_zone == z), None)} for z in COMPASS],
+            "drivers": [{"id": d.id, "name": d.name, "vehicle": d.vehicle, "compass_zone": d.compass_zone} for d in drivers]}
+
+
+@api_router.post("/routes/auto-dispatch", dependencies=ADMIN_ONLY)
+async def auto_dispatch(body: AutoDispatchIn):
+    async with _dispatch_lock:  # two taps at once must not create duplicate / empty routes
+        return await _auto_dispatch(body)
+
+
+_dispatch_lock = asyncio.Lock()
+
+
+async def _auto_dispatch(body: AutoDispatchIn):
+    """One tap: split every unassigned order for the day into North/South/East/West of the depot and give each
+    zone's stops to the driver covering it. A zone nobody covers goes to the driver with the fewest stops.
+    Each driver gets one route for the day (stops are added to their existing open route, which is re-optimised)."""
+    service_date = check_service_date(body.service_date)
+    docs = await db.stops.find(eligible_query(service_date), {"_id": 0}).to_list(5000)
+    if not docs:
+        raise HTTPException(400, "No unassigned orders for that day")
+    drivers = [Driver(**d) for d in await db.drivers.find({}, {"_id": 0}).sort("id", 1).to_list(100)]
+    if not drivers:
+        raise HTTPException(400, "No drivers")
+    by_zone: Dict[str, list] = {z: [] for z in COMPASS}
+    for d in docs:
+        by_zone[compass_of(d)].append(d)
+    open_routes = {r["driver_id"]: Route(**r) for r in await db.routes.find(
+        {"service_date": service_date, "status": {"$in": ["planned", "active"]}, "driver_id": {"$ne": None}}, {"_id": 0}).to_list(200)}
+    load = {d.id: 0 for d in drivers}
+    for did, r in open_routes.items():
+        if did in load:
+            load[did] = await db.stops.count_documents({"route_id": r.id, "status": {"$in": ["pending", "arrived"]}})
+    plan: Dict[str, Dict[str, list]] = {}  # driver_id -> zone -> stops
+    covered = [z for z in COMPASS if by_zone[z] and any(d.compass_zone == z for d in drivers)]
+    uncovered = [z for z in COMPASS if by_zone[z] and z not in covered]
+    for z in covered + sorted(uncovered, key=lambda z: -len(by_zone[z])):  # covered first so fallback sees real loads
+        d = next((d for d in drivers if d.compass_zone == z), None) or min(drivers, key=lambda d: (load[d.id], d.id))
+        plan.setdefault(d.id, {})[z] = by_zone[z]
+        load[d.id] += len(by_zone[z])
+    out = []
+    for did, zones in plan.items():
+        stops = [s for z in COMPASS for s in zones.get(z, [])]
+        label = "+".join(z for z in COMPASS if z in zones)
+        for s in stops:
+            await db.stops.update_one({"id": s["id"]}, {"$set": {"compass_zone": compass_of(s)}})
+        route = open_routes.get(did)
+        if route:
+            for s in stops:
+                await db.stops.update_one({"id": s["id"]}, {"$set": {"route_id": route.id, "seq": 999}})
+            zone_names = sorted(set(route.zone.split("+")) | set(zones), key=lambda z: COMPASS.index(z) if z in COMPASS else 9)
+            await db.routes.update_one({"id": route.id}, {"$set": {"zone": "+".join(zone_names)}})
+            await optimize(route.id)
+            if route.status == "active":
+                await db.routes.update_one({"id": route.id}, {"$set": {"resequenced_at": now_iso(), "resequence_seen": False}})
+            await broadcast_route(route.id)
+            created = False
+        else:
+            ordered = optimize_sequence(DEPOT, stops, plan_base(service_date))
+            count = await db.routes.count_documents({})
+            route = Route(id=str(uuid.uuid4()), name=f"R-{101 + count} {label}", zone=label, driver_id=did,
+                          service_date=service_date, planned_distance_m=round(path_length_m(DEPOT, ordered)))
+            await db.routes.insert_one(route.model_dump())
+            for i, s in enumerate(ordered):
+                await db.stops.update_one({"id": s["id"]}, {"$set": {"route_id": route.id, "seq": i + 1}})
+            created = True
+        drv = next(d for d in drivers if d.id == did)
+        out.append({"route_id": route.id, "route_name": route.name, "driver_id": did, "driver_name": drv.name, "zones": list(zones),
+                    "stops": len(stops), "created": created, "fallback": [z for z in zones if drv.compass_zone != z]})
+    return {"service_date": service_date, "dispatched": len(docs), "routes": out}
 
 
 @api_router.get("/routes", dependencies=ADMIN_ONLY)
@@ -1908,7 +2025,7 @@ async def process_row(row: dict) -> dict:
                         window_start=d.get("window_start") or None, window_end=d.get("window_end") or None,
                         window_date=d.get("window_date") or None, merchant_id=row["merchant_id"], created_at=now_iso(),
                         priority=(d.get("priority") or "").strip().lower() in TRUTHY)
-            stop.fee = compute_fee(stop.model_dump(), await get_pricing())
+            stop.fee = compute_fee(stop.model_dump(), await get_pricing(row["merchant_id"]))
             await db.stops.insert_one(stop.model_dump())
             upd.update(status="created", stop_id=stop.id, tracking_code=stop.tracking_code)
     await db.import_rows.update_one({"id": row["id"]}, {"$set": upd})
@@ -2562,7 +2679,28 @@ async def weekly_summary(merchant_id: str, since: str, until: str) -> dict:
             "avg_rating": avg(rated), "complaints": sum(1 for r in rated if r <= 2)}
 
 
-def weekly_email_html(store: str, since: str, until: str, s: dict, link: str) -> str:
+def cad(n: float) -> str:
+    return f"CA${n:,.2f}"
+
+
+def weekly_bill_html(b: dict, link: str) -> str:
+    e = escape
+    paid = b.get("payment")
+    rows = [("Drops billed", str(b["drops"])), ("Delivery fees", cad(b["base_total"])), ("Distance", cad(b["distance_total"])),
+            ("Priority surcharge", cad(b["priority_total"])), (f"Tax {b['tax_pct']}%", cad(b["tax"])),
+            ("Total for the week", cad(b["total"]) + (" (paid)" if paid else ""))]
+    owed = b.get("outstanding") or {"total": 0, "weeks": []}
+    if owed["total"]:
+        rows.append((f"Total due ({len(owed['weeks'])} unpaid week{'s' if len(owed['weeks']) != 1 else ''})", cad(owed["total"])))
+    trs = "".join(f'<tr><td style="padding:8px 0;border-bottom:1px solid #e5e5e5;color:#555">{e(k)}</td>'
+                  f'<td style="padding:8px 0;border-bottom:1px solid #e5e5e5;text-align:right;font-weight:bold">{e(v)}</td></tr>' for k, v in rows)
+    return (f'<p style="margin:28px 0 8px;font-size:16px;font-weight:bold">Your statement</p>'
+            f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">{trs}</table>'
+            f'<p style="margin:16px 0 8px"><a href="{e(link, quote=True)}" style="display:inline-block;background:#0a0a0a;color:#ffffff;padding:12px 20px;text-decoration:none;font-weight:bold">Download the statement CSV</a></p>'
+            f'<p style="margin:0;color:#777;font-size:12px">Amounts in Canadian dollars. Payment is arranged directly with dispatch — we never ask for card details by email.</p>')
+
+
+def weekly_email_html(store: str, since: str, until: str, s: dict, link: str, bill: Optional[dict] = None, statement: Optional[str] = None) -> str:
     e = escape
     rng = f"{nice_date(since)} – {nice_date(until)}"
     cells = [("Delivered", s["delivered"]), ("Failed", s["failed"]),
@@ -2580,6 +2718,7 @@ def weekly_email_html(store: str, since: str, until: str, s: dict, link: str) ->
             f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">{rows}</table>'
             f'<p style="margin:24px 0 8px"><a href="{e(link, quote=True)}" style="display:inline-block;background:#e11d1d;color:#ffffff;padding:12px 20px;text-decoration:none;font-weight:bold">Download the full CSV report</a></p>'
             f'<p style="margin:0;color:#777;font-size:12px">The download link works for {WEEKLY_LINK_DAYS} days. It lists every drop with status, times, proof-of-delivery links and ratings.</p>'
+            + (weekly_bill_html(bill, statement) if bill and statement else "") +
             f'</td></tr><tr><td style="padding:16px 24px;border-top:1px solid #e5e5e5;color:#888;font-size:12px">'
             f'Sent by {e(EMAIL_FROM_NAME)} every Monday morning. Turn this email off from the Merchant console. We never ask for your password by email.'
             f'</td></tr></table></td></tr></table>')
@@ -2601,8 +2740,12 @@ async def send_weekly_report(merchant_id: str, trigger: str) -> dict:
         tok = issue_token(f"weekly:{merchant_id}", "merchant", purpose="report", minutes=WEEKLY_LINK_DAYS * 24 * 60, mid=merchant_id, rng="lastweek")
         link = f"{base}/api/merchants/{merchant_id}/report.csv?token={tok}"
         summary = await weekly_summary(merchant_id, since, until)
-        html = weekly_email_html(m["name"], since, until, summary, link)
-        subject = f"{m['name']}: your weekly delivery report ({nice_date(since)} – {nice_date(until)})"
+        bill = {**(await merchant_bill(merchant_id, since)), "outstanding": await merchant_outstanding(merchant_id)}
+        stok = issue_token(f"weekly:{merchant_id}", "merchant", purpose="statement", minutes=WEEKLY_LINK_DAYS * 24 * 60, mid=merchant_id, wk=since)
+        statement = f"{base}/api/merchants/{merchant_id}/statement.csv?token={stok}"
+        html = weekly_email_html(m["name"], since, until, summary, link, bill, statement)
+        subject = f"{m['name']}: weekly delivery report & statement ({nice_date(since)} – {nice_date(until)}) · {cad(bill['outstanding']['total'] or bill['total'])} due"
+        log["bill_total"], log["total_due"] = bill["total"], bill["outstanding"]["total"]
         errors = []
         for u in users:
             to = TEST_INBOX if u.get("email") in {em for _, em, _ in DEMO_MERCHANT_USERS} else u["email"]
@@ -2813,9 +2956,14 @@ PRICING_NAMES = {"base_fee": "Per-delivery fee", "included_km": "Km included", "
 ROAD_FACTOR = 1.3  # straight-line depot→drop distance × this ≈ road distance
 
 
-async def get_pricing() -> dict:
+async def get_pricing(merchant_id: Optional[str] = None) -> dict:
+    """Shared price list, with a store's custom rates layered on top when merchant_id is given."""
     doc = await db.settings.find_one({"key": "pricing"}, {"_id": 0}) or {}
-    return {**PRICING_DEFAULT, **(doc.get("value") or {})}
+    p = {**PRICING_DEFAULT, **(doc.get("value") or {})}
+    if merchant_id:
+        m = await db.merchants.find_one({"id": merchant_id}, {"_id": 0, "pricing_override": 1}) or {}
+        p.update(m.get("pricing_override") or {})
+    return p
 
 
 def compute_fee(stop: dict, p: dict) -> dict:
@@ -2839,7 +2987,7 @@ class PricingIn(BaseModel):
 async def read_pricing(u: dict = Depends(current_user)):
     if u["role"] not in ("admin", "merchant"):
         raise HTTPException(403, "Not allowed")
-    return await get_pricing()
+    return await get_pricing(u.get("merchant_id") if u["role"] == "merchant" else None)
 
 
 @api_router.put("/admin/pricing", dependencies=ADMIN_ONLY)
@@ -2866,7 +3014,7 @@ def week_bounds(week: Optional[str]) -> tuple:
 
 
 async def merchant_bill(merchant_id: str, week: Optional[str]) -> dict:
-    p = await get_pricing()
+    p = await get_pricing(merchant_id)
     since, until = week_bounds(week)
     lines, open_count, open_est = [], 0, 0.0
     # only open orders + drops completed around this week (UTC bounds padded a day; exact SF day filter below)
@@ -2889,7 +3037,9 @@ async def merchant_bill(merchant_id: str, week: Optional[str]) -> dict:
     sub = round(sum(x["total"] for x in lines), 2)
     tax = round(sub * p["tax_pct"] / 100, 2)
     this_monday = date_cls.fromisoformat(week_bounds(None)[0])
+    pay = await db.bill_payments.find_one({"merchant_id": merchant_id, "week_start": since}, {"_id": 0})
     return {"merchant_id": merchant_id, "week_start": since, "week_end": until, "current_week": since == this_monday.isoformat(),
+            "can_mark_paid": until < datetime.now(TZ).date().isoformat(), "payment": pay,
             "currency": p["currency"], "tax_pct": p["tax_pct"], "lines": lines, "drops": len(lines),
             "base_total": round(sum(x["base"] for x in lines), 2), "distance_total": round(sum(x["distance_fee"] for x in lines), 2),
             "priority_total": round(sum(x["priority_fee"] for x in lines), 2), "subtotal": sub, "tax": tax, "total": round(sub + tax, 2),
@@ -2900,7 +3050,29 @@ async def merchant_bill(merchant_id: str, week: Optional[str]) -> dict:
 @api_router.get("/merchants/{merchant_id}/bill")
 async def get_bill(merchant_id: str, week: Optional[str] = None, _: dict = Depends(merchant_access)):
     await get_merchant_or_404(merchant_id)
-    return await merchant_bill(merchant_id, week)
+    return {**(await merchant_bill(merchant_id, week)), "outstanding": await merchant_outstanding(merchant_id)}
+
+
+OUTSTANDING_WEEKS = 26
+
+
+async def merchant_outstanding(merchant_id: str) -> dict:
+    """Finished weeks (up to 26 back) with a bill > 0 that are not marked paid."""
+    first = await db.stops.find({"merchant_id": merchant_id, "delivered_at": {"$ne": None}}, {"_id": 0, "delivered_at": 1}).sort("delivered_at", 1).to_list(1)
+    if not first:
+        return {"total": 0.0, "weeks": []}
+    this_monday = date_cls.fromisoformat(week_bounds(None)[0])
+    start = max(date_cls.fromisoformat(week_bounds(datetime.fromisoformat(first[0]["delivered_at"]).astimezone(TZ).date().isoformat())[0]),
+                this_monday - timedelta(weeks=OUTSTANDING_WEEKS))
+    paid = {x["week_start"] for x in await db.bill_payments.find({"merchant_id": merchant_id}, {"_id": 0, "week_start": 1}).to_list(1000)}
+    weeks, wk = [], start
+    while wk < this_monday:
+        if wk.isoformat() not in paid:
+            b = await merchant_bill(merchant_id, wk.isoformat())
+            if b["total"] > 0:
+                weeks.append({"week_start": b["week_start"], "week_end": b["week_end"], "total": b["total"]})
+        wk += timedelta(weeks=1)
+    return {"total": round(sum(x["total"] for x in weeks), 2), "weeks": weeks}
 
 
 class StatementIn(BaseModel):
@@ -2941,15 +3113,73 @@ async def statement_csv(merchant_id: str, token: str):
 @api_router.get("/admin/billing", dependencies=ADMIN_ONLY)
 async def admin_billing(week: Optional[str] = None):
     out = []
+    since, until = week_bounds(week)
     for m in await db.merchants.find({}, {"_id": 0}).sort("id", 1).to_list(500):
         b = await merchant_bill(m["id"], week)
+        owed = await merchant_outstanding(m["id"])
         out.append({"id": m["id"], "name": m["name"], "drops": b["drops"], "subtotal": b["subtotal"], "tax": b["tax"], "total": b["total"],
-                    "open_orders": b["open_orders"]})
-    since, until = week_bounds(week)
+                    "open_orders": b["open_orders"], "payment": b["payment"], "can_mark_paid": b["can_mark_paid"],
+                    "outstanding": owed["total"], "unpaid_weeks": len(owed["weeks"]), "custom_rates": bool(m.get("pricing_override"))})
     this_monday = date_cls.fromisoformat(week_bounds(None)[0])
     return {"week_start": since, "week_end": until, "stores": out, "total": round(sum(x["total"] for x in out), 2),
             "drops": sum(x["drops"] for x in out), "weeks": [(this_monday - timedelta(weeks=i)).isoformat() for i in range(8)],
-            "currency": (await get_pricing())["currency"]}
+            "outstanding": round(sum(x["outstanding"] for x in out), 2), "currency": (await get_pricing())["currency"]}
+
+
+class PaidIn(BaseModel):
+    paid: bool
+    note: Optional[str] = None
+
+
+@api_router.put("/admin/merchants/{merchant_id}/bills/{week}/paid")
+async def mark_bill_paid(merchant_id: str, week: str, body: PaidIn, u: dict = Depends(admin_user)):
+    """Mark a finished week's bill as paid (payment collected outside the app) or back to unpaid."""
+    await get_merchant_or_404(merchant_id)
+    since, until = week_bounds(week)
+    if until >= datetime.now(TZ).date().isoformat():
+        raise HTTPException(400, "This week isn't over yet — bills can be marked paid from Monday")
+    if body.paid:
+        b = await merchant_bill(merchant_id, since)
+        await db.bill_payments.update_one({"merchant_id": merchant_id, "week_start": since}, {"$set": {
+            "merchant_id": merchant_id, "week_start": since, "amount": b["total"], "paid_at": now_iso(), "by": u["email"],
+            "note": (body.note or "").strip()[:200] or None}}, upsert=True)
+    else:
+        await db.bill_payments.delete_one({"merchant_id": merchant_id, "week_start": since})
+    return await merchant_bill(merchant_id, since)
+
+
+class StoreRatesIn(BaseModel):
+    base_fee: Optional[float] = None
+    included_km: Optional[float] = None
+    per_km: Optional[float] = None
+    priority_fee: Optional[float] = None
+    charge_failed: Optional[bool] = None
+    tax_pct: Optional[float] = None
+
+
+async def store_rates(merchant_id: str) -> dict:
+    m = await get_merchant_or_404(merchant_id)
+    return {"merchant_id": merchant_id, "name": m["name"], "shared": await get_pricing(), "override": m.get("pricing_override") or {},
+            "effective": await get_pricing(merchant_id)}
+
+
+@api_router.get("/admin/merchants/{merchant_id}/pricing", dependencies=ADMIN_ONLY)
+async def get_store_rates(merchant_id: str):
+    return await store_rates(merchant_id)
+
+
+@api_router.put("/admin/merchants/{merchant_id}/pricing", dependencies=ADMIN_ONLY)
+async def set_store_rates(merchant_id: str, body: StoreRatesIn):
+    """Custom rates for one store. Fields left empty (null) follow the shared price list. New orders only."""
+    await get_merchant_or_404(merchant_id)
+    v = {k: x for k, x in body.model_dump().items() if x is not None}
+    for k, cap in PRICING_LIMITS.items():
+        if k in v:
+            if not (0 <= v[k] <= cap) or v[k] != v[k]:
+                raise HTTPException(400, f"{PRICING_NAMES[k]} must be between 0 and {cap}")
+            v[k] = round(v[k], 2)
+    await db.merchants.update_one({"id": merchant_id}, {"$set": {"pricing_override": v}})
+    return await store_rates(merchant_id)
 
 
 class PriorityIn(BaseModel):
@@ -2965,7 +3195,7 @@ async def set_order_priority(merchant_id: str, stop_id: str, body: PriorityIn, _
     if st.route_id or st.status != "pending":
         raise HTTPException(400, "Order is already dispatched — ask dispatch to change priority")
     d = {**st.model_dump(), "priority": body.priority}
-    await db.stops.update_one({"id": stop_id}, {"$set": {"priority": body.priority, "fee": compute_fee(d, await get_pricing())}})
+    await db.stops.update_one({"id": stop_id}, {"$set": {"priority": body.priority, "fee": compute_fee(d, await get_pricing(merchant_id))}})
     return (await get_stop_or_404(stop_id)).model_dump()
 
 
