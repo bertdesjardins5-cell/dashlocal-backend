@@ -42,7 +42,7 @@ export default function ProblemAlertsCard({ merchantId, notify }: { merchantId: 
 
   return (
     <View style={s.block} testID="problem-alerts-card">
-      <View testID="problem-alerts-toggle" style={s.row}> toggle(!a.enabled)} disabled={busy} style={s.row}>
+      <View testID="problem-alerts-toggle" style={s.row}>
         <View style={{ flex: 1, gap: 2 }}>
           <Mono style={s.title}>EMAIL ME WHEN A DROP FAILS OR RUNS LATE</Mono>
           <Mono style={s.meta}>One email per drop, as soon as it happens</Mono>

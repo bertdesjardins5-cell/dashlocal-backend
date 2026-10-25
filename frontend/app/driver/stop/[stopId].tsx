@@ -154,6 +154,7 @@ export default function StopDetail() {
               <Mono style={s.meta}>{stop.postal_code} · ZONE {stop.zone.toUpperCase()}</Mono>
               {stop.notes ? <Mono style={s.note}>NOTE: {stop.notes}</Mono> : null}
               {stop.arrival_method ? <Mono style={s.meta} testID="stop-arrival-method">ARRIVED VIA {stop.arrival_method.toUpperCase()}</Mono> : null}
+              {stop.priority ? <Mono style={s.windowTag} testID="stop-priority">PRIORITY DELIVERY</Mono> : null}
               {windowLabel(stop) ? <Mono style={s.windowTag} testID="stop-window">DELIVER {windowLabel(stop)}</Mono> : null}
             </View>
 

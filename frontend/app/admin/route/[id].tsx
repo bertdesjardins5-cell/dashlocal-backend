@@ -132,6 +132,7 @@ export default function AdminRoute() {
             <Mono style={s.meta} numberOfLines={1}>{item.address}</Mono>
             <View style={{ flexDirection: "row", gap: spacing.xs, flexWrap: "wrap" }}>
               <Pill label={item.status} tone={statusTone(item.status)} />
+              {item.priority ? <Pill label="PRIORITY" tone="red" /> : null}
               {windowLabel(item) ? <Pill label={`⏱ ${windowLabel(item)}`} tone="dark" /> : null}
               {!lock && item.planned_eta ? <Pill label={`ETA ${fmtDepotTime(item.planned_eta)}`} tone="light" /> : null}
               {item.late_min ? <Pill label={`LATE ${item.late_min}M`} tone="red" /> : null}

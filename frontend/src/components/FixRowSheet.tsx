@@ -9,7 +9,7 @@ import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
 export type ImportRow = {
   id: string; line: number; status: string; error: string | null;
-  data: { customer_name: string; phone: string; address: string; notes: string; window_date: string; window_start: string; window_end: string };
+  data: { customer_name: string; phone: string; address: string; notes: string; window_date: string; window_start: string; window_end: string; priority?: string };
 };
 
 const FIELDS: { k: keyof ImportRow["data"]; label: string; ph: string }[] = [
@@ -20,6 +20,7 @@ const FIELDS: { k: keyof ImportRow["data"]; label: string; ph: string }[] = [
   { k: "window_date", label: "DELIVERY DATE (OPTIONAL, YYYY-MM-DD)", ph: "2026-06-30" },
   { k: "window_start", label: "WINDOW FROM (OPTIONAL, HH:MM)", ph: "14:00" },
   { k: "window_end", label: "WINDOW TO (OPTIONAL, HH:MM)", ph: "16:00" },
+  { k: "priority", label: "PRIORITY (OPTIONAL, YES / BLANK)", ph: "yes" },
 ];
 
 // Merchant sheet: correct a flagged CSV row and try it again, or drop it.
@@ -80,7 +81,7 @@ export default function FixRowSheet({ row, onClose, onDone, notify }: {
               <Mono style={s.label}>{f.label}</Mono>
               <TextInput
                 testID={`fix-row-${f.k}`}
-                value={data[f.k]}
+                value={data[f.k] ?? ""}
                 onChangeText={(v) => setData((d) => ({ ...d, [f.k]: v }))}
                 placeholder={f.ph}
                 placeholderTextColor={colors.muted}

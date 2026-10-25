@@ -257,6 +257,7 @@ export default function Manifest() {
                 <View style={s.heroTop}>
                   <Mono style={s.heroKicker}>NEXT STOP · #{next.seq}</Mono>
                   {next.status === "arrived" ? <Pill label="ARRIVED" tone="yellow" /> : null}
+                  {next.priority ? <Pill label="PRIORITY" tone="red" /> : null}
                 </View>
                 <Display style={s.heroName}>{next.customer_name}</Display>
                 <Mono style={s.heroAddr}>{next.address}</Mono>
@@ -300,6 +301,7 @@ export default function Manifest() {
                   </Mono>
                 ) : null}
               </View>
+              {st.priority && st.status === "pending" ? <Pill label="PRIORITY" tone="red" /> : null}
               <Pill label={st.status} tone={statusTone(st.status)} />
             </Pressable>
           ))}

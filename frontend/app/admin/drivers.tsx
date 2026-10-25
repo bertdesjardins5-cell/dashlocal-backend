@@ -40,7 +40,7 @@ export default function DriverPins() {
       <Header title="DRIVER PINS" subtitle="Phone number + 6-digit PIN sign-in" />
       {q.isLoading ? <Loading /> : q.error ? <ErrorBlock message={(q.error as Error).message} onRetry={q.refetch} /> : (
         <KeyboardAwareScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }} keyboardShouldPersistTaps="handled" bottomOffset={24}
-          refreshControl={<RefreshControl refreshing={false} onRefresh={() => q.refetch()} />}>
+          refreshControl={<RefreshControl refreshing={false} onRefresh={() => { q.refetch(); }} />}>
           <Mono style={s.note}>Drivers sign in with the phone number on file and this PIN. Tell the driver their new PIN in person — it is never shown again.</Mono>
           {q.data?.map((d) => (
             <View key={d.id} style={s.row} testID={`driver-pin-${d.id}`}>

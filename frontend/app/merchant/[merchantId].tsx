@@ -9,6 +9,7 @@ import { clearSession, getToken, useSession } from "@/src/session";
 import ReportDownload from "@/src/components/ReportDownload";
 import WeeklyEmailCard from "@/src/components/WeeklyEmailCard";
 import ProblemAlertsCard from "@/src/components/ProblemAlertsCard";
+import BillCard, { money } from "@/src/components/BillCard";
 import { api, API, dayLabel, Stop, windowLabel } from "@/src/api";
 import { uploadForm } from "@/src/utils/upload";
 import FixRowSheet, { ImportRow } from "@/src/components/FixRowSheet";
@@ -32,6 +33,20 @@ export default function MerchantHome() {
   const allowed = !!user && (user.role === "admin" || user.merchant_id === merchantId);
   const [uploading, setUploading] = useState(false);
   const [fix, setFix] = useState<ImportRow | null>(null);
+  const [busyOrder, setBusyOrder] = useState<string | null>(null);
+
+  const togglePriority = async (o: Stop) => {
+    setBusyOrder(o.id);
+    try {
+      const r = await api<Stop>(`/merchants/${merchantId}/orders/${o.id}/priority`, { method: "PUT", body: { priority: !o.priority } });
+      toast.show(`${o.tracking_code} ${r.priority ? "IS PRIORITY" : "IS STANDARD"} · NOW ${r.fee ? money(r.fee.total) : ""}`, "green");
+      q.refetch();
+    } catch (e: any) {
+      toast.show(e.message, "red");
+    } finally {
+      setBusyOrder(null);
+    }
+  };
 
   const q = useQuery({
     queryKey: ["merchant", merchantId],
@@ -105,7 +120,7 @@ export default function MerchantHome() {
 
           <Mono style={s.section}>IMPORT ORDERS FROM CSV</Mono>
           <View style={s.block}>
-            <Mono style={s.meta}>Columns: customer_name, phone, address (required) · notes, window_date, window_start, window_end (optional). Up to 200 rows per file. Addresses are looked up on the map automatically.</Mono>
+            <Mono style={s.meta}>Columns: customer_name, phone, address (required) · notes, window_date, window_start, window_end, priority (yes = priority delivery, surcharge applies) (optional). Up to 200 rows per file. Addresses are looked up on the map automatically.</Mono>
             <View style={{ flexDirection: "row", gap: spacing.sm }}>
               <Btn testID="merchant-template-button" label="TEMPLATE" icon="download" variant="outline" onPress={template} style={{ flex: 1 }} />
               <Btn testID="merchant-upload-button" label="UPLOAD CSV" icon="cloud-upload" loading={uploading} disabled={!!running} onPress={upload} style={{ flex: 2 }} />
@@ -142,6 +157,9 @@ export default function MerchantHome() {
             </>
           ) : null}
 
+          <Mono style={s.section}>BILLING · CAD</Mono>
+          <BillCard merchantId={merchantId} notify={toast.show} />
+
           <Mono style={s.section}>DELIVERY REPORT</Mono>
           <ReportDownload merchantId={merchantId} notify={toast.show} />
           <WeeklyEmailCard merchantId={merchantId} notify={toast.show} />
@@ -159,7 +177,14 @@ export default function MerchantHome() {
                   <Pill label={o.route_id ? o.status : "awaiting dispatch"} tone={o.route_id ? statusTone(o.status) : "light"} />
                   <Pill label={o.zone} tone="light" />
                   {windowLabel(o) ? <Pill label={`⏱ ${windowLabel(o)}`} tone="dark" /> : o.window_date ? <Pill label={dayLabel(o.window_date)} tone="dark" /> : null}
+                  {o.priority ? <Pill label="PRIORITY" tone="red" /> : null}
+                  {o.fee ? <Pill label={money(o.fee.total)} tone="light" /> : null}
                 </View>
+                {!o.route_id && o.status === "pending" ? (
+                  <Pressable testID={`order-priority-${o.tracking_code}`} onPress={() => togglePriority(o)} disabled={busyOrder === o.id} style={s.priBtn}>
+                    <Mono style={s.priText}>{busyOrder === o.id ? "…" : o.priority ? "REMOVE PRIORITY" : "MAKE PRIORITY"}</Mono>
+                  </Pressable>
+                ) : null}
               </View>
               <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />
             </Pressable>
@@ -192,4 +217,6 @@ const useStyles = makeStyles((c) => ({
   errText: { fontSize: 11, fontWeight: "700", color: c.brandPrimary },
   fix: { fontSize: 12, fontWeight: "700", borderWidth: 2, borderColor: c.border, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, minHeight: 44, textAlignVertical: "center", lineHeight: 26 },
   empty: { padding: spacing.lg, fontSize: 13, color: c.muted },
+  priBtn: { alignSelf: "flex-start", minHeight: 44, paddingHorizontal: spacing.md, borderWidth: 2, borderColor: c.border, justifyContent: "center", marginTop: spacing.xs },
+  priText: { fontSize: 11, fontWeight: "700" },
 }));

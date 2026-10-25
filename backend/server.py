@@ -235,6 +235,15 @@ def better(c, best) -> bool:
 
 
 def optimize_sequence(start, stops: list, now_local: Optional[datetime] = None) -> list:
+    """Priority (surcharged) drops are always served first, then the rest; each group is optimised."""
+    pri = [s for s in stops if s.get("priority")]
+    if not pri or len(pri) == len(stops):
+        return _optimize_core(start, stops, now_local)
+    first = _optimize_core(start, pri, now_local)
+    return first + _optimize_core(first[-1], [s for s in stops if not s.get("priority")], now_local)
+
+
+def _optimize_core(start, stops: list, now_local: Optional[datetime] = None) -> list:
     """Time-window aware: urgency-weighted nearest-neighbour seed, then 2-opt + relocate moves
     minimising (total lateness, distance) lexicographically."""
     now_local = now_local or datetime.now(TZ)
@@ -325,6 +334,8 @@ class Stop(BaseModel):
     nearby_sms_status: Optional[str] = None  # "driver is 2 stops away" text: sending | sent | skipped_fictional | not_configured | failed
     nearby_sms_at: Optional[str] = None
     merchant_id: Optional[str] = None  # set when the order came from a merchant CSV import
+    priority: bool = False  # priority delivery: served first on the route, carries a surcharge
+    fee: Optional[dict] = None  # price snapshot when the order was created / re-priced (merchant orders)
     merchant_late_alert_at: Optional[str] = None  # "running late" email sent to the merchant (once)
     merchant_fail_alert_at: Optional[str] = None  # "failed drop" email sent to the merchant (once)
     created_at: Optional[str] = None
@@ -755,6 +766,9 @@ async def startup():
     for m in MERCHANTS:
         await db.merchants.update_one({"id": m["id"]}, {"$setOnInsert": m}, upsert=True)
     await seed_users()
+    pricing = await get_pricing()
+    for d in await db.stops.find({"merchant_id": {"$ne": None}, "fee": None}, {"_id": 0}).to_list(5000):
+        await db.stops.update_one({"id": d["id"]}, {"$set": {"fee": compute_fee(d, pricing)}})  # orders from before pricing existed
     spawn(weekly_scheduler())
     spawn(late_alert_watcher())
     # imports interrupted by a restart: send unfinished rows back to the queue
@@ -1793,10 +1807,12 @@ COLUMNS = {
     "window_date": {"window_date", "date", "delivery_date"},
     "window_start": {"window_start", "from", "start", "window_from"},
     "window_end": {"window_end", "to", "end", "window_to"},
+    "priority": {"priority", "priority_delivery", "rush", "express"},
 }
-TEMPLATE_CSV = ("customer_name,phone,address,notes,window_date,window_start,window_end\n"
-                "Jane Doe,415 555 0123,1 Market St,Leave at reception,,,\n"
-                "Sam Lee,+14155550188,450 Golden Gate Ave,Ring twice,,14:00,16:00\n")
+TRUTHY = {"yes", "y", "true", "1", "x", "priority", "rush", "express"}
+TEMPLATE_CSV = ("customer_name,phone,address,notes,window_date,window_start,window_end,priority\n"
+                "Jane Doe,415 555 0123,1 Market St,Leave at reception,,,,\n"
+                "Sam Lee,+14155550188,450 Golden Gate Ave,Ring twice,,14:00,16:00,yes\n")
 _geo_lock = asyncio.Lock()
 _geo_last = [0.0]
 
@@ -1890,7 +1906,9 @@ async def process_row(row: dict) -> dict:
                         postal_code=geo.get("postcode") or ZONES[zone]["postal"], zone=zone, lat=geo["lat"], lng=geo["lng"],
                         tracking_code=await new_tracking_code(), notes=d.get("notes") or "",
                         window_start=d.get("window_start") or None, window_end=d.get("window_end") or None,
-                        window_date=d.get("window_date") or None, merchant_id=row["merchant_id"], created_at=now_iso())
+                        window_date=d.get("window_date") or None, merchant_id=row["merchant_id"], created_at=now_iso(),
+                        priority=(d.get("priority") or "").strip().lower() in TRUTHY)
+            stop.fee = compute_fee(stop.model_dump(), await get_pricing())
             await db.stops.insert_one(stop.model_dump())
             upd.update(status="created", stop_id=stop.id, tracking_code=stop.tracking_code)
     await db.import_rows.update_one({"id": row["id"]}, {"$set": upd})
@@ -2385,6 +2403,7 @@ class RowFixIn(BaseModel):
     window_date: Optional[str] = None
     window_start: Optional[str] = None
     window_end: Optional[str] = None
+    priority: Optional[str] = None
 
 
 @api_router.put("/import-rows/{row_id}")
@@ -2783,6 +2802,171 @@ async def set_merchant_alerts(merchant_id: str, body: AlertsIn, _: dict = Depend
     await get_merchant_or_404(merchant_id)
     await db.merchants.update_one({"id": merchant_id}, {"$set": {"problem_alerts": body.enabled}})
     return await merchant_alerts_status(merchant_id)
+
+
+# ---------------------------------------------------------------- pricing & weekly merchant bills (CAD, collected outside the app)
+PRICING_DEFAULT = {"currency": "CAD", "base_fee": 8.00, "included_km": 5.0, "per_km": 1.25, "priority_fee": 6.00,
+                   "charge_failed": True, "tax_pct": 0.0}
+PRICING_LIMITS = {"base_fee": 1000, "included_km": 500, "per_km": 100, "priority_fee": 1000, "tax_pct": 30}
+PRICING_NAMES = {"base_fee": "Per-delivery fee", "included_km": "Km included", "per_km": "Extra per km",
+                 "priority_fee": "Priority surcharge", "tax_pct": "Sales tax %"}
+ROAD_FACTOR = 1.3  # straight-line depot→drop distance × this ≈ road distance
+
+
+async def get_pricing() -> dict:
+    doc = await db.settings.find_one({"key": "pricing"}, {"_id": 0}) or {}
+    return {**PRICING_DEFAULT, **(doc.get("value") or {})}
+
+
+def compute_fee(stop: dict, p: dict) -> dict:
+    km = round(haversine_m(DEPOT, stop) / 1000 * ROAD_FACTOR, 1)
+    dist = round(max(0.0, km - p["included_km"]) * p["per_km"], 2)
+    pri = round(p["priority_fee"], 2) if stop.get("priority") else 0.0
+    return {"base": round(p["base_fee"], 2), "km": km, "distance_fee": dist, "priority_fee": pri,
+            "total": round(p["base_fee"] + dist + pri, 2), "currency": p["currency"], "priced_at": now_iso()}
+
+
+class PricingIn(BaseModel):
+    base_fee: float
+    included_km: float
+    per_km: float
+    priority_fee: float
+    charge_failed: bool
+    tax_pct: float
+
+
+@api_router.get("/pricing")
+async def read_pricing(u: dict = Depends(current_user)):
+    if u["role"] not in ("admin", "merchant"):
+        raise HTTPException(403, "Not allowed")
+    return await get_pricing()
+
+
+@api_router.put("/admin/pricing", dependencies=ADMIN_ONLY)
+async def update_pricing(body: PricingIn):
+    """New prices apply to orders created (or re-priced) from now on; existing orders keep their price."""
+    v = body.model_dump()
+    for k, cap in PRICING_LIMITS.items():
+        if not (0 <= v[k] <= cap) or v[k] != v[k]:
+            raise HTTPException(400, f"{PRICING_NAMES[k]} must be between 0 and {cap}")
+        v[k] = round(v[k], 2)
+    await db.settings.update_one({"key": "pricing"}, {"$set": {"key": "pricing", "value": v, "updated_at": now_iso()}}, upsert=True)
+    return await get_pricing()
+
+
+def week_bounds(week: Optional[str]) -> tuple:
+    """Monday..Sunday (SF) containing `week` (any date), default this week."""
+    today = datetime.now(TZ).date()
+    try:
+        d = date_cls.fromisoformat(week) if week else today
+    except ValueError:
+        raise HTTPException(400, "week must be YYYY-MM-DD")
+    start = d - timedelta(days=d.weekday())
+    return start.isoformat(), (start + timedelta(days=6)).isoformat()
+
+
+async def merchant_bill(merchant_id: str, week: Optional[str]) -> dict:
+    p = await get_pricing()
+    since, until = week_bounds(week)
+    lines, open_count, open_est = [], 0, 0.0
+    # only open orders + drops completed around this week (UTC bounds padded a day; exact SF day filter below)
+    lo = (date_cls.fromisoformat(since) - timedelta(days=1)).isoformat()
+    hi = (date_cls.fromisoformat(until) + timedelta(days=2)).isoformat()
+    q = {"merchant_id": merchant_id, "$or": [{"status": {"$in": ["pending", "arrived"]}}, {"delivered_at": {"$gte": lo, "$lt": hi}}]}
+    for d in await db.stops.find(q, {"_id": 0}).sort("delivered_at", 1).to_list(20000):
+        st = Stop(**d)
+        fee = st.fee or compute_fee(d, p)
+        if st.status in ("pending", "arrived"):
+            open_count += 1
+            open_est += fee["total"]
+            continue
+        if st.status == "failed" and not p["charge_failed"]:
+            continue
+        day = datetime.fromisoformat(st.delivered_at).astimezone(TZ).date().isoformat() if st.delivered_at else None
+        if day and since <= day <= until:
+            lines.append({"stop_id": st.id, "tracking_code": st.tracking_code, "customer_name": st.customer_name, "day": day,
+                          "status": st.status, "priority": st.priority, **{k: fee[k] for k in ("km", "base", "distance_fee", "priority_fee", "total")}})
+    sub = round(sum(x["total"] for x in lines), 2)
+    tax = round(sub * p["tax_pct"] / 100, 2)
+    this_monday = date_cls.fromisoformat(week_bounds(None)[0])
+    return {"merchant_id": merchant_id, "week_start": since, "week_end": until, "current_week": since == this_monday.isoformat(),
+            "currency": p["currency"], "tax_pct": p["tax_pct"], "lines": lines, "drops": len(lines),
+            "base_total": round(sum(x["base"] for x in lines), 2), "distance_total": round(sum(x["distance_fee"] for x in lines), 2),
+            "priority_total": round(sum(x["priority_fee"] for x in lines), 2), "subtotal": sub, "tax": tax, "total": round(sub + tax, 2),
+            "open_orders": {"count": open_count, "estimate": round(open_est, 2)},
+            "weeks": [(this_monday - timedelta(weeks=i)).isoformat() for i in range(8)]}
+
+
+@api_router.get("/merchants/{merchant_id}/bill")
+async def get_bill(merchant_id: str, week: Optional[str] = None, _: dict = Depends(merchant_access)):
+    await get_merchant_or_404(merchant_id)
+    return await merchant_bill(merchant_id, week)
+
+
+class StatementIn(BaseModel):
+    week: Optional[str] = None
+
+
+@api_router.post("/merchants/{merchant_id}/statement-link")
+async def statement_link(merchant_id: str, body: StatementIn, u: dict = Depends(merchant_access)):
+    await get_merchant_or_404(merchant_id)
+    since, _ = week_bounds(body.week)
+    tok = issue_token(u["id"], u["role"], purpose="statement", minutes=5, mid=merchant_id, wk=since)
+    return {"path": f"/api/merchants/{merchant_id}/statement.csv?token={tok}"}
+
+
+@api_router.get("/merchants/{merchant_id}/statement.csv")
+async def statement_csv(merchant_id: str, token: str):
+    p = decode_token(token, "statement")
+    if p.get("mid") != merchant_id:
+        raise HTTPException(403, "This link is for a different store")
+    m = await get_merchant_or_404(merchant_id)
+    b = await merchant_bill(merchant_id, p.get("wk"))
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow([f"{m['name']} — weekly statement {b['week_start']} to {b['week_end']} ({b['currency']})"])
+    w.writerow(["date", "tracking_code", "customer_name", "status", "priority", "km", "base_fee", "distance_fee", "priority_fee", "total"])
+    for x in b["lines"]:
+        w.writerow([x["day"], x["tracking_code"], csv_safe(x["customer_name"]), x["status"], "yes" if x["priority"] else "",
+                    x["km"], f"{x['base']:.2f}", f"{x['distance_fee']:.2f}", f"{x['priority_fee']:.2f}", f"{x['total']:.2f}"])
+    w.writerow([])
+    w.writerow(["", "", "", "", "", "", "", "", "Subtotal", f"{b['subtotal']:.2f}"])
+    w.writerow(["", "", "", "", "", "", "", "", f"Tax {b['tax_pct']}%", f"{b['tax']:.2f}"])
+    w.writerow(["", "", "", "", "", "", "", "", "Total", f"{b['total']:.2f}"])
+    slug = re.sub(r"[^a-z0-9]+", "-", m["name"].lower()).strip("-")
+    return Response("\ufeff" + buf.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{slug}-statement-{b["week_start"]}.csv"'})
+
+
+@api_router.get("/admin/billing", dependencies=ADMIN_ONLY)
+async def admin_billing(week: Optional[str] = None):
+    out = []
+    for m in await db.merchants.find({}, {"_id": 0}).sort("id", 1).to_list(500):
+        b = await merchant_bill(m["id"], week)
+        out.append({"id": m["id"], "name": m["name"], "drops": b["drops"], "subtotal": b["subtotal"], "tax": b["tax"], "total": b["total"],
+                    "open_orders": b["open_orders"]})
+    since, until = week_bounds(week)
+    this_monday = date_cls.fromisoformat(week_bounds(None)[0])
+    return {"week_start": since, "week_end": until, "stores": out, "total": round(sum(x["total"] for x in out), 2),
+            "drops": sum(x["drops"] for x in out), "weeks": [(this_monday - timedelta(weeks=i)).isoformat() for i in range(8)],
+            "currency": (await get_pricing())["currency"]}
+
+
+class PriorityIn(BaseModel):
+    priority: bool
+
+
+@api_router.put("/merchants/{merchant_id}/orders/{stop_id}/priority")
+async def set_order_priority(merchant_id: str, stop_id: str, body: PriorityIn, _: dict = Depends(merchant_access)):
+    """Merchant marks an order as priority (or not) before dispatch; the order is re-priced."""
+    st = await get_stop_or_404(stop_id)
+    if st.merchant_id != merchant_id:
+        raise HTTPException(404, "Order not found")
+    if st.route_id or st.status != "pending":
+        raise HTTPException(400, "Order is already dispatched — ask dispatch to change priority")
+    d = {**st.model_dump(), "priority": body.priority}
+    await db.stops.update_one({"id": stop_id}, {"$set": {"priority": body.priority, "fee": compute_fee(d, await get_pricing())}})
+    return (await get_stop_or_404(stop_id)).model_dump()
 
 
 @api_router.get("/digest", dependencies=ADMIN_ONLY)

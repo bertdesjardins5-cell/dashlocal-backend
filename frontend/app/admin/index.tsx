@@ -106,6 +106,14 @@ export default function AdminDashboard() {
             </View>
             <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />
           </Pressable>
+          <Pressable testID="admin-pricing-link" onPress={() => router.push("/admin/pricing")} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
+            <Ionicons name="pricetag" size={24} color={colors.onSurface} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Display style={s.rowTitle}>PRICING & BILLING</Display>
+              <Mono style={s.meta}>Per-drop fee · distance · priority surcharge · weekly bills</Mono>
+            </View>
+            <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />
+          </Pressable>
           <Mono style={s.section}>DAILY OPS DIGEST</Mono>
           <DailyDigest />
           <LowRatingAlerts notify={toast.show} />

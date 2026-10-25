@@ -33,6 +33,8 @@ export type Stop = {
   apology_sms_status?: string | null;
   planned_eta?: string | null;
   nearby_sms_status?: string | null;
+  priority?: boolean;
+  fee?: { base: number; km: number; distance_fee: number; priority_fee: number; total: number; currency: string } | null;
   late_min?: number;
   fail_reason: string | null;
 };
