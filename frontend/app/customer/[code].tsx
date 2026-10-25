@@ -155,10 +155,12 @@ export default function TrackOrder() {
                     key={order.customer_note ?? ""}
                     stopId={t.stop.id}
                     note={order.customer_note}
+                    source={order.customer_note_source ?? null}
+                    read={!!t.stop.customer_note_read}
                     locked={t.stop.status !== "pending"}
                     orderToken={order.token}
                     onSaved={(n) => {
-                      setOrder({ ...order, customer_note: n });
+                      setOrder({ ...order, customer_note: n, customer_note_source: n ? "customer" : null });
                       toast.show(n ? "NOTE SENT TO YOUR DRIVER" : "NOTE CLEARED", "green");
                     }}
                     onError={(m) => toast.show(m, "red")}

@@ -369,6 +369,8 @@ class Stop(BaseModel):
     customer_note: Optional[str] = None  # delivery note from the verified customer (gate code, "leave at back door")
     customer_note_at: Optional[str] = None
     customer_note_seen: bool = True  # False until the driver taps GOT IT on the manifest alert
+    customer_note_read_at: Optional[str] = None  # read receipt shown to the customer
+    customer_note_source: Optional[str] = None  # customer | saved (merchant's saved note) | last (customer's previous note)
 
 
 class Route(BaseModel):
@@ -501,7 +503,8 @@ PUBLIC_STOP_FIELDS = ("id", "tracking_code", "status", "arrived_at", "delivered_
 def public_stop(stop: "Stop") -> dict:
     """What anyone holding the tracking code may see: no name, phone, address, notes, location or proof files."""
     d = {k: getattr(stop, k) for k in PUBLIC_STOP_FIELDS}
-    d.update({"has_photo": bool(stop.pod_photo_path), "has_signature": bool(stop.pod_signature)})
+    d.update({"has_photo": bool(stop.pod_photo_path), "has_signature": bool(stop.pod_signature),
+              "customer_note_read": bool(stop.customer_note and stop.customer_note_read_at)})
     return d
 
 
@@ -514,7 +517,8 @@ def order_private(stop: "Stop") -> dict:
     """Extra order details for a customer who proved the order is theirs (last 4 phone digits)."""
     return {"customer_name": stop.customer_name, "address": stop.address, "lat": stop.lat, "lng": stop.lng,
             "pod_photo_url": file_url(stop.pod_photo_path) if stop.pod_photo_path else None,
-            "pod_signature": stop.pod_signature, "apology_code": stop.apology_code, "customer_note": stop.customer_note}
+            "pod_signature": stop.pod_signature, "apology_code": stop.apology_code, "customer_note": stop.customer_note,
+            "customer_note_source": stop.customer_note_source}
 
 
 async def tracking_payload(code: str) -> dict:
@@ -1811,7 +1815,14 @@ async def set_customer_note(stop_id: str, body: CustomerNoteIn):
         raise HTTPException(400, "The driver is already at your door — the note can't be changed now")
     note = " ".join((body.note or "").split())[:200] or None
     await db.stops.update_one({"id": stop_id}, {"$set": {"customer_note": note, "customer_note_at": now_iso() if note else None,
-                                                          "customer_note_seen": not note}})
+                                                          "customer_note_seen": not note, "customer_note_read_at": None,
+                                                          "customer_note_source": "customer" if note else None}})
+    if stop.merchant_id:  # remembered for this customer's next order from the same store
+        key = {"merchant_id": stop.merchant_id, "phone": stop.customer_phone}
+        if note:
+            await db.last_customer_notes.update_one(key, {"$set": {**key, "note": note, "updated_at": now_iso()}}, upsert=True)
+        else:
+            await db.last_customer_notes.delete_one(key)
     if stop.route_id:
         await broadcast_route(stop.route_id)
     return {"customer_note": note}
@@ -1820,10 +1831,26 @@ async def set_customer_note(stop_id: str, body: CustomerNoteIn):
 @api_router.post("/stops/{stop_id}/customer-note/seen", dependencies=STOP_DRIVER)
 async def seen_customer_note(stop_id: str):
     stop = await get_stop_or_404(stop_id)
-    await db.stops.update_one({"id": stop_id}, {"$set": {"customer_note_seen": True}})
+    upd = {"customer_note_seen": True}
+    if stop.customer_note and not stop.customer_note_read_at:
+        upd["customer_note_read_at"] = now_iso()
+    await db.stops.update_one({"id": stop_id}, {"$set": upd})
     if stop.route_id:
         await broadcast_route(stop.route_id)
+    elif hub.rooms.get(f"track:{stop.tracking_code}"):
+        await hub.send(f"track:{stop.tracking_code}", await tracking_payload(stop.tracking_code))
     return {"ok": True}
+
+
+async def remembered_note(merchant_id: str, phone: str) -> tuple:
+    """(note, source) for a regular customer: the store's saved note wins over the customer's last note."""
+    saved = await db.saved_notes.find_one({"merchant_id": merchant_id, "phone": phone}, {"_id": 0})
+    if saved:
+        return saved["note"], "saved"
+    last = await db.last_customer_notes.find_one({"merchant_id": merchant_id, "phone": phone}, {"_id": 0})
+    return (last["note"], "last") if last else (None, None)
+
+
 
 
 def delivered_on_time(st: Stop) -> Optional[bool]:
@@ -2200,6 +2227,9 @@ async def process_row(row: dict) -> dict:
                         window_date=d.get("window_date") or None, merchant_id=row["merchant_id"], created_at=now_iso(),
                         priority=(d.get("priority") or "").strip().lower() in TRUTHY)
             stop.fee = compute_fee(stop.model_dump(), await get_pricing(row["merchant_id"]))
+            note, source = await remembered_note(row["merchant_id"], stop.customer_phone)
+            if note:  # regular customer: prefill their delivery note (they can still change it)
+                stop.customer_note, stop.customer_note_source, stop.customer_note_at = note, source, now_iso()
             await db.stops.insert_one(stop.model_dump())
             upd.update(status="created", stop_id=stop.id, tracking_code=stop.tracking_code)
     await db.import_rows.update_one({"id": row["id"]}, {"$set": upd})
@@ -2627,6 +2657,40 @@ async def merchant_detail(merchant_id: str, _: dict = Depends(merchant_access)):
             "counts": {"orders": len(orders), "pending": sum(1 for o in orders if o["status"] in ("pending", "arrived")),
                        "delivered": sum(1 for o in orders if o["status"] == "delivered"), "failed": sum(1 for o in orders if o["status"] == "failed"),
                        "flagged": len(flagged)}}
+
+
+class SavedNoteIn(BaseModel):
+    phone: str
+    note: str
+
+
+@api_router.get("/merchants/{merchant_id}/saved-notes")
+async def list_saved_notes(merchant_id: str, _: dict = Depends(merchant_access)):
+    return await db.saved_notes.find({"merchant_id": merchant_id}, {"_id": 0}).sort("updated_at", -1).to_list(1000)
+
+
+@api_router.put("/merchants/{merchant_id}/saved-notes")
+async def upsert_saved_note(merchant_id: str, body: SavedNoteIn, _: dict = Depends(merchant_access)):
+    """Save (or replace) a regular customer's delivery note, keyed by phone. Filled into every new order for them."""
+    await get_merchant_or_404(merchant_id)
+    phone = normalize_phone(body.phone)
+    if not phone:
+        raise HTTPException(400, "Enter a valid phone number")
+    note = " ".join(body.note.split())[:200]
+    if not note:
+        raise HTTPException(400, "Write the note to save")
+    key = {"merchant_id": merchant_id, "phone": phone}
+    await db.saved_notes.update_one(key, {"$set": {"note": note, "updated_at": now_iso()},
+                                          "$setOnInsert": {**key, "id": str(uuid.uuid4()), "created_at": now_iso()}}, upsert=True)
+    return await db.saved_notes.find_one(key, {"_id": 0})
+
+
+@api_router.delete("/merchants/{merchant_id}/saved-notes/{note_id}")
+async def delete_saved_note(merchant_id: str, note_id: str, _: dict = Depends(merchant_access)):
+    res = await db.saved_notes.delete_one({"merchant_id": merchant_id, "id": note_id})
+    if not res.deleted_count:
+        raise HTTPException(404, "Saved note not found")
+    return {"ok": True}
 
 
 @api_router.post("/merchants/{merchant_id}/import")

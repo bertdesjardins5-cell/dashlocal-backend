@@ -71,3 +71,8 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - PUT /api/stops/{id}/customer-note (order token, admin or the stop's driver; pending only, max 200 chars). The driver manifest shows a banner for unseen notes; POST /api/stops/{id}/customer-note/seen clears it. The note is highlighted on the stop screen and the next-stop card.
 - The order unlock is stored on the device; the server rejects the order token 7 days after delivery.
 - CORS is limited to the CORS_ORIGINS list in backend/.env (dashlocal.app, www, and the preview URL). /api/track-codes and the demo list are removed.
+
+## Instant note alerts, read receipts, saved notes (Jun 2026)
+- The driver manifest listens to /ws/route/{id}?token= and refetches on every push, so new notes show instantly with a haptic buzz; polling is kept as a fallback.
+- Read receipt: the driver tapping GOT IT or opening the stop sets customer_note_read_at; the public tracking stop has a customer_note_read boolean; the customer sees "DRIVER HAS READ YOUR NOTE".
+- Saved notes: GET/PUT/DELETE /api/merchants/{id}/saved-notes (by phone). A customer's last note is kept in db.last_customer_notes. CSV imports prefill customer_note (the store's saved note wins over the last note; the customer can edit it).

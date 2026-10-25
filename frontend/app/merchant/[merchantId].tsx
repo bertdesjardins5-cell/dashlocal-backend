@@ -8,6 +8,7 @@ import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { clearSession, getToken, useSession } from "@/src/session";
 import ReportDownload from "@/src/components/ReportDownload";
 import WeeklyEmailCard from "@/src/components/WeeklyEmailCard";
+import SavedNotesCard from "@/src/components/SavedNotesCard";
 import ProblemAlertsCard from "@/src/components/ProblemAlertsCard";
 import BillCard, { money } from "@/src/components/BillCard";
 import { api, API, dayLabel, Stop, windowLabel } from "@/src/api";
@@ -163,6 +164,7 @@ export default function MerchantHome() {
           <Mono style={s.section}>DELIVERY REPORT</Mono>
           <ReportDownload merchantId={merchantId} notify={toast.show} />
           <WeeklyEmailCard merchantId={merchantId} notify={toast.show} />
+          <SavedNotesCard merchantId={merchantId} notify={toast.show} />
           <Mono style={s.section}>PROBLEM ALERTS</Mono>
           <ProblemAlertsCard merchantId={merchantId} notify={toast.show} />
 

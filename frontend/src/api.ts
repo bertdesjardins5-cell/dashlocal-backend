@@ -40,6 +40,8 @@ export type Stop = {
   customer_note?: string | null;
   customer_note_at?: string | null;
   customer_note_seen?: boolean;
+  customer_note_read_at?: string | null;
+  customer_note_source?: string | null;
 };
 
 export type Driver = { id: string; name: string; phone: string; vehicle: string; lat: number; lng: number };
@@ -69,6 +71,7 @@ export type RouteDetail = {
 export type PublicStop = Pick<Stop, "id" | "tracking_code" | "status" | "arrived_at" | "delivered_at" | "pod_qr_verified" | "window_start" | "window_end" | "window_date" | "rating" | "nearby_sms_status"> & {
   has_photo: boolean;
   has_signature: boolean;
+  customer_note_read?: boolean;
 };
 
 // Shown only after the customer enters the last 4 digits of their phone.
@@ -81,6 +84,7 @@ export type OrderPrivate = {
   pod_signature: string | null;
   apology_code: string | null;
   customer_note: string | null;
+  customer_note_source?: string | null;
 };
 
 export type Tracking = {

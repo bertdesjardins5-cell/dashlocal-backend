@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Linking, Platform, Pressable, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -36,6 +36,11 @@ export default function StopDetail() {
 
   const q = useQuery({ queryKey: ["stop", stopId], queryFn: () => api<Stop>(`/stops/${stopId}`) });
   const stop = q.data;
+  // Opening the stop counts as reading the customer's note (sends their read receipt).
+  const unreadNote = !!stop?.customer_note && !stop.customer_note_read_at;
+  useEffect(() => {
+    if (unreadNote) api(`/stops/${stopId}/customer-note/seen`, { method: "POST" }).catch(() => {});
+  }, [unreadNote, stopId]);
   const routeQ = useQuery({ queryKey: ["route", stop?.route_id], queryFn: () => api<RouteDetail>(`/routes/${stop!.route_id}`), enabled: !!stop?.route_id });
   const driverId = routeQ.data?.driver?.id;
   const [showSms, setShowSms] = useState(false);

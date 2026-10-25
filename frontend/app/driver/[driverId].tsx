@@ -8,8 +8,9 @@ import * as Location from "expo-location";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
-import { api, dayLabel, depotToday, fmtDepotTime, RouteDetail, windowLabel } from "@/src/api";
-import { clearSession } from "@/src/session";
+import { api, dayLabel, depotToday, fmtDepotTime, RouteDetail, windowLabel, WS_BASE } from "@/src/api";
+import { clearSession, getToken } from "@/src/session";
+import * as Haptics from "expo-haptics";
 import RouteMap from "@/src/components/RouteMap";
 import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
@@ -79,8 +80,40 @@ export default function Manifest() {
     q.refetch();
   };
   const next = route?.stops.find((st) => st.id === route.next_stop_id);
-  // Live alert for new customer delivery notes (route refreshes every few seconds).
+  // Live alert for new customer delivery notes: the route socket pushes every change; polling stays as a fallback.
   const newNotes = route?.stops.filter((st) => st.customer_note && st.customer_note_seen === false && st.status === "pending") ?? [];
+  const routeId = route?.id;
+  const refetchRoute = q.refetch;
+  useEffect(() => {
+    if (!routeId) return;
+    let closed = false;
+    let ws: WebSocket | null = null;
+    let retry: ReturnType<typeof setTimeout>;
+    const connect = () => {
+      ws = new WebSocket(`${WS_BASE}/route/${routeId}?token=${encodeURIComponent(getToken() ?? "")}`);
+      ws.onmessage = () => refetchRoute();
+      ws.onclose = () => {
+        if (!closed) retry = setTimeout(connect, 3000);
+      };
+      ws.onerror = () => ws?.close();
+    };
+    connect();
+    const ping = setInterval(() => ws?.readyState === 1 && ws.send("ping"), 20000);
+    return () => {
+      closed = true;
+      clearTimeout(retry);
+      clearInterval(ping);
+      ws?.close();
+    };
+  }, [routeId, refetchRoute]);
+  const noteKey = newNotes.map((st) => `${st.id}:${st.customer_note_at}`).join("|");
+  const lastNoteKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (lastNoteKey.current !== null && noteKey && noteKey !== lastNoteKey.current) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+    }
+    if (route) lastNoteKey.current = noteKey;
+  }, [noteKey, route]);
   const ackNotes = async () => {
     try {
       await Promise.all(newNotes.map((st) => api(`/stops/${st.id}/customer-note/seen`, { method: "POST" })));
