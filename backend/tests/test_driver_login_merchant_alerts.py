@@ -212,12 +212,17 @@ class TestDriverAuthz:
         assert raw("GET", f"{API}/routes/{rid}", headers=H(toks[ctx["drv2"]])).status_code == 200
         assert raw("GET", f"{API}/stops/{sid}", headers=H(toks["admin"])).status_code == 200
 
-    def test_customer_endpoints_open(self, ctx):
+    def test_customer_endpoints_need_order_check(self, ctx):
         s = ctx["stops1"][-1]
         assert raw("GET", f"{API}/track/{s['tracking_code']}").status_code == 200
-        for m, p, body in [("PUT", f"/stops/{s['id']}/window", {"start": "16:00", "end": "18:00"}),
-                           ("POST", f"/stops/{s['id']}/rating", {"stars": 5}), ("POST", f"/stops/{s['id']}/share", None)]:
-            r = raw(m, API + p, json=body)
+        calls = [("PUT", f"/stops/{s['id']}/window", {"start": "16:00", "end": "18:00"}),
+                 ("POST", f"/stops/{s['id']}/rating", {"stars": 5}), ("POST", f"/stops/{s['id']}/share", None)]
+        for m, p, body in calls:  # no login and no last-4 check -> blocked
+            assert raw(m, API + p, json=body).status_code == 401, p
+        last4 = "".join(c for c in s["customer_phone"] if c.isdigit())[-4:]
+        tok = raw("POST", f"{API}/track/{s['tracking_code']}/verify", json={"last4": last4}).json()["token"]
+        for m, p, body in calls:  # verified customer passes auth (may still get 400 for business rules)
+            r = raw(m, API + p, json=body, headers={"X-Order-Token": tok})
             assert r.status_code not in (401, 403), (p, r.status_code)
 
     def test_ws_route_gating(self, toks, ctx):

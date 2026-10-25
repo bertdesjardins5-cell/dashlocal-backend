@@ -87,6 +87,6 @@ export default function WindowPicker({ date, start, end, onSelect, disabled, tes
 const useStyles = makeStyles((c) => ({
   row: { height: 56, flexGrow: 0 },
   content: { gap: spacing.sm, alignItems: "center", paddingHorizontal: spacing.lg },
-  chip: { height: 36, flexShrink: 0, paddingHorizontal: spacing.md, borderWidth: 2, borderColor: c.border, justifyContent: "center", backgroundColor: c.surface },
+  chip: { height: 44, flexShrink: 0, paddingHorizontal: spacing.md, borderWidth: 2, borderColor: c.border, justifyContent: "center", backgroundColor: c.surface },
   text: { fontSize: 12, fontWeight: "700" },
 }));

@@ -111,6 +111,19 @@ async def require_any_driver(request: Request):
     raise HTTPException(403, "Driver sign-in required")
 
 
+async def require_order_access(stop_id: str, request: Request):
+    """Customer holding an order token for this stop (from the last-4-digits check), the stop's driver, or the admin."""
+    tok = request.headers.get("x-order-token", "").strip()
+    if tok:
+        if decode_token(tok, "order")["sub"] != stop_id:
+            raise HTTPException(403, "This check is for a different order")
+        return {"role": "customer", "stop_id": stop_id}
+    if not request.headers.get("authorization"):
+        raise HTTPException(401, "Enter the last 4 digits of your phone to manage this order")
+    return await require_stop_driver(stop_id, request)
+
+
+ORDER_ACCESS = [Depends(require_order_access)]
 DRIVER_SELF = [Depends(require_driver_self)]
 ROUTE_DRIVER = [Depends(require_route_driver)]
 STOP_DRIVER = [Depends(require_stop_driver)]
@@ -467,12 +480,35 @@ class Hub:
 hub = Hub()
 
 
+PUBLIC_STOP_FIELDS = ("id", "tracking_code", "status", "arrived_at", "delivered_at", "pod_qr_verified",
+                      "window_start", "window_end", "window_date", "rating", "nearby_sms_status")
+
+
+def public_stop(stop: "Stop") -> dict:
+    """What anyone holding the tracking code may see: no name, phone, address, notes, location or proof files."""
+    d = {k: getattr(stop, k) for k in PUBLIC_STOP_FIELDS}
+    d.update({"has_photo": bool(stop.pod_photo_path), "has_signature": bool(stop.pod_signature)})
+    return d
+
+
+def file_url(path: str, minutes: int = 120) -> str:
+    """Short-lived signed link to one stored proof file."""
+    return f"/api/files/{path}?t={issue_token(path, 'file', purpose='file', minutes=minutes)}"
+
+
+def order_private(stop: "Stop") -> dict:
+    """Extra order details for a customer who proved the order is theirs (last 4 phone digits)."""
+    return {"customer_name": stop.customer_name, "address": stop.address, "lat": stop.lat, "lng": stop.lng,
+            "pod_photo_url": file_url(stop.pod_photo_path) if stop.pod_photo_path else None,
+            "pod_signature": stop.pod_signature, "apology_code": stop.apology_code}
+
+
 async def tracking_payload(code: str) -> dict:
     sdoc = await db.stops.find_one({"tracking_code": code.upper()}, {"_id": 0})
     if not sdoc:
         raise HTTPException(404, "Tracking code not found")
     stop = Stop(**sdoc)
-    out = {"stop": stop.model_dump(), "route_status": None, "driver": None, "stops_away": None,
+    out = {"stop": public_stop(stop), "route_status": None, "driver": None, "stops_away": None,
            "eta_minutes": None, "eta_time": None, "late_min": 0, "path": [], "alert": None, "depot": DEPOT}
     if not stop.route_id:
         out["alert"] = f"Scheduled for {nice_date(stop.window_date)}" if stop.window_date and stop.window_date > today_str() else "Order received — awaiting dispatch"
@@ -483,7 +519,7 @@ async def tracking_payload(code: str) -> dict:
     if route.driver_id:
         d = await db.drivers.find_one({"id": route.driver_id}, {"_id": 0})
         driver = Driver(**d) if d else None
-        out["driver"] = {"name": driver.name, "vehicle": driver.vehicle, "lat": driver.lat, "lng": driver.lng} if driver else None
+        out["driver"] = {"name": driver.name.split(" ")[0], "vehicle": driver.vehicle, "lat": driver.lat, "lng": driver.lng} if driver else None
     if stop.status == "delivered":
         out["alert"] = "Delivered"
         return out
@@ -497,14 +533,12 @@ async def tracking_payload(code: str) -> dict:
     out["stops_away"] = len(open_before)
     start = {"lat": driver.lat, "lng": driver.lng} if driver else DEPOT
     seq_stops = [s.model_dump() for s in open_before] + [stop.model_dump()]
-    pts = [{"lat": s["lat"], "lng": s["lng"]} for s in seq_stops]
     base = plan_base(route.service_date)
     target = schedule(start, seq_stops, base)[-1]
     eta = target["arrive_min"]
     out["eta_minutes"] = round(eta) if route.service_date <= today_str() else None
     out["eta_time"] = (base.astimezone(timezone.utc) + timedelta(minutes=round(eta))).isoformat()
-    out["late_min"] = round(target["late_min"])
-    out["path"] = [start] + pts
+    out["late_min"] = round(target["late_min"])  # path stays empty: other customers' drops are never shown
     if route.service_date > today_str():
         out["alert"] = f"Scheduled for {nice_date(route.service_date)}"
     elif route.status != "active":
@@ -1204,7 +1238,7 @@ async def send_booking_sms(stop: "Stop", kind: str) -> str:
 
 
 @api_router.put("/stops/{stop_id}/window")
-async def set_window(stop_id: str, body: WindowIn):
+async def set_window(stop_id: str, body: WindowIn, who: dict = Depends(require_order_access)):
     """Set (or clear with nulls) the customer's requested delivery window, HH:MM depot local time."""
     stop = await get_stop_or_404(stop_id)
     if stop.status in ("delivered", "failed"):
@@ -1245,7 +1279,8 @@ async def set_window(stop_id: str, body: WindowIn):
     kind = "cleared" if not updated.window_end else ("booked" if not stop.window_end else "changed")
     unchanged = (stop.window_start, stop.window_end, stop.window_date) == (updated.window_start, updated.window_end, updated.window_date)
     sms = "unchanged" if unchanged else await send_booking_sms(updated, kind)
-    return {**updated.model_dump(), "moved_off_route": moved_off, "sms_status": sms}
+    base = public_stop(updated) if who["role"] == "customer" else updated.model_dump()
+    return {**base, "moved_off_route": moved_off, "sms_status": sms}
 
 
 class RatingIn(BaseModel):
@@ -1254,7 +1289,7 @@ class RatingIn(BaseModel):
 
 
 @api_router.post("/stops/{stop_id}/rating")
-async def rate_delivery(stop_id: str, body: RatingIn):
+async def rate_delivery(stop_id: str, body: RatingIn, who: dict = Depends(require_order_access)):
     """Customer rates a delivered order once (1-5 stars, optional comment)."""
     stop = await get_stop_or_404(stop_id)
     if stop.status != "delivered":
@@ -1276,6 +1311,8 @@ async def rate_delivery(stop_id: str, body: RatingIn):
         rated = await get_stop_or_404(stop_id)
     if body.stars <= LOW_RATING and hub.rooms.get("admin"):
         await hub.send("admin", {"type": "low_rating", "alert": await low_rating_row(rated)})
+    if who["role"] == "customer":
+        return {**public_stop(rated), "apology_code": rated.apology_code, "apology_sms_status": rated.apology_sms_status}
     return rated.model_dump()
 
 
@@ -1426,7 +1463,7 @@ async def read_coaching(note_id: str):
 
 
 # ---- public proof-of-delivery share link
-@api_router.post("/stops/{stop_id}/share")
+@api_router.post("/stops/{stop_id}/share", dependencies=ORDER_ACCESS)
 async def share_proof(stop_id: str):
     stop = await get_stop_or_404(stop_id)
     if stop.status != "delivered":
@@ -1453,7 +1490,7 @@ async def proof_page(token: str):
 Open your order in the DashLocal app to share a fresh link.</p></body></html>""", status_code=410)
     esc = xml_escape
     when = datetime.fromisoformat(st.delivered_at).astimezone(TZ).strftime("%a %d %b %Y, %H:%M") if st.delivered_at else ""
-    photo = f'<img src="/api/files/{esc(st.pod_photo_path)}" alt="Delivery photo">' if st.pod_photo_path else ""
+    photo = f'<img src="{esc(file_url(st.pod_photo_path))}" alt="Delivery photo">' if st.pod_photo_path else ""
     sig = (f'<svg viewBox="0 0 360 200" preserveAspectRatio="xMidYMid meet"><path d="{esc(st.pod_signature)}" stroke="#0A0A0A" stroke-width="4" '
            f'fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>') if st.pod_signature else ""
     qr = '<div class="ok">&#10003; PARCEL QR SCANNED AT THE DOOR</div>' if st.pod_qr_verified else ""
@@ -1681,13 +1718,33 @@ async def upload(file: UploadFile = File(...)):
     return {"path": res["path"]}
 
 
+async def file_allowed(path: str, request: Request, t: str) -> bool:
+    """A signed link for this exact file, or any signed-in staff session (header or ?t=)."""
+    h = request.headers.get("authorization", "")
+    bearer = h[7:].strip() if h.lower().startswith("bearer ") else ""
+    for tok in (t, bearer):
+        if not tok:
+            continue
+        try:
+            p = pyjwt.decode(tok, JWT_SECRET, algorithms=[JWT_ALG], options={"require": ["exp", "iat", "sub", "role", "purpose"]})
+        except pyjwt.InvalidTokenError:
+            continue
+        if p["purpose"] == "file" and p["sub"] == path:
+            return True
+        if p["purpose"] == "session" and await db.users.find_one({"id": p["sub"], "role": p["role"], "disabled": {"$ne": True}}, {"_id": 1}):
+            return True
+    return False
+
+
 @api_router.get("/files/{path:path}")
-async def download(path: str):
+async def download(path: str, request: Request, t: str = ""):
+    if not await file_allowed(path, request, t):
+        raise HTTPException(401, "This file needs a valid link or sign-in")
     rec = await db.files.find_one({"storage_path": path}, {"_id": 0})
     if not rec:
         raise HTTPException(404, "File not found")
     data, ct = await run_in_threadpool(get_object, path)
-    return Response(content=data, media_type=rec.get("content_type") or ct, headers={"Cache-Control": "max-age=86400"})
+    return Response(content=data, media_type=rec.get("content_type") or ct, headers={"Cache-Control": "private, max-age=3600"})
 
 
 @api_router.get("/track/{code}")
@@ -1695,12 +1752,46 @@ async def track(code: str):
     return await tracking_payload(code)
 
 
+class Last4In(BaseModel):
+    last4: str
+
+
+ORDER_TOKEN_MIN = 120
+
+
+@api_router.post("/track/{code}/verify")
+async def verify_order(code: str, body: Last4In, request: Request):
+    """Customer proves the order is theirs with the last 4 digits of the phone on it. 5 tries per code per IP,
+    10 per code, 30 per IP (15-min lock) so the 10,000 combinations can't be brute-forced."""
+    code, ip, last4 = code.strip().upper(), client_ip(request), body.last4.strip()
+    limits = [(f"trk:{code}:{ip}", 5), (f"trk:{code}:*", 10), (f"trkip:{ip}", 30)]
+    atts = await check_lockout(limits)
+    sdoc = await db.stops.find_one({"tracking_code": code}, {"_id": 0})
+    digits = re.sub(r"\D", "", (sdoc or {}).get("customer_phone", ""))
+    if not (sdoc and len(digits) >= 4 and re.fullmatch(r"\d{4}", last4) and secrets.compare_digest(digits[-4:], last4)):
+        await record_failure(limits, atts)
+        raise HTTPException(401, "Those digits don't match the phone on this order")
+    await clear_lockout(limits[:2])
+    return {"token": issue_token(sdoc["id"], "customer", purpose="order", minutes=ORDER_TOKEN_MIN), **order_private(Stop(**sdoc))}
+
+
+@api_router.get("/track/{code}/private")
+async def track_private(code: str, request: Request):
+    """Refresh the verified customer's order details (e.g. proof photo after delivery)."""
+    sdoc = await db.stops.find_one({"tracking_code": code.strip().upper()}, {"_id": 0})
+    if not sdoc:
+        raise HTTPException(404, "Tracking code not found")
+    if decode_token(request.headers.get("x-order-token", "").strip(), "order")["sub"] != sdoc["id"]:
+        raise HTTPException(403, "This check is for a different order")
+    return order_private(Stop(**sdoc))
+
+
 @api_router.get("/track-codes")
 async def track_codes():
-    """Demo helper listing tracking codes on active/planned routes."""
+    """Demo helper listing tracking codes on active/planned routes (codes and status only, no customer details)."""
     live = [r["id"] for r in await db.routes.find({"service_date": {"$gte": today_str()}}, {"_id": 0, "id": 1}).to_list(200)]
     docs = await db.stops.find({"route_id": {"$in": live}}, {"_id": 0}).sort("seq", 1).to_list(200)
-    return [{"tracking_code": d["tracking_code"], "customer_name": d["customer_name"], "status": d["status"], "seq": d["seq"]} for d in docs]
+    return [{"tracking_code": d["tracking_code"], "status": d["status"], "seq": d["seq"]} for d in docs]
 
 
 def delivered_on_time(st: Stop) -> Optional[bool]:

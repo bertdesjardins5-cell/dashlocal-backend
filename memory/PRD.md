@@ -59,3 +59,10 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 ## Test suite note (Jun 2026)
 - Fixed time-of-day flakiness in tests/test_qr_windows.py::test_optimize_moves_urgent_stop_earlier (tight window now rolls over the hour correctly).
 - Full backend suite: 216/216 pass when run serially (`pytest tests -n0`). Parallel runs (-n 2) cause cross-test failures because suites share one backend and call /api/admin/reset.
+
+## Security audit fixes (Jun 2026)
+- Public tracking (/api/track, /ws/track) now returns only status, ETA, stops away and driver first name; no customer name, phone, address, notes, location or proof files. /track-codes no longer lists names.
+- Customer unlock: POST /api/track/{code}/verify {last4} (lockout 5/code+IP, 10/code, 30/IP) returns an order token (2h) plus private details; GET /api/track/{code}/private refreshes them.
+- Window, rating and share need the X-Order-Token for that stop, or the admin / the stop's driver. Customer responses are trimmed.
+- /api/files needs a signed per-file link (?t=) or a staff session (header or ?t=). Proof pages use signed links.
+- Not done (user's choice): CORS allowlist, removing the demo code list.

@@ -12,9 +12,9 @@ const NEGATIVE = ["LATE", "HARD TO FIND PARCEL", "DAMAGED PARCEL", "RUDE DRIVER"
 const tagsFor = (stars: number) => (stars >= 4 ? POSITIVE : stars <= 2 ? NEGATIVE : [...NEGATIVE.slice(0, 2), ...POSITIVE.slice(0, 2)]);
 const WORDS = ["", "POOR", "MEH", "OKAY", "GOOD", "GREAT"];
 
-type Props = { stop: Stop; onRated: (s: Stop) => void; onError: (msg: string) => void };
+type Props = { stop: { id: string; rating?: number | null; apology_code?: string | null }; orderToken: string; onRated: (s: Stop) => void; onError: (msg: string) => void };
 
-export default function RatingPrompt({ stop, onRated, onError }: Props) {
+export default function RatingPrompt({ stop, orderToken, onRated, onError }: Props) {
   const s = useStyles();
   const { colors } = useTheme();
   const [stars, setStars] = useState(0);
@@ -46,7 +46,7 @@ export default function RatingPrompt({ stop, onRated, onError }: Props) {
   const submit = async () => {
     setSaving(true);
     try {
-      const st = await api<Stop>(`/stops/${stop.id}/rating`, { method: "POST", body: { stars, comment: tags.join(", ") || null } });
+      const st = await api<Stop>(`/stops/${stop.id}/rating`, { method: "POST", body: { stars, comment: tags.join(", ") || null }, headers: { "X-Order-Token": orderToken } });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       onRated(st);
     } catch (e: any) {

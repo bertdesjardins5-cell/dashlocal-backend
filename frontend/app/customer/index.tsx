@@ -8,7 +8,7 @@ import { api } from "@/src/api";
 import { Btn, Display, Header, Mono, Pill, statusTone } from "@/src/ui";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
-type Code = { tracking_code: string; customer_name: string; status: string; seq: number };
+type Code = { tracking_code: string; status: string; seq: number };
 
 export default function CustomerEntry() {
   const s = useStyles();
@@ -43,7 +43,7 @@ export default function CustomerEntry() {
         {q.data?.map((c) => (
           <Pressable key={c.tracking_code} testID={`demo-code-${c.tracking_code}`} onPress={() => go(c.tracking_code)} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
             <Display style={s.code}>{c.tracking_code}</Display>
-            <Mono style={[s.meta, { flex: 1 }]} numberOfLines={1}>{c.customer_name}</Mono>
+            <Mono style={[s.meta, { flex: 1 }]} numberOfLines={1}>STOP {c.seq}</Mono>
             <Pill label={c.status} tone={statusTone(c.status)} />
           </Pressable>
         ))}

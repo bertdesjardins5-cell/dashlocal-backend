@@ -100,7 +100,7 @@ class TestRatingCreatesAlert:
         assert d.json()["pod_signature"] == "M10 10 L100 100" and d.json()["pod_qr_verified"]
         tr = api.get(f"{API}/track/{a['tracking_code']}").json()
         st = tr.get("stop", tr)
-        assert st["pod_signature"] and st["pod_qr_verified"] and st["delivered_at"]
+        assert "pod_signature" not in st and st["has_signature"] and st["pod_qr_verified"] and st["delivered_at"]
 
         async def run():
             from conftest import _admin_token  # ws/admin needs ?token=<admin session>

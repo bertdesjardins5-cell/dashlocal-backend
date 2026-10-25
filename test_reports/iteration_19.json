@@ -1,0 +1,34 @@
+{
+  "summary": "Retested the 4 issues raised in iteration 18, plus a quick regression check. FIX 1 PASS: an admin signed in, went to /customer/MD1004 and entered 9999. verify-error showed, localStorage multidrop_session stayed, and /admin still loaded the Control Center (both after Back and after a reload). FIX 2 PARTIAL: the sheet now scrolls. On a delivered, unlocked MD1001 at 375x667, rating-submit-button scrolls into view and submits. Focusing verify-last4-input auto-scrolls the sheet to it (scrollTop 124). New layout bug: about 148px of empty space at the bottom of the screen (details in design_issues). FIX 3 PASS: all 15 day/slot chips are 44px tall. FIX 4 PASS: with an X-Order-Token, window returns exactly the public fields + moved_off_route/sms_status, and rating returns the public fields + apology_code/apology_sms_status. There is no customer_phone, notes, address or share_token in either. The token wins even when a staff Bearer header is also sent. Admin calls get the full stop. Regression PASS: MD1001 + 0100 shows the address, booking TMRW 10-12 gives a 'WINDOW ... BOOKED' toast and the label persists, and a 2-star rating on a delivered order shows apology-code SORRY-XXXXX. Backend: 20/20 (6 new + 14 from iteration 18), run with -n0.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "customer/[code].tsx tracking sheet layout", "issue": "KeyboardAwareScrollView (react-native-keyboard-controller 1.22.7) wraps its ScrollView in a ClippingScrollView container with flexGrow:1/flexShrink:1 (node_modules/.../ScrollViewWithBottomPadding/styles.ts). This happens on every platform; on web the wrapper is a plain View. The 'style' prop (sheetWrap: maxHeight 65%, flexGrow 0) goes to the inner ScrollView, so 65% is taken of the wrapper (423px), not of the screen. Measured at 375x667: the wrapper is 423px tall but the sheet only 275px (y 244-519). That leaves 148px of empty white space under the sheet and squeezes the map to its 180px minimum, so the sheet only uses 41% of the screen. Reference: app/customer/[code].tsx:121,190", "testID": "tracking-sheet", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "customer/[code].tsx (375x667)", "issues": [
+        "Empty 148px strip at the bottom of the screen in every state (locked, unlocked/pending, delivered); cause is in ui_bugs.",
+        "After a successful unlock the sheet keeps the scroll offset from the keyboard-aware focus (scrollTop 70), so the big ETA/DELIVERED AT time is half cut off at the top until the user scrolls up. Minor."
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_order_payload_trim.py", "/app/backend/tests/test_order_privacy_security.py", "/app/backend/tests/seed_ui_iter19.py", "/app/test_reports/pytest/pytest_iter19.xml"],
+  "action_items": [
+    "customer/[code].tsx: fix the sheet sizing so that the KeyboardAwareScrollView wrapper (flexGrow 1) doesn't leave blank space. Option A: put maxHeight '65%' + border/background on an outer <View> around KeyboardAwareScrollView, so the wrapper grows to the content and is capped by the outer view. Option B: give the map container a fixed share (e.g. flex 0 / height '35%', minHeight 180) and let the KeyboardAwareScrollView take the rest with flex 1. Recheck at 375x667 that the sheet's bottom edge reaches the bottom of the screen.",
+    "Optional: scroll the sheet back to the top (scrollTo y 0) after VerifyOrder succeeds, so the ETA isn't cut off."
+  ],
+  "critical_code_review_comments": [
+    "api.ts:107 skips clearSession for /auth/login, /track/* and any request with an X-Order-Token header. This is correct; staff 401s on other paths still sign the user out.",
+    "set_window/rate_delivery: who['role']=='customer' is set only from a valid order token, which require_order_access checks first. So a staff user with an order token gets the trimmed payload, which is fine. rating_comment is not returned to customers; the frontend only uses rating/apology_code.",
+    "server.py is still 3459 lines and should be split into routers."
+  ],
+  "updated_files": ["/app/backend/tests/test_order_payload_trim.py (new)", "/app/backend/tests/seed_ui_iter19.py (new)"],
+  "success_rate": {"backend": "100% (20/20)", "frontend": "FIX1, FIX3 and regression pass; FIX2 works but has a new layout bug (blank 148px strip)"},
+  "seed_data_creation": "seed_ui_iter19.py resets and delivers MD1001 (photo + signature) as drv-1. POST /api/admin/reset was run and db.login_attempts drv/trk keys cleared at the end.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n0. Load backend/.env and export EXPO_PUBLIC_BACKEND_URL first. To measure the sheet: tracking-sheet bounding box versus its parent (the wrapper View). The sheet's bottom edge should be about 667 at a 375x667 viewport. Booking a non-today day on MD1001 moves it off the route (expected).",
+  "rca_of_issue": "Blank strip: react-native-keyboard-controller's ScrollViewWithBottomPadding renders <ClippingScrollView style={{flexGrow:1, flexShrink:1}}><ScrollView {...rest}/></ClippingScrollView>. The caller's style (maxHeight 65%) lands on the inner ScrollView, so the percentage is taken of the growing wrapper. The DOM chain shows: sheet 275px (max-height 65%) inside a wrapper 423px (flex 1 1 auto) inside a container 603px."
+}

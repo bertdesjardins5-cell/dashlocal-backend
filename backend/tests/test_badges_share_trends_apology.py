@@ -114,7 +114,10 @@ class TestApologyAndTrends:
         assert re.fullmatch(r"SORRY-[A-Z0-9]{5}", ja["apology_code"])
         assert ja["apology_sms_status"] == "skipped_fictional"
         tr = api.get(f"{API}/track/{a['tracking_code']}").json()
-        assert tr.get("stop", tr)["apology_code"] == ja["apology_code"]
+        assert "apology_code" not in tr["stop"]  # public tracking hides it; only the verified customer sees it
+        last4 = "".join(c for c in a["customer_phone"] if c.isdigit())[-4:]
+        v = api.post(f"{API}/track/{a['tracking_code']}/verify", json={"last4": last4})
+        assert v.status_code == 200 and v.json()["apology_code"] == ja["apology_code"]
         rb = api.post(f"{API}/stops/{b['id']}/rating", json={"stars": 5})
         assert rb.status_code == 200 and rb.json().get("apology_code") is None and rb.json().get("apology_sms_status") is None
         # low-rating alerts contain apology

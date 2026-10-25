@@ -63,8 +63,24 @@ export type RouteDetail = {
   depot: LatLng & { name: string };
 };
 
+export type PublicStop = Pick<Stop, "id" | "tracking_code" | "status" | "arrived_at" | "delivered_at" | "pod_qr_verified" | "window_start" | "window_end" | "window_date" | "rating" | "nearby_sms_status"> & {
+  has_photo: boolean;
+  has_signature: boolean;
+};
+
+// Shown only after the customer enters the last 4 digits of their phone.
+export type OrderPrivate = {
+  customer_name: string;
+  address: string;
+  lat: number;
+  lng: number;
+  pod_photo_url: string | null;
+  pod_signature: string | null;
+  apology_code: string | null;
+};
+
 export type Tracking = {
-  stop: Stop;
+  stop: PublicStop;
   route_status: string | null;
   driver: { name: string; vehicle: string; lat: number; lng: number } | null;
   stops_away: number | null;
@@ -76,9 +92,9 @@ export type Tracking = {
   depot: LatLng;
 };
 
-export async function api<T = any>(path: string, opts: { method?: string; body?: any } = {}): Promise<T> {
+export async function api<T = any>(path: string, opts: { method?: string; body?: any; headers?: Record<string, string> } = {}): Promise<T> {
   const token = getToken();
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...opts.headers };
   if (opts.body) headers["Content-Type"] = "application/json";
   if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(`${API}${path}`, {
@@ -87,7 +103,8 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
   if (!res.ok) {
-    if (res.status === 401 && token && !path.startsWith("/auth/login")) clearSession(); // expired or revoked: back to sign-in
+    // A wrong customer last-4 check is not a staff sign-in failure, so it must not sign staff out.
+    if (res.status === 401 && token && !path.startsWith("/auth/login") && !path.startsWith("/track/") && !opts.headers?.["X-Order-Token"]) clearSession(); // expired or revoked: back to sign-in
     let msg = `Request failed (${res.status})`;
     try {
       const j = await res.json();
@@ -98,7 +115,8 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   return res.json();
 }
 
-export const fileUrl = (path: string) => `${API}/files/${path}`;
+// Proof files need a sign-in; images can't send headers, so the staff session token rides along as ?t=.
+export const fileUrl = (path: string) => `${API}/files/${path}?t=${encodeURIComponent(getToken() ?? "")}`;
 
 // Delivery windows and ETAs are shown in the depot's timezone so they line up with customer windows.
 export const DEPOT_TZ = "America/Los_Angeles";

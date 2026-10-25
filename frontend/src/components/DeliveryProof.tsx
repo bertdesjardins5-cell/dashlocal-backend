@@ -4,21 +4,24 @@ import { Image } from "expo-image";
 import Svg, { Path } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
-import { api, BACKEND_URL, fileUrl, fmtDepotTime, Stop } from "@/src/api";
+import { api, BACKEND_URL, fmtDepotTime } from "@/src/api";
 import { Mono } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
 
+type Proof = { id: string; tracking_code: string; delivered_at: string | null; pod_qr_verified: boolean; pod_signature: string | null; photo_url: string | null };
+
 // Customer-facing proof of delivery: photo thumbnail (tap to enlarge), signature, QR check.
-export default function DeliveryProof({ stop, onShared, onError }: { stop: Stop; onShared?: (url: string) => void; onError?: (m: string) => void }) {
+export default function DeliveryProof({ stop, orderToken, onShared, onError }: { stop: Proof; orderToken: string; onShared?: (url: string) => void; onError?: (m: string) => void }) {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [zoom, setZoom] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const photo = stop.photo_url ? `${BACKEND_URL}${stop.photo_url}` : null;
   const share = async () => {
     setSharing(true);
     try {
-      const r = await api<{ path: string }>(`/stops/${stop.id}/share`, { method: "POST" });
+      const r = await api<{ path: string }>(`/stops/${stop.id}/share`, { method: "POST", headers: { "X-Order-Token": orderToken } });
       const url = `${BACKEND_URL}${r.path}`;
       const message = `Proof of delivery for ${stop.tracking_code}: ${url}`;
       if (Platform.OS === "web") {
@@ -39,15 +42,15 @@ export default function DeliveryProof({ stop, onShared, onError }: { stop: Stop;
       setSharing(false);
     }
   };
-  const hasAny = stop.pod_photo_path || stop.pod_signature || stop.pod_qr_verified;
+  const hasAny = photo || stop.pod_signature || stop.pod_qr_verified;
   if (!hasAny) return null;
   return (
     <View style={s.box} testID="delivery-proof">
       <Mono style={s.label}>PROOF OF DELIVERY · {fmtDepotTime(stop.delivered_at)}</Mono>
       <View style={s.row}>
-        {stop.pod_photo_path ? (
+        {photo ? (
           <Pressable testID="delivery-proof-photo" onPress={() => setZoom(true)} style={s.tile}>
-            <Image source={fileUrl(stop.pod_photo_path)} style={{ flex: 1 }} contentFit="cover" />
+            <Image source={photo} style={{ flex: 1 }} contentFit="cover" />
             <View style={s.tag}><Ionicons name="expand" size={12} color={colors.onSurfaceInverse} /></View>
           </Pressable>
         ) : null}
@@ -70,10 +73,10 @@ export default function DeliveryProof({ stop, onShared, onError }: { stop: Stop;
         <Ionicons name="share-social" size={18} color={colors.onSurfaceInverse} />
         <Mono style={s.shareText}>{sharing ? "PREPARING LINK…" : "SHARE PROOF LINK"}</Mono>
       </Pressable>
-      {zoom && stop.pod_photo_path ? (
+      {zoom && photo ? (
         <Modal visible transparent animationType="fade" onRequestClose={() => setZoom(false)}>
           <View style={[s.zoomWrap, { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.lg }]}>
-            <Image source={fileUrl(stop.pod_photo_path)} style={{ flex: 1 }} contentFit="contain" testID="delivery-proof-photo-full" />
+            <Image source={photo} style={{ flex: 1 }} contentFit="contain" testID="delivery-proof-photo-full" />
             <Pressable testID="delivery-proof-close" onPress={() => setZoom(false)} style={[s.zoomClose, { top: insets.top + spacing.lg }]}>
               <Ionicons name="close" size={28} color={colors.onSurfaceInverse} />
             </Pressable>

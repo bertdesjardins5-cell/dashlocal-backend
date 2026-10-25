@@ -1,0 +1,43 @@
+{
+  "summary": "Tested the security audit fixes: public tracking privacy, the last-4-digit unlock with lockout, order-token gating for window/rating/share, and signed file links. Backend: 14 new pytest cases in tests/test_order_privacy_security.py all pass (100%). A serial run of the full suite was cut off at about 37% by the 290s tool limit, with no failures up to that point. Frontend: every requested flow works on the live preview. That covers the customer index (codes + STOP n, no names), the public tracking page (ETA, stops away, driver first name, MANAGE THIS ORDER box, no address), wrong digits giving verify-error, and 0100 unlocking the address and window picker. A window booking (today 18-20) saved and persisted. On a delivered order the proof photo and signature load through the signed URL, the share link opens /api/proof/{token} and its image loads, a 2-star rating shows apology-code, and a 4-star rating shows no code. The driver stop screen pod-photo-saved image loads with ?t=<session>. Found 1 functional bug (a staff user gets signed out after entering wrong digits) and 2 layout/keyboard issues on small screens.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/stops/{id}/window, POST /api/stops/{id}/rating", "issue": "With an X-Order-Token these return the full Stop model_dump (customer_phone, notes, pod_photo_path, share_token, fail_reason, merchant_* fields, fee). The token holder is the customer, but it is wider than order_private(). Consider returning public_stop() + order_private() instead."},
+      {"endpoint": "POST /api/track/{code}/verify", "issue": "The per-code limit (10 tries across all IPs) means anyone who knows a tracking code can lock the real customer out for 15 min. This is an accepted brute-force trade-off; it is listed here only so it is a known decision."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "src/api.ts api() 401 handler", "issue": "A staff session (admin/driver) already loaded in memory gets wiped when a wrong last-4 is entered on /customer/{code}. /track/{code}/verify returns 401, and api.ts:105 calls clearSession() for any 401 when a token exists (only /auth/login is excluded). Reproduced: admin signed in -> /admin -> in-app nav to /customer/MD1004 -> enter 9999 -> localStorage multidrop_session removed. A wrong or expired X-Order-Token (401) on window/rating/share/private would do the same. Fix: skip clearSession for /track/ paths and for requests that send X-Order-Token, or only clear when the 401 detail is a session error.", "testID": "verify-order-button", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "customer/[code].tsx (375x667)", "issues": [
+        "The tracking sheet is a plain View, not a ScrollView. Once the order is unlocked and delivered (address + proof + share + rating prompt with tags), the sheet is taller than the screen. The map collapses to 0 height and the absolute DELIVERED banner overlays the header, and rating-submit-button sits at y=647-703 in a 667px viewport. On native (no body scroll) the submit button is cut off and can't be reached. Wrap the sheet content in a ScrollView or give the map a minimum height.",
+        "No KeyboardAvoidingView on the tracking screen. verify-last4-input sits at the bottom of the sheet, so the iOS number-pad will cover the input and the UNLOCK button.",
+        "Window day/slot chips (customer-window-day-*, customer-window-slot-*) are 36px tall, below the 44px touch-target minimum."
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_order_privacy_security.py", "/app/test_reports/pytest/pytest_iter18.xml"],
+  "action_items": [
+    "api.ts: don't call clearSession() on 401 from /track/{code}/verify, /track/{code}/private or requests carrying X-Order-Token (wrong digits currently sign staff out).",
+    "customer/[code].tsx: make the bottom sheet scrollable (ScrollView) or cap its height, so the rating submit, proof and window picker stay reachable on small phones; add KeyboardAvoidingView for the last-4 input.",
+    "Optional: return a trimmed payload (public_stop + order_private) from PUT /stops/{id}/window and POST /stops/{id}/rating instead of the full Stop model."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 3455 lines; it should be split into routers (tracking/auth/merchants/routes).",
+    "require_order_access checks the order token first and gives a clear 401/403; file_allowed accepts the file token only for the exact path and the staff session only for an existing, enabled user, and an order token is correctly rejected for files (verified).",
+    "client_ip uses the last X-Forwarded-For hop, which is correct behind the ingress, so the per-IP limit can't be dodged by spoofing XFF.",
+    "customer/[code].tsx: the /private refresh .catch(() => setOrder(null)) re-locks the order on any network blip, not only on token expiry. Minor."
+  ],
+  "updated_files": ["/app/backend/tests/test_order_privacy_security.py (new)"],
+  "success_rate": {"backend": "100% (14/14 new security tests)", "frontend": "100% of requested flows; 1 medium bug + small-screen layout issues"},
+  "seed_data_creation": "Delivered MD1002 (photo + signature) and MD1003 (signature) as drv-1 during testing. Ran POST /api/admin/reset afterwards and cleared db.login_attempts trk* keys.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n0 and export EXPO_PUBLIC_BACKEND_URL (older suites read it from the env). The new suite reads phone digits straight from Mongo (db.stops.customer_phone) and cleans trk* login_attempts. MD100N phones are +1415555010(N-1), so MD1002 -> 0101 and MD1003 -> 0102. Web session lives in localStorage 'multidrop_session' ({token,user}); inject it to test driver/admin screens.",
+  "rca_of_issue": "Staff sign-out: api.ts treats every 401 as an expired staff session when getToken() is non-null. The new customer endpoints use 401 for 'wrong digits' and for a bad order token, so a signed-in staff user who mistypes is logged out. Repro steps are in ui_bugs. Mitigation: exclude the customer/order paths from the clearSession branch."
+}
