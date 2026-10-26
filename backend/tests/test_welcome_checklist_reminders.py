@@ -69,7 +69,7 @@ def cleanup():
 def shop(admin):
     """Signup -> approve -> set password -> merchant session."""
     email = f"test+wc{uuid.uuid4().hex[:8]}@resend.dev"
-    r = requests.post(f"{BASE_URL}/api/signup-requests", json={"store_name": "TEST_Welcome " + uuid.uuid4().hex[:4], "contact_name": "TEST Owner", "email": email}, headers=NOAUTH)
+    r = requests.post(f"{BASE_URL}/api/signup-requests", json={"store_name": "TEST_Welcome " + uuid.uuid4().hex[:4], "contact_name": "TEST Owner", "email": email, "privacy_consent": True, "consent_timestamp": "2026-01-01T00:00:00Z"}, headers=NOAUTH)
     assert r.status_code == 200, r.text
     sr = db.signup_requests.find_one({"email": email})
     time.sleep(2)
@@ -117,7 +117,7 @@ class TestChecklist:
     def test_upload_step(self, shop):
         csv = b"customer_name,phone,address\nTEST Person,+15195559912,200 King St W Kitchener\n"
         h = {k: v for k, v in shop["h"].items()}
-        r = requests.post(f"{BASE_URL}/api/merchants/{shop['mid']}/import", files={"file": ("orders.csv", io.BytesIO(csv), "text/csv")}, headers=h)
+        r = requests.post(f"{BASE_URL}/api/merchants/{shop['mid']}/import?consent=true", files={"file": ("orders.csv", io.BytesIO(csv), "text/csv")}, headers=h)
         assert r.status_code == 200, r.text
         d = requests.get(f"{BASE_URL}/api/merchants/{shop['mid']}/checklist", headers=shop["h"]).json()
         assert {s["key"]: s["done"] for s in d["steps"]}["upload"] is True and d["done"] == 3

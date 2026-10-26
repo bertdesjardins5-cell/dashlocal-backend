@@ -12,6 +12,8 @@
       "bundleIdentifier": "com.emergent.arrivewise.ue3on3",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Share live location so customers track deliveries",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Auto-mark stops arrived even with phone locked",
+        "UIBackgroundModes": ["location"],
         "NSCameraUsageDescription": "Scan parcel labels and photograph deliveries",
         "NSPhotoLibraryUsageDescription": "Attach delivery photos from your gallery"
       }
@@ -25,6 +27,9 @@
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
         "CAMERA"
       ]
     },
@@ -53,7 +58,11 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Share live location so customers track deliveries"
+          "locationWhenInUsePermission": "Share live location so customers track deliveries",
+          "locationAlwaysAndWhenInUsePermission": "Auto-mark stops arrived even with phone locked",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       [

@@ -175,14 +175,14 @@ class TestVolumeTiers:
 class TestPharmacy:
     def test_import_without_run_400(self, books):
         csv = "customer_name,phone,address\nTEST_TIER P0,+15195557100,\"200 King St W, Kitchener\"\n"
-        r = requests.post(f"{API}/merchants/mer-2/import", files={"file": ("o.csv", io.BytesIO(csv.encode()), "text/csv")}, headers=books)
+        r = requests.post(f"{API}/merchants/mer-2/import?consent=true", files={"file": ("o.csv", io.BytesIO(csv.encode()), "text/csv")}, headers=books)
         assert r.status_code == 400 and "run" in r.text.lower(), r.text
-        r = requests.post(f"{API}/merchants/mer-2/import?run=night", files={"file": ("o.csv", io.BytesIO(csv.encode()), "text/csv")}, headers=books)
+        r = requests.post(f"{API}/merchants/mer-2/import?run=night&consent=true", files={"file": ("o.csv", io.BytesIO(csv.encode()), "text/csv")}, headers=books)
         assert r.status_code == 400, r.text
 
     def test_regular_shop_ignores_run(self, bakery):
         csv = "customer_name,phone,address\n"
-        r = requests.post(f"{API}/merchants/mer-1/import?run=evening", files={"file": ("o.csv", io.BytesIO(csv.encode()), "text/csv")}, headers=bakery)
+        r = requests.post(f"{API}/merchants/mer-1/import?run=evening&consent=true", files={"file": ("o.csv", io.BytesIO(csv.encode()), "text/csv")}, headers=bakery)
         assert r.status_code == 400 and "no order rows" in r.text  # validated as a regular CSV, not a run error
 
     def test_import_with_run(self, books, route):
@@ -190,7 +190,7 @@ class TestPharmacy:
         csv = ("customer_name,phone,address\n"
                "TEST_TIER P1,+15195557101,\"200 King St W, Kitchener\"\n"
                "TEST_TIER P2,+15195557102,\"75 King St S, Waterloo\"\n")
-        r = requests.post(f"{API}/merchants/mer-2/import?run=evening", files={"file": ("o.csv", io.BytesIO(csv.encode()), "text/csv")}, headers=books)
+        r = requests.post(f"{API}/merchants/mer-2/import?run=evening&consent=true", files={"file": ("o.csv", io.BytesIO(csv.encode()), "text/csv")}, headers=books)
         assert r.status_code == 200, r.text
         job = r.json()
         assert job["run"] == "evening" and job["manifest_id"].startswith("mer-2:") and job["manifest_id"].endswith(":evening")

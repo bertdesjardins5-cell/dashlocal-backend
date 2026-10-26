@@ -11,7 +11,7 @@ d2 = requests.post(f"{API}/auth/driver-login", json={"phone": "+14155550102", "p
 
 
 def imp(body):
-    r = requests.post(f"{API}/merchants/mer-1/import", headers=H(m1), files={"file": ("ui.csv", body, "text/csv")})
+    r = requests.post(f"{API}/merchants/mer-1/import?consent=true", headers=H(m1), files={"file": ("ui.csv", body, "text/csv")})
     r.raise_for_status()
     jid = r.json()["id"]
     for _ in range(40):

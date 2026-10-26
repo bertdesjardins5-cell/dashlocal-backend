@@ -57,7 +57,7 @@ def admin(db):
 @pytest.fixture(scope="module")
 def pastbill(admin, db):
     t = requests.post(f"{API}/auth/login", json={"email": "bakery@dashlocal.app", "password": "Bakery2026"}).json()["token"]
-    r = requests.post(f"{API}/merchants/mer-1/import", headers=H(t),
+    r = requests.post(f"{API}/merchants/mer-1/import?consent=true", headers=H(t),
                       files={"file": ("p.csv", b"customer_name,phone,address\nTEST_Note,5195550193,200 King St W Kitchener\n", "text/csv")})
     assert r.status_code == 200, r.text
     jid, end = r.json()["id"], time.time() + 60

@@ -93,7 +93,7 @@ def orders(toks):
             b"TEST_PriA,5195550191,200 King St W Kitchener,yes\n"
             b"TEST_PriB,5195550192,10200 King St W Kitchener,\n")
     h = H(toks["m1"])
-    r = requests.post(f"{API}/merchants/mer-1/import", headers=h, files={"file": ("p.csv", csvb, "text/csv")})
+    r = requests.post(f"{API}/merchants/mer-1/import?consent=true", headers=h, files={"file": ("p.csv", csvb, "text/csv")})
     assert r.status_code == 200, r.text
     jid, end = r.json()["id"], time.time() + 60
     while time.time() < end:

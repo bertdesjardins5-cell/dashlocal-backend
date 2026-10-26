@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import * as DocumentPicker from "expo-document-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
+import Checkbox from "expo-checkbox";
 import { clearSession, getToken, useSession } from "@/src/session";
 import ReportDownload from "@/src/components/ReportDownload";
 import WeeklyEmailCard from "@/src/components/WeeklyEmailCard";
@@ -40,6 +41,7 @@ export default function MerchantHome() {
   const [fix, setFix] = useState<ImportRow | null>(null);
   const [busyOrder, setBusyOrder] = useState<string | null>(null);
   const [run, setRun] = useState<Run["key"] | null>(null);
+  const [consent, setConsent] = useState(false);
 
   const togglePriority = async (o: Stop) => {
     setBusyOrder(o.id);
@@ -68,6 +70,7 @@ export default function MerchantHome() {
     const pharmacy = !!d?.runs;
     const chosen = d?.runs?.find((r) => r.key === run);
     if (pharmacy && !chosen) return toast.show("PICK A PICKUP RUN FIRST", "red");
+    if (!consent) return toast.show("TICK THE PRIVACY CONSENT BOX FIRST", "red");
     try {
       const picked = await DocumentPicker.getDocumentAsync({
         type: ["text/csv", "text/comma-separated-values", "application/vnd.ms-excel", "text/plain"],
@@ -77,7 +80,7 @@ export default function MerchantHome() {
       const a = picked.assets[0];
       if (!a.name.toLowerCase().endsWith(".csv")) return toast.show("PICK A .CSV FILE", "red");
       setUploading(true);
-      const res = await uploadForm(`${API}/merchants/${merchantId}/import${pharmacy ? `?run=${run}` : ""}`, {
+      const res = await uploadForm(`${API}/merchants/${merchantId}/import?consent=true${pharmacy ? `&run=${run}` : ""}`, {
         files: { file: { uri: a.uri, name: a.name, mimeType: "text/csv" } },
         headers: { Authorization: `Bearer ${getToken()}` },
       });
@@ -132,6 +135,19 @@ export default function MerchantHome() {
           <Mono style={s.section}>IMPORT ORDERS FROM CSV</Mono>
           <View style={s.block}>
             <Mono style={s.meta}>Columns: customer_name, phone, address (required) · notes, window_date, window_start, window_end, priority (yes = priority delivery, surcharge applies), delivery_note or gate_code (sent to the driver and saved for that customer&apos;s next orders) (optional). Up to 200 rows per file. Addresses are looked up on the map automatically.{d.runs ? " Pharmacy runs set the delivery day and window, so window columns are ignored." : ""}</Mono>
+            <View style={s.privacyWarn} testID="health-info-warning">
+              <Ionicons name="shield-checkmark" size={18} color={colors.onWarning} />
+              <Mono style={[s.meta, { flex: 1, color: colors.onWarning }]}>
+                NO HEALTH INFO: notes are for delivery instructions only (gate code, &quot;leave at side door&quot;). Never include prescription names, medications, dosages or diagnoses.
+              </Mono>
+            </View>
+            <Pressable testID="order-consent-checkbox" onPress={() => setConsent(!consent)} style={s.consentRow} accessibilityRole="checkbox" accessibilityState={{ checked: consent }}>
+              <Checkbox value={consent} onValueChange={setConsent} color={consent ? colors.brandForest : undefined} />
+              <Mono style={[s.meta, { flex: 1, color: colors.onSurface }]}>
+                I consent to DashLocal and its designated independent drivers collecting and processing my name, address, and contact details solely for the purpose of same-day parcel/prescription fulfillment. I agree to the{" "}
+                <Mono style={{ color: colors.brandForest, textDecorationLine: "underline", fontSize: 12 }} onPress={() => router.push("/privacy")} testID="order-privacy-link">Privacy Policy</Mono>.
+              </Mono>
+            </Pressable>
             {d.runs ? (
               <View style={{ gap: spacing.sm }} testID="pharmacy-runs">
                 <Mono style={s.label}>PICKUP RUN (EASTERN TIME)</Mono>
@@ -256,4 +272,6 @@ const useStyles = makeStyles((c) => ({
   priBtn: { alignSelf: "flex-start", minHeight: 44, paddingHorizontal: spacing.md, borderWidth: 2, borderColor: c.border, justifyContent: "center", marginTop: spacing.xs },
   priText: { fontSize: 11, fontWeight: "700" },
   run: { flexDirection: "row", alignItems: "center", gap: spacing.sm, borderWidth: 2, borderColor: c.border, padding: spacing.md, minHeight: 56 },
+  privacyWarn: { flexDirection: "row", gap: spacing.sm, alignItems: "flex-start", backgroundColor: c.warning, padding: spacing.md },
+  consentRow: { flexDirection: "row", gap: spacing.sm, alignItems: "flex-start", paddingVertical: spacing.sm, minHeight: 44 },
 }));

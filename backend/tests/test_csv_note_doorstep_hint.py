@@ -44,7 +44,7 @@ def cleanup():
 
 
 def import_csv(m, body):
-    r = requests.post(f"{API}/merchants/mer-1/import", headers=m, files={"file": ("t.csv", body.encode(), "text/csv")})
+    r = requests.post(f"{API}/merchants/mer-1/import?consent=true", headers=m, files={"file": ("t.csv", body.encode(), "text/csv")})
     assert r.status_code == 200, r.text
     job = r.json()["id"]
     for _ in range(40):
@@ -56,7 +56,13 @@ def import_csv(m, body):
 
 
 def stop_doc(sid):
-    return json.loads(mongo(f'print(JSON.stringify(db.stops.findOne({{id:"{sid}"}},{{_id:0}})))'))
+    d = json.loads(mongo(f'print(JSON.stringify(db.stops.findOne({{id:"{sid}"}},{{_id:0}})))'))
+    from cryptography.fernet import Fernet  # notes/customer_note/pod_signature are encrypted at rest ("enc:" prefix)
+    f = Fernet(os.environ["ENCRYPTION_KEY"].encode())
+    for k in ("notes", "customer_note", "pod_signature"):
+        if isinstance(d.get(k), str) and d[k].startswith("enc:"):
+            d[k] = f.decrypt(d[k][4:].encode()).decode()
+    return d
 
 
 def saved_for(m, phone):

@@ -8,7 +8,7 @@ import { makeStyles, spacing, useTheme } from "@/src/theme";
 type Log = { status: "sent" | "partial" | "failed"; error: string | null; created_at: string; trigger: string; week_start: string; week_end: string };
 type Weekly = { enabled: boolean; recipients: string[]; next_send: string; last: Log | null };
 
-const when = (iso: string) => `${dayLabel(new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" }))} ${fmtDepotTime(iso)}`;
+const when = (iso: string) => `${dayLabel(new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/Toronto" }))} ${fmtDepotTime(iso)}`;
 
 // Merchant: Monday-morning email with last week's summary and a 7-day CSV download link.
 export default function WeeklyEmailCard({ merchantId, notify }: { merchantId: string; notify: (m: string, tone?: "dark" | "red" | "green") => void }) {

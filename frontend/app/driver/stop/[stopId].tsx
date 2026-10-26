@@ -7,7 +7,7 @@ import { Image } from "expo-image";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
-import { api, API, BACKEND_URL, fileUrl, RouteDetail, Stop, windowLabel } from "@/src/api";
+import { api, API, BACKEND_URL, fileUrl, pickupRunText, RouteDetail, Stop, windowLabel } from "@/src/api";
 import { getToken } from "@/src/session";
 import { uploadForm } from "@/src/utils/upload";
 import SignaturePad from "@/src/components/SignaturePad";
@@ -72,7 +72,7 @@ export default function StopDetail() {
   const savePhones = async () => {
     const clean = (p: string) => p.replace(/[\s\-()]/g, "");
     const valid = (p: string) => /^\+[1-9]\d{7,14}$/.test(clean(p));
-    if (!valid(custPhone) || (driverId && !valid(drvPhone))) return toast.show("USE +COUNTRYCODE FORMAT, E.G. +15195550123", "red");
+    if ((stop?.customer_phone && !valid(custPhone)) || (driverId && !valid(drvPhone))) return toast.show("USE +COUNTRYCODE FORMAT, E.G. +15195550123", "red");
     setSavingPhones(true);
     try {
       if (custPhone && custPhone !== stop?.customer_phone) await api(`/stops/${stopId}/phone`, { method: "PUT", body: { phone: custPhone } });
@@ -166,6 +166,11 @@ export default function StopDetail() {
               ) : null}
               {stop.arrival_method ? <Mono style={s.meta} testID="stop-arrival-method">ARRIVED VIA {stop.arrival_method.toUpperCase()}</Mono> : null}
               {stop.priority ? <Mono style={s.windowTag} testID="stop-priority">PRIORITY DELIVERY</Mono> : null}
+              {stop.pickup_run ? (
+                <Mono style={s.windowTag} testID="stop-pickup-run">
+                  {pickupRunText(stop.pickup_run)}{stop.pickup_run.pickup_address ? `\nFROM ${stop.pickup_run.pickup_address.toUpperCase()}` : ""}
+                </Mono>
+              ) : null}
               {windowLabel(stop) ? <Mono style={s.windowTag} testID="stop-window">DELIVER {windowLabel(stop)}</Mono> : null}
             </View>
 
@@ -199,7 +204,7 @@ export default function StopDetail() {
             ) : null}
             <View style={s.maskedRow}>
               <Mono style={s.masked}>NUMBERS MASKED VIA TWILIO LINE</Mono>
-              <Pressable testID="edit-phones-button" onPress={() => { setCustPhone(stop.customer_phone); setDrvPhone(routeQ.data?.driver?.phone ?? ""); setShowPhones((v) => !v); }} style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.lg }}>
+              <Pressable testID="edit-phones-button" onPress={() => { setCustPhone(stop.customer_phone ?? ""); setDrvPhone(routeQ.data?.driver?.phone ?? ""); setShowPhones((v) => !v); }} style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.lg }}>
                 <Mono style={{ fontSize: 11, color: colors.brandPrimary, fontWeight: "700" }}>{showPhones ? "CLOSE" : "EDIT NUMBERS"}</Mono>
               </Pressable>
             </View>
@@ -207,8 +212,12 @@ export default function StopDetail() {
               <View style={s.section} testID="phones-editor">
                 <Mono style={s.meta}>YOUR PHONE (TWILIO RINGS THIS FIRST)</Mono>
                 <TextInput testID="driver-phone-input" value={drvPhone} onChangeText={setDrvPhone} keyboardType="phone-pad" placeholder="+15195550123" placeholderTextColor={colors.muted} style={s.input} />
-                <Mono style={s.meta}>CUSTOMER PHONE</Mono>
-                <TextInput testID="customer-phone-input" value={custPhone} onChangeText={setCustPhone} keyboardType="phone-pad" placeholder="+15195550123" placeholderTextColor={colors.muted} style={s.input} />
+                {stop.customer_phone ? (
+                  <>
+                    <Mono style={s.meta}>CUSTOMER PHONE</Mono>
+                    <TextInput testID="customer-phone-input" value={custPhone} onChangeText={setCustPhone} keyboardType="phone-pad" placeholder="+15195550123" placeholderTextColor={colors.muted} style={s.input} />
+                  </>
+                ) : <Mono style={s.meta}>Customer numbers stay private — calls and texts go through the masked line.</Mono>}
                 <Btn testID="save-phones-button" label="SAVE NUMBERS" variant="dark" loading={savingPhones} onPress={savePhones} />
               </View>
             ) : null}

@@ -170,7 +170,7 @@ class TestNearbySms:
 
 # ---------------- Merchants & CSV import
 def _upload(api, content, name="t.csv", mid="mer-1"):
-    return api.post(f"{API}/merchants/{mid}/import", files={"file": (name, content.encode(), "text/csv")})
+    return api.post(f"{API}/merchants/{mid}/import?consent=true", files={"file": (name, content.encode(), "text/csv")})
 
 
 def _wait_job(api, jid, timeout=60):

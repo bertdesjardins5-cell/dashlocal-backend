@@ -9,6 +9,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { ErrorBoundary } from "@/src/components/error-boundary";
 import { queryClient } from "@/src/query-client";
 import { useTheme } from "@/src/theme";
+import "@/src/driverTracking"; // registers the background location task at startup
 
 // Disable logbox errors etc so that users can see the app
 // and agent works as expected.

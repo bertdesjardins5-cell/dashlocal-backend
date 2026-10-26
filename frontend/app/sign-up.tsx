@@ -6,6 +6,7 @@ import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { api } from "@/src/api";
 import BrandHeader, { Kicker } from "@/src/components/brand/BrandHeader";
 import BrandButton from "@/src/components/brand/BrandButton";
+import ConsentModal from "@/src/components/ConsentModal";
 import { useBrandForm } from "@/src/components/brand/formStyles";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
@@ -27,15 +28,18 @@ export default function SignUp() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [consentOpen, setConsentOpen] = useState(false);
   const ready = !!(form.store_name?.trim() && form.contact_name?.trim() && form.email?.trim());
 
-  const submit = async () => {
+  const submit = async (consent_timestamp: string) => {
     setBusy(true);
     setError(null);
     try {
-      await api("/signup-requests", { method: "POST", body: form });
+      await api("/signup-requests", { method: "POST", body: { ...form, privacy_consent: true, consent_timestamp } });
+      setConsentOpen(false);
       setDone(true);
     } catch (e: any) {
+      setConsentOpen(false);
       setError(e.message);
     } finally {
       setBusy(false);
@@ -69,11 +73,14 @@ export default function SignUp() {
             <Text style={f.label}>Anything else? (optional)</Text>
             <TextInput testID="signup-message" value={form.message ?? ""} onChangeText={(v) => setForm({ ...form, message: v })} placeholder="How many deliveries a week, what you sell…"
               placeholderTextColor={colors.brandMuted} multiline maxLength={500} style={[f.input, s.multi]} />
-            <BrandButton testID="signup-submit" label="Send request" icon="send" loading={busy} disabled={!ready} onPress={submit} style={{ marginTop: 8 }} />
+            <BrandButton testID="signup-submit" label="Review privacy terms & send" icon="send" loading={busy} disabled={!ready} onPress={() => setConsentOpen(true)} style={{ marginTop: 8 }} />
+            <Text style={s.small} onPress={() => router.push("/privacy")} testID="signup-privacy-link">How we protect your data — Privacy Policy</Text>
             <Text style={s.small} onPress={() => router.push("/sign-in/merchant")} testID="signup-have-account">Already have an account? Sign in</Text>
           </View>
         )}
       </KeyboardAwareScrollView>
+      <ConsentModal visible={consentOpen} role="merchant" busy={busy} onAgree={submit} onClose={() => setConsentOpen(false)}
+        onOpenPolicy={() => { setConsentOpen(false); router.push("/privacy"); }} />
     </View>
   );
 }

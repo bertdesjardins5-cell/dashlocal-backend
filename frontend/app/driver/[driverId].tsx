@@ -8,10 +8,12 @@ import * as Location from "expo-location";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
-import { api, dayLabel, depotToday, fmtDepotTime, RouteDetail, windowLabel, WS_BASE } from "@/src/api";
+import { api, dayLabel, depotToday, fmtDepotTime, pickupRunText, RouteDetail, windowLabel, WS_BASE } from "@/src/api";
 import { clearSession, getToken } from "@/src/session";
 import * as Haptics from "expo-haptics";
 import RouteMap from "@/src/components/RouteMap";
+import DriverConsentGate from "@/src/components/DriverConsentGate";
+import { startBackgroundTracking, stopBackgroundTracking } from "@/src/driverTracking";
 import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
 
@@ -28,6 +30,7 @@ export default function Manifest() {
   const [perm, setPerm] = useState<"ask" | "settings" | null>(null);
   const [starting, setStarting] = useState(false);
   const watchRef = useRef<Location.LocationSubscription | null>(null);
+  const [locked, setLocked] = useState(false);
 
   // Weekly badge celebrations: poll for badges the driver hasn't seen yet, and re-check on focus (e.g. after a drop).
   const badgesQ = useQuery({
@@ -151,6 +154,8 @@ export default function Manifest() {
   const stopGps = () => {
     watchRef.current?.remove();
     watchRef.current = null;
+    stopBackgroundTracking();
+    setLocked(false);
   };
 
   const startGps = async () => {
@@ -163,7 +168,9 @@ export default function Manifest() {
       if (!granted) return setPerm(req.canAskAgain ? "ask" : "settings");
     }
     setPerm(null);
-    watchRef.current = await Location.watchPositionAsync(
+    watchRef.current?.remove();
+    try {
+      watchRef.current = await Location.watchPositionAsync(
       { accuracy: Location.Accuracy.High, distanceInterval: 10, timeInterval: 4000 },
       async (loc) => {
         try {
@@ -172,11 +179,39 @@ export default function Manifest() {
         } catch {}
       },
     );
+    } catch (e: any) {
+      toast.show(`LOCATION UNAVAILABLE: ${e.message}`, "red");
+      return;
+    }
     setMode("gps");
+    setLocked(await startBackgroundTracking());
   };
+
+  // Auto arrival: switch live GPS on as soon as the route is active (ask first with the explanation box), off when it ends.
+  const autoTried = useRef(false);
+  const routeStatus = route?.status;
+  const hasNext = !!route?.next_stop_id;
+  useEffect(() => {
+    if (routeStatus !== "active" || !hasNext || autoTried.current) return;
+    autoTried.current = true;
+    (async () => {
+      const cur = await Location.getForegroundPermissionsAsync();
+      if (cur.granted) startGps();
+      else setPerm(cur.canAskAgain ? "ask" : "settings");
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeStatus, hasNext]);
+  useEffect(() => {
+    if (route && (route.status !== "active" || !hasNext) && mode === "gps") {
+      stopGps();
+      setMode("off");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route?.status, hasNext]);
 
   const selectMode = (m: Mode) => {
     stopGps();
+    setPerm(null);
     if (m === "gps") {
       setMode("off");
       setPerm("ask");
@@ -215,7 +250,7 @@ export default function Manifest() {
           <Pressable testID="driver-summary-button" onPress={() => router.push(`/driver/summary/${driverId}`)} style={s.iconBtn}>
             <Ionicons name="stats-chart" size={20} color={colors.onSurfaceInverse} />
           </Pressable>
-          <Pressable testID="driver-sign-out-button" onPress={() => clearSession()} style={s.iconBtn}>
+          <Pressable testID="driver-sign-out-button" onPress={() => { stopGps(); clearSession(); }} style={s.iconBtn}>
             <Ionicons name="log-out" size={20} color={colors.onSurfaceInverse} />
           </Pressable>
         </View>
@@ -290,11 +325,16 @@ export default function Manifest() {
               ))}
             </View>
           ) : null}
+          {route.status === "active" && mode === "gps" ? (
+            <Mono style={[s.meta, { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm }]} testID="gps-status">
+              {locked ? "AUTO ARRIVAL ON · WORKS WITH THE PHONE LOCKED" : "AUTO ARRIVAL ON · KEEP THE APP OPEN (ALLOW \"ALWAYS\" LOCATION FOR LOCKED PHONE)"}
+            </Mono>
+          ) : null}
 
           {perm ? (
             <View style={s.permBox} testID="location-permission-box">
               <Display style={{ fontSize: 18 }}>SHARE YOUR LOCATION</Display>
-              <Mono style={s.meta}>Customers see you approach live, and stops auto-mark ARRIVED within 50 m — no tapping.</Mono>
+              <Mono style={s.meta}>Turn on location so stops mark ARRIVED automatically within 50 m, even with your phone locked, and customers see you approach live. Choose &quot;Always&quot; when asked so it keeps working in your pocket.</Mono>
               {perm === "settings" ? (
                 <Btn testID="location-open-settings-button" label="OPEN SETTINGS" variant="dark" icon="settings" onPress={() => Linking.openSettings()} />
               ) : (
@@ -317,6 +357,7 @@ export default function Manifest() {
                 <Display style={s.heroName}>{next.customer_name}</Display>
                 <Mono style={s.heroAddr}>{next.address}</Mono>
                 <Mono style={s.heroAddr}>{next.postal_code} · {next.tracking_code}</Mono>
+                {next.pickup_run ? <Mono style={s.heroWindow} testID="next-stop-pickup-run">{pickupRunText(next.pickup_run)}</Mono> : null}
                 {next.notes ? <Mono style={s.heroNote}>NOTE: {next.notes}</Mono> : null}
                 {next.customer_note ? <Mono style={s.heroNote} testID="next-stop-customer-note">CUSTOMER: {next.customer_note}</Mono> : null}
                 {windowLabel(next) ? (
@@ -351,6 +392,7 @@ export default function Manifest() {
               <View style={{ flex: 1, gap: 2 }}>
                 <Display style={s.rowName}>{st.customer_name}</Display>
                 <Mono style={s.meta} numberOfLines={1}>{st.address}</Mono>
+                {st.pickup_run ? <Mono style={[s.meta, { fontWeight: "700", color: colors.onSurface }]} numberOfLines={2} testID={`manifest-stop-${st.seq}-run`}>{pickupRunText(st.pickup_run)}</Mono> : null}
                 {windowLabel(st) && st.status === "pending" ? (
                   <Mono style={[s.meta, { color: st.late_min ? colors.brandPrimary : colors.onSurface, fontWeight: "700" }]}>
                     WINDOW {windowLabel(st)}{st.late_min ? ` · LATE ${st.late_min}M` : ""}
@@ -365,6 +407,7 @@ export default function Manifest() {
       )}
       {toast.node}
       {celebrate.length ? <BadgeCelebration badges={celebrate} onDone={dismissCelebration} /> : null}
+      <DriverConsentGate />
     </View>
   );
 }

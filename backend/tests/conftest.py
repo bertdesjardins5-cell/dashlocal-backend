@@ -41,5 +41,12 @@ def _request(self, method, url, *args, **kwargs):
 @pytest.fixture(autouse=True, scope="session")
 def _admin_reset_auth():
     requests.Session.request = _request  # requests.post() also goes through Session.request
+    # drivers must accept the consent modal before using manifest endpoints; demo drivers accept it for the suites
+    from pymongo import MongoClient
+    users = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]].users
+    pending = [u["id"] for u in users.find({"role": "driver", "phipa_consent_given": {"$ne": True}}, {"_id": 0, "id": 1})]
+    users.update_many({"role": "driver"}, {"$set": {"phipa_consent_given": True, "consent_version": "2026-06",
+                                                    "consent_timestamp": "2026-06-01T00:00:00Z", "consent_recorded_at": "2026-06-01T00:00:00Z"}})
     yield
     requests.Session.request = _orig_request
+    users.update_many({"id": {"$in": pending}}, {"$unset": {"phipa_consent_given": "", "consent_version": "", "consent_timestamp": "", "consent_recorded_at": ""}})

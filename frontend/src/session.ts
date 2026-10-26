@@ -24,6 +24,8 @@ const store = {
 };
 
 export const getToken = () => current?.token ?? null;
+export const getSessionUser = () => current?.user ?? null;
+export const ensureSession = () => load();
 
 function load() {
   if (!loading) {

@@ -120,3 +120,10 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - Depot/clock: Kitchener-Waterloo, America/Toronto; geocoding bounded to KW; seed zones Downtown/Uptown/Westmount/Stanley Park.
 - Pharmacy partners (admin toggle + pickup address in Store Rates sheet): $6.25/drop if pickup manifest has 10+ drops else $8.99; 8 km from pharmacy included then $1.25/km; must pick Afternoon (cut-off 1:30, window 2:30-6) or Evening (cut-off 4:30, window 5:30-8:30) run on upload; after cut-off books tomorrow's run; $25/month platform fee invoice (+HST) for pharmacy partners only.
 - Backlog: geofence auto-arrival, West compass zone has no default driver in KW seed.
+
+## 2026-06 — Driver run labels, auto arrival, privacy & compliance (PIPEDA/PHIPA)
+- Drivers see pharmacy pickup run labels (manifest + stop screen). GPS auto-starts on active route; background (locked phone) tracking via expo-task-manager (native build only).
+- Encryption at rest: stops.notes/customer_note/pod_signature + saved_notes.note (Fernet, ENCRYPTION_KEY) and proof photos; HSTS header.
+- Driver API views hide phone/fee/consent; drivers can't edit customer phone; drivers must accept consent modal (server-enforced).
+- Audit log middleware + /admin/privacy screen; retention (default 730 days, erase PII keep invoice totals, every 6h).
+- /privacy policy page (placeholder Privacy Officer privacy@dashlocal.app). Consent modal on sign-up; consent checkbox on CSV upload (stored per order).

@@ -1,0 +1,31 @@
+{
+  "summary": "Tested Pickup Run Labels (backend + driver manifest + stop screen) and Auto Arrival (auto GPS prompt on active route, NOT NOW, LIVE GPS with browser geolocation granted, SIMULATE geofence, 50 m geofence API) plus the arrive/deliver regression. Backend: 9/9 pytest pass. Bay Books evening-run CSV import -> batch -> stops[].pickup_run = {run:'evening', label:'Evening Batch', pickup_label:'5:00 PM – 5:30 PM', pharmacy:'Bay Books', pickup_address:'385 Fairway Rd S, Kitchener'}. Non-batch stops get null. GET /api/stops/{id} also returns pickup_run. Geofence within 50 m sets arrived/geofence. UI: next-stop-pickup-run and manifest-stop-50-run show 'EVENING BATCH · PICKUP 5:00 PM – 5:30 PM · BAY BOOKS'. stop-pickup-run adds 'FROM 385 FAIRWAY RD S, KITCHENER'. The location-permission-box appears on its own for an active route and NOT NOW closes it. With geolocation granted, GPS starts without a tap and gps-status reads 'AUTO ARRIVAL ON · KEEP THE APP OPEN ...'. SIMULATE showed the geofence toast in about 4.5 s. Manual arrive and signature deliver both work. Importing expo-task-manager in _layout caused no page errors on web. Only small UX issues found. Background (locked-phone) tracking was not tested because it needs an installed native build.",
+  "backend_issues": {"critical": [], "minor": [
+    {"endpoint": "GET /api/drivers/{id}/route pickup_run", "issue": "pickup_run has no date. After the cut-off, the run is tomorrow's run, but the label still reads only 'EVENING BATCH · PICKUP 5:00 PM'. It could add the manifest date or a day label."}
+  ]},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "location-permission-box", "issue": "The box stays open after the driver taps PAUSED or SIMULATE. selectMode() only clears perm through stopGps for 'gps', so it never clears perm for the other modes, and the yellow box keeps covering the next-stop card while in SIMULATE. Fix: call setPerm(null) when m !== 'gps'. Reference: app/driver/[driverId].tsx:206-214", "testID": "location-permission-box", "priority": "low"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pickup_run_geofence.py", "/app/backend/tests/ui_seed_pickup_run.py", "/app/test_reports/pytest/pytest_iter31.xml"],
+  "action_items": [
+    "Low: in selectMode, clear the permission box (setPerm(null)) when the driver picks PAUSED or SIMULATE.",
+    "Optional: when a pickup run is not today, add the day to the pickup_run label (e.g. 'TUE 27').",
+    "Optional: the background location task keeps posting after the route ends if the app was killed. Consider stopping updates from inside the task when the backend says there is no active route (saves battery)."
+  ],
+  "critical_code_review_comments": [
+    "driverTracking.ts guards defineTask and start/stop with Platform.OS !== 'web'. app.json has UIBackgroundModes location, ACCESS_BACKGROUND_LOCATION, FOREGROUND_SERVICE_LOCATION and isIos/AndroidBackgroundLocationEnabled, so the config is correct.",
+    "startGps has no try/catch around watchPositionAsync. If it rejects (e.g. location services are off), the error is not handled. Wrap it and show a toast.",
+    "The seeded drv-1 active route R-101 is dated yesterday (header shows '25 SUN'). This is demo data, not a feature bug."
+  ],
+  "updated_files": ["/app/backend/tests/test_pickup_run_geofence.py", "/app/backend/tests/ui_seed_pickup_run.py"],
+  "success_rate": {"backend": "100%", "frontend": "100% (1 low-priority UX issue)"},
+  "seed_data_creation": "TEST_ pharmacy stops and import jobs, a temporary drv-3 route and one invoice (DL-000002) were created and then all deleted. drv-1 stops Zoe Martinez and Ava Chen were set back to pending. Pricing and the mer-2 pharmacy partner were not touched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "To show pickup-run labels on drv-1, run `python /app/backend/tests/ui_seed_pickup_run.py setup`. It imports an evening-run Bay Books drop and makes it seq 0 on drv-1's active route. Clean up with `python /app/backend/tests/ui_seed_pickup_run.py cleanup`, and also delete any invoice created if you delivered that stop. For geolocation in Playwright: context.grant_permissions(['geolocation']) and context.set_geolocation(...)."
+}

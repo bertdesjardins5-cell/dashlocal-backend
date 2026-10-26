@@ -116,7 +116,7 @@ class TestInvoiceCreation:
                "TEST_INV B,+15195550192,\"75 King St S, Waterloo\"\n"
                "TEST_INV C,+15195550193,\"385 Fairway Rd S, Kitchener\"\n"
                "TEST_INV D,+15195550194,\"100 Regina St S, Waterloo\"\n")
-        r = requests.post(f"{API}/merchants/mer-1/import", files={"file": ("o.csv", io.BytesIO(csv.encode()), "text/csv")}, headers=bakery)
+        r = requests.post(f"{API}/merchants/mer-1/import?consent=true", files={"file": ("o.csv", io.BytesIO(csv.encode()), "text/csv")}, headers=bakery)
         assert r.status_code == 200, r.text
         job = r.json()["id"]
         for _ in range(40):

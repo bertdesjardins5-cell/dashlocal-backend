@@ -89,7 +89,7 @@ def _logs():
 @pytest.fixture(scope="module")
 def shop(admin):
     email = f"test+fd{uuid.uuid4().hex[:8]}@resend.dev"
-    r = requests.post(f"{BASE_URL}/api/signup-requests", json={"store_name": "TEST_FD Shop " + uuid.uuid4().hex[:4], "contact_name": "TEST Owner", "email": email}, headers=NOAUTH)
+    r = requests.post(f"{BASE_URL}/api/signup-requests", json={"store_name": "TEST_FD Shop " + uuid.uuid4().hex[:4], "contact_name": "TEST Owner", "email": email, "privacy_consent": True, "consent_timestamp": "2026-01-01T00:00:00Z"}, headers=NOAUTH)
     assert r.status_code == 200, r.text
     sr = db.signup_requests.find_one({"email": email})
     time.sleep(3)
@@ -111,7 +111,7 @@ class TestFirstDelivery:
     def test_csv_import_creates_stop(self, shop, route, admin):
         """Real path: merchant CSV import -> stop with merchant_id; then attach it to today's route."""
         csv = "customer_name,phone,address\nTEST Csv Customer,+15195550198,\"200 King St W, Kitchener\"\n"
-        r = requests.post(f"{BASE_URL}/api/merchants/{shop['mid']}/import", files={"file": ("o.csv", io.BytesIO(csv.encode()), "text/csv")}, headers=admin)
+        r = requests.post(f"{BASE_URL}/api/merchants/{shop['mid']}/import?consent=true", files={"file": ("o.csv", io.BytesIO(csv.encode()), "text/csv")}, headers=admin)
         assert r.status_code == 200, r.text
         job = r.json()["id"]
         for _ in range(30):

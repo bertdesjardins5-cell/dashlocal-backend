@@ -87,10 +87,10 @@ class TestAccess:
 
     def test_import_access(self, toks):
         f = {"file": ("t.csv", b"customer_name,phone\n", "text/csv")}
-        assert requests.post(f"{API}/merchants/mer-1/import", files=f).status_code == 401
-        assert requests.post(f"{API}/merchants/mer-1/import", files=f, headers=H(toks["m2"])).status_code == 403
+        assert requests.post(f"{API}/merchants/mer-1/import?consent=true", files=f).status_code == 401
+        assert requests.post(f"{API}/merchants/mer-1/import?consent=true", files=f, headers=H(toks["m2"])).status_code == 403
         # own store reaches validation (400 missing address column) -> auth passed
-        assert requests.post(f"{API}/merchants/mer-1/import", files=f, headers=H(toks["m1"])).status_code == 400
+        assert requests.post(f"{API}/merchants/mer-1/import?consent=true", files=f, headers=H(toks["m1"])).status_code == 400
 
 
 # ---------------- Admin merchant accounts
@@ -143,7 +143,7 @@ def delivered(toks):
     # reset first so leftover active routes from other suites don't block batching / free drivers
     assert requests.post(f"{API}/admin/reset", headers=H(toks["admin"])).status_code == 200
     h = H(toks["m1"])
-    r = requests.post(f"{API}/merchants/mer-1/import", headers=h,
+    r = requests.post(f"{API}/merchants/mer-1/import?consent=true", headers=h,
                       files={"file": ("r.csv", b"customer_name,phone,address\nTEST_Report,5195550188,200 King St W Kitchener\n", "text/csv")})
     assert r.status_code == 200, r.text
     jid = r.json()["id"]

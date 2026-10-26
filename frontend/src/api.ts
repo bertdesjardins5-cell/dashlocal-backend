@@ -43,7 +43,12 @@ export type Stop = {
   customer_note_read_at?: string | null;
   doorstep_hint?: { photo_url: string; delivered_at: string | null } | null;
   customer_note_source?: string | null;
+  pickup_run?: PickupRun | null;
 };
+
+export type PickupRun = { run: string; label: string; pickup_label: string; date: string | null; pharmacy: string | null; pickup_address: string | null };
+export const pickupRunText = (p: PickupRun) =>
+  `${p.label}${p.date && p.date !== depotToday() ? ` ${dayLabel(p.date)}` : ""} · pickup ${p.pickup_label}${p.pharmacy ? ` · ${p.pharmacy}` : ""}`.toUpperCase();
 
 export type Driver = { id: string; name: string; phone: string; vehicle: string; lat: number; lng: number };
 export type LatLng = { lat: number; lng: number };
@@ -128,7 +133,7 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
 export const fileUrl = (path: string) => `${API}/files/${path}?t=${encodeURIComponent(getToken() ?? "")}`;
 
 // Delivery windows and ETAs are shown in the depot's timezone so they line up with customer windows.
-export const DEPOT_TZ = "America/Los_Angeles";
+export const DEPOT_TZ = "America/Toronto";
 export function fmtDepotTime(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);

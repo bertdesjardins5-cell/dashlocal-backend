@@ -35,13 +35,139 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Set
 from datetime import datetime, timezone, timedelta, date as date_cls, time as time_cls
 from zoneinfo import ZoneInfo
+from cryptography.fernet import Fernet, InvalidToken
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+
+# ---------------------------------------------------------------- encryption at rest (PIPEDA / PHIPA safeguards)
+# Free-text notes, signatures and proof photos are encrypted with Fernet (AES-128-CBC + HMAC) before they are stored.
+FERNET = Fernet(os.environ["ENCRYPTION_KEY"].encode())
+ENC_PREFIX = "enc:"
+ENC_FIELDS = {"stops": ("notes", "customer_note", "pod_signature"), "saved_notes": ("note",)}
+
+
+def enc_str(v):
+    if not isinstance(v, str) or not v or v.startswith(ENC_PREFIX):
+        return v
+    return ENC_PREFIX + FERNET.encrypt(v.encode()).decode()
+
+
+def dec_str(v):
+    if isinstance(v, str) and v.startswith(ENC_PREFIX):
+        try:
+            return FERNET.decrypt(v[len(ENC_PREFIX):].encode()).decode()
+        except InvalidToken:
+            return None
+    return v
+
+
+def enc_bytes(b: bytes) -> bytes:
+    return FERNET.encrypt(b)
+
+
+def dec_bytes(b: bytes) -> bytes:
+    try:
+        return FERNET.decrypt(b)
+    except InvalidToken:
+        return b  # files stored before encryption was switched on
+
+
+class _EncCursor:
+    def __init__(self, cur, fields):
+        self._cur, self._f = cur, fields
+
+    def __getattr__(self, name):  # sort / limit / skip ... keep chaining on the wrapper
+        attr = getattr(self._cur, name)
+        if not callable(attr):
+            return attr
+
+        def call(*a, **k):
+            r = attr(*a, **k)
+            return self if r is self._cur else r
+        return call
+
+    def _dec(self, d):
+        if isinstance(d, dict):
+            for f in self._f:
+                if f in d:
+                    d[f] = dec_str(d[f])
+        return d
+
+    async def to_list(self, *a, **k):
+        return [self._dec(d) for d in await self._cur.to_list(*a, **k)]
+
+    def __aiter__(self):
+        return self._gen()
+
+    async def _gen(self):
+        async for d in self._cur:
+            yield self._dec(d)
+
+
+class _EncCollection:
+    """Transparent field encryption for one Mongo collection: writes encrypt, reads decrypt."""
+    def __init__(self, coll, fields):
+        self._c, self._f = coll, fields
+
+    def __getattr__(self, name):
+        return getattr(self._c, name)
+
+    def _enc_doc(self, d):
+        if not isinstance(d, dict):
+            return d
+        d = dict(d)
+        for f in self._f:
+            if f in d:
+                d[f] = enc_str(d[f])
+        return d
+
+    def _enc_update(self, u):
+        if not isinstance(u, dict):
+            return u
+        return {k: (self._enc_doc(v) if k in ("$set", "$setOnInsert") else v) for k, v in u.items()}
+
+    def find(self, *a, **k):
+        return _EncCursor(self._c.find(*a, **k), self._f)
+
+    async def find_one(self, *a, **k):
+        return _EncCursor(None, self._f)._dec(await self._c.find_one(*a, **k))
+
+    async def find_one_and_update(self, flt, upd, *a, **k):
+        return _EncCursor(None, self._f)._dec(await self._c.find_one_and_update(flt, self._enc_update(upd), *a, **k))
+
+    def insert_one(self, doc, *a, **k):
+        return self._c.insert_one(self._enc_doc(doc), *a, **k)
+
+    def insert_many(self, docs, *a, **k):
+        return self._c.insert_many([self._enc_doc(d) for d in docs], *a, **k)
+
+    def update_one(self, flt, upd, *a, **k):
+        return self._c.update_one(flt, self._enc_update(upd), *a, **k)
+
+    def update_many(self, flt, upd, *a, **k):
+        return self._c.update_many(flt, self._enc_update(upd), *a, **k)
+
+    def replace_one(self, flt, doc, *a, **k):
+        return self._c.replace_one(flt, self._enc_doc(doc), *a, **k)
+
+
+class _EncDB:
+    def __init__(self, raw):
+        self._raw = raw
+
+    def __getattr__(self, name):
+        coll = getattr(self._raw, name)
+        return _EncCollection(coll, ENC_FIELDS[name]) if name in ENC_FIELDS else coll
+
+    def __getitem__(self, name):
+        return self.__getattr__(name)
+
+
+db = _EncDB(client[os.environ['DB_NAME']])
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -67,11 +193,18 @@ async def require_admin(request: Request):
 ADMIN_ONLY = [Depends(require_admin)]
 
 
+def driver_consented(u: dict) -> dict:
+    """Drivers must accept the privacy & compliance terms (consent modal) before working any manifest data."""
+    if u["role"] == "driver" and not (u.get("phipa_consent_given") and u.get("consent_version") == CONSENT_VERSION):
+        raise HTTPException(403, "Accept the privacy & compliance terms to continue")
+    return u
+
+
 async def require_driver_self(driver_id: str, request: Request):
     """The signed-in driver themself (or the dispatch admin)."""
     u = await current_user(request)
     if u["role"] == "admin" or (u["role"] == "driver" and u.get("driver_id") == driver_id):
-        return u
+        return driver_consented(u)
     raise HTTPException(403, "You can only open your own manifest")
 
 
@@ -85,7 +218,7 @@ async def require_route_driver(route_id: str, request: Request):
         if not r:
             raise HTTPException(404, "Route not found")
         if r.get("driver_id") == u.get("driver_id"):
-            return u
+            return driver_consented(u)
     raise HTTPException(403, "This route belongs to another driver")
 
 
@@ -100,7 +233,7 @@ async def require_stop_driver(stop_id: str, request: Request):
             raise HTTPException(404, "Stop not found")
         r = await db.routes.find_one({"id": s.get("route_id")}, {"_id": 0, "driver_id": 1}) if s.get("route_id") else None
         if r and r.get("driver_id") == u.get("driver_id"):
-            return u
+            return driver_consented(u)
     raise HTTPException(403, "This stop is on another driver's route")
 
 
@@ -373,6 +506,11 @@ class Stop(BaseModel):
     customer_note_source: Optional[str] = None  # customer | saved (merchant's saved note) | last (customer's previous note)
     batch_run: Optional[str] = None  # pharmacy pickup run: afternoon | evening
     manifest_id: Optional[str] = None  # "{merchant_id}:{YYYY-MM-DD}:{run}" — one pickup manifest
+    consent_given: bool = False  # merchant confirmed CONSENT_TEXT when placing the order
+    consent_at: Optional[str] = None
+    consent_by: Optional[str] = None
+    consent_text: Optional[str] = None
+    erased_at: Optional[str] = None  # personal details removed by the retention job
 
 
 class Route(BaseModel):
@@ -444,6 +582,22 @@ async def apply_sequence(route_id: str, ordered: List[str]):
         await db.stops.update_one({"id": sid, "route_id": route_id}, {"$set": {"seq": i + 1}})
 
 
+async def pickup_run_labels(stops: list) -> dict:
+    """Pharmacy batch drops: stop_id -> which pickup run it belongs to, its pickup time and the pharmacy."""
+    batch = [s for s in stops if s.batch_run in RUNS]
+    if not batch:
+        return {}
+    names = {m["id"]: m for m in await db.merchants.find({"id": {"$in": list({s.merchant_id for s in batch})}},
+                                                         {"_id": 0, "id": 1, "name": 1, "pickup": 1}).to_list(100)}
+    out = {}
+    for s in batch:
+        r, m = RUNS[s.batch_run], names.get(s.merchant_id, {})
+        out[s.id] = {"run": s.batch_run, "label": r["label"], "pickup_label": f"{hhmm12(r['pickup'][0])} – {hhmm12(r['pickup'][1])}",
+                     "date": s.manifest_id.split(":")[1] if s.manifest_id else None,
+                     "pharmacy": m.get("name"), "pickup_address": (m.get("pickup") or {}).get("address")}
+    return out
+
+
 async def route_detail(route: Route) -> dict:
     stops = await get_stops(route.id)
     driver = None
@@ -456,12 +610,14 @@ async def route_detail(route: Route) -> dict:
     base = plan_base(route.service_date)
     now = base.astimezone(timezone.utc)
     plan = {s["id"]: x for s, x in zip(open_, schedule(start, open_, base))}
+    runs = await pickup_run_labels(stops)
     out_stops = []
     for s in stops:
         d = s.model_dump()
         p = plan.get(s.id)
         d["planned_eta"] = (now + timedelta(minutes=round(p["arrive_min"]))).isoformat() if p else None
         d["late_min"] = round(p["late_min"]) if p else 0
+        d["pickup_run"] = runs.get(s.id)
         out_stops.append(d)
     return {
         **route.model_dump(),
@@ -635,7 +791,7 @@ async def broadcast_route(route_id: str):
         if hub.rooms.get(f"track:{s.tracking_code}"):
             await hub.send(f"track:{s.tracking_code}", await tracking_payload(s.tracking_code))
     if hub.rooms.get(f"route:{route_id}"):
-        await hub.send(f"route:{route_id}", await route_detail(route))
+        await hub.send(f"route:{route_id}", for_viewer(await route_detail(route), {"role": "driver"}))  # only drivers listen here
 
 
 async def maybe_complete_route(route_id: str):
@@ -847,6 +1003,13 @@ async def startup():
     spawn(review_reminder_watcher())
     spawn(backfill_invoices())
     spawn(platform_fee_watcher())
+    spawn(retention_watcher())
+    await db.audit_log.create_index("at")
+    for coll, fields in ENC_FIELDS.items():  # one-time: encrypt rows stored before encryption at rest was switched on
+        raw = client[os.environ['DB_NAME']][coll]
+        for f in fields:
+            async for d in raw.find({f: {"$type": "string", "$not": re.compile(r"^enc:"), "$ne": ""}}, {"_id": 1, f: 1}):
+                await raw.update_one({"_id": d["_id"]}, {"$set": {f: enc_str(d[f])}})
     # imports interrupted by a restart: send unfinished rows back to the queue
     for j in await db.import_jobs.find({"status": "running"}, {"_id": 0, "id": 1}).to_list(100):
         spawn(process_import(j["id"]))
@@ -879,8 +1042,8 @@ async def list_drivers():
     return out
 
 
-@api_router.get("/drivers/{driver_id}/route", dependencies=DRIVER_SELF)
-async def driver_route(driver_id: str):
+@api_router.get("/drivers/{driver_id}/route")
+async def driver_route(driver_id: str, u: dict = Depends(require_driver_self)):
     await get_driver_or_404(driver_id)
     # active route first, then the soonest planned route from today on, then today's finished route
     doc = await db.routes.find_one({"driver_id": driver_id, "status": "active"}, {"_id": 0})
@@ -892,7 +1055,27 @@ async def driver_route(driver_id: str):
         doc = done[0] if done else None
     if not doc:
         return {"route": None}
-    return {"route": await route_detail(Route(**doc))}
+    return {"route": for_viewer(await route_detail(Route(**doc)), u)}
+
+
+# Driver screens only get what the drop needs (PHIPA minimum necessary): recipient name, street address and
+# delivery notes. No phone numbers (calls go through the masked line), prices, invoice items or consent records.
+DRIVER_HIDDEN = ("customer_phone", "fee", "consent_given", "consent_at", "consent_by", "consent_text", "rating_comment",
+                 "follow_up_note", "apology_code", "merchant_late_alert_at", "merchant_fail_alert_at")
+
+
+def driver_stop_view(d: dict) -> dict:
+    return {k: v for k, v in d.items() if k not in DRIVER_HIDDEN}
+
+
+def stop_for(u: dict, d: dict) -> dict:
+    return driver_stop_view(d) if u.get("role") == "driver" else d
+
+
+def for_viewer(route: dict, u: dict) -> dict:
+    if u.get("role") != "driver":
+        return route
+    return {**route, "stops": [driver_stop_view(s) for s in route["stops"]]}
 
 
 async def update_location(driver_id: str, lat: float, lng: float) -> dict:
@@ -911,7 +1094,7 @@ async def update_location(driver_id: str, lat: float, lng: float) -> dict:
             await db.stops.update_one({"id": nxt.id}, {"$set": {"status": "arrived", "arrived_at": now_iso(), "arrival_method": "geofence"}})
             geofenced = nxt.id
         await broadcast_route(rdoc["id"])
-    return {"ok": True, "geofence_arrived_stop_id": geofenced}
+    return {"ok": True, "geofence_arrived_stop_id": geofenced, "route_active": bool(rdoc)}
 
 
 @api_router.post("/drivers/{driver_id}/location", dependencies=DRIVER_SELF)
@@ -1128,9 +1311,9 @@ async def list_routes():
     return out
 
 
-@api_router.get("/routes/{route_id}", dependencies=ROUTE_DRIVER)
-async def get_route(route_id: str):
-    return await route_detail(await get_route_or_404(route_id))
+@api_router.get("/routes/{route_id}")
+async def get_route(route_id: str, u: dict = Depends(require_route_driver)):
+    return for_viewer(await route_detail(await get_route_or_404(route_id)), u)
 
 
 @api_router.post("/routes/{route_id}/optimize", dependencies=ADMIN_ONLY)
@@ -1205,23 +1388,24 @@ async def get_stop_or_404(stop_id: str) -> Stop:
     return Stop(**doc)
 
 
-@api_router.get("/stops/{stop_id}", dependencies=STOP_DRIVER)
-async def get_stop(stop_id: str):
+@api_router.get("/stops/{stop_id}")
+async def get_stop(stop_id: str, u: dict = Depends(require_stop_driver)):
     """Stop for its driver/admin, plus a doorstep hint: the latest proof photo from an earlier drop to the same customer."""
     stop = await get_stop_or_404(stop_id)
     prev = await db.stops.find_one({"id": {"$ne": stop.id}, "customer_phone": stop.customer_phone, "address": stop.address,
                                     "merchant_id": stop.merchant_id, "status": "delivered", "pod_photo_path": {"$ne": None}},
                                    {"_id": 0, "pod_photo_path": 1, "delivered_at": 1}, sort=[("delivered_at", -1)])
     hint = {"photo_url": file_url(prev["pod_photo_path"]), "delivered_at": prev.get("delivered_at")} if prev else None
-    return {**stop.model_dump(), "doorstep_hint": hint}
+    out = {**stop.model_dump(), "doorstep_hint": hint, "pickup_run": (await pickup_run_labels([stop])).get(stop.id)}
+    return driver_stop_view(out) if u.get("role") == "driver" else out
 
 
 class QrIn(BaseModel):
     code: str
 
 
-@api_router.post("/stops/{stop_id}/verify-qr", dependencies=STOP_DRIVER)
-async def verify_qr(stop_id: str, body: QrIn):
+@api_router.post("/stops/{stop_id}/verify-qr")
+async def verify_qr(stop_id: str, body: QrIn, u: dict = Depends(require_stop_driver)):
     """Parcel label QR encodes the tracking code; scanning the right parcel at the door is proof of delivery."""
     stop = await get_stop_or_404(stop_id)
     if stop.status in ("delivered", "failed"):
@@ -1233,7 +1417,7 @@ async def verify_qr(stop_id: str, body: QrIn):
     if scanned != stop.tracking_code:
         raise HTTPException(400, f"Wrong parcel — scanned {scanned[:20]}, expected {stop.tracking_code}")
     await db.stops.update_one({"id": stop_id}, {"$set": {"pod_qr_verified": True}})
-    return (await get_stop_or_404(stop_id)).model_dump()
+    return stop_for(u, (await get_stop_or_404(stop_id)).model_dump())
 
 
 HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
@@ -1605,8 +1789,8 @@ async def ws_admin(ws: WebSocket, token: str = ""):
         hub.leave("admin", ws)
 
 
-@api_router.post("/stops/{stop_id}/arrive", dependencies=STOP_DRIVER)
-async def arrive(stop_id: str):
+@api_router.post("/stops/{stop_id}/arrive")
+async def arrive(stop_id: str, u: dict = Depends(require_stop_driver)):
     stop = await get_stop_or_404(stop_id)
     if stop.status != "pending":
         raise HTTPException(400, f"Stop is {stop.status}")
@@ -1614,11 +1798,11 @@ async def arrive(stop_id: str):
     await db.stops.update_one({"id": stop_id}, {"$set": {"status": "arrived", "arrived_at": now_iso(), "arrival_method": "manual"}})
     if stop.route_id:
         await broadcast_route(stop.route_id)
-    return (await get_stop_or_404(stop_id)).model_dump()
+    return stop_for(u, (await get_stop_or_404(stop_id)).model_dump())
 
 
-@api_router.post("/stops/{stop_id}/deliver", dependencies=STOP_DRIVER)
-async def deliver(stop_id: str, body: DeliverIn):
+@api_router.post("/stops/{stop_id}/deliver")
+async def deliver(stop_id: str, body: DeliverIn, u: dict = Depends(require_stop_driver)):
     stop = await get_stop_or_404(stop_id)
     if stop.status in ("delivered", "failed"):
         raise HTTPException(400, f"Stop is already {stop.status}")
@@ -1643,11 +1827,11 @@ async def deliver(stop_id: str, body: DeliverIn):
     if stop.route_id:
         await maybe_complete_route(stop.route_id)
         await broadcast_route(stop.route_id)
-    return (await get_stop_or_404(stop_id)).model_dump()
+    return stop_for(u, (await get_stop_or_404(stop_id)).model_dump())
 
 
-@api_router.post("/stops/{stop_id}/fail", dependencies=STOP_DRIVER)
-async def fail(stop_id: str, body: FailIn):
+@api_router.post("/stops/{stop_id}/fail")
+async def fail(stop_id: str, body: FailIn, u: dict = Depends(require_stop_driver)):
     stop = await get_stop_or_404(stop_id)
     if stop.status in ("delivered", "failed"):
         raise HTTPException(400, f"Stop is already {stop.status}")
@@ -1659,7 +1843,7 @@ async def fail(stop_id: str, body: FailIn):
     if stop.route_id:
         await maybe_complete_route(stop.route_id)
         await broadcast_route(stop.route_id)
-    return (await get_stop_or_404(stop_id)).model_dump()
+    return stop_for(u, (await get_stop_or_404(stop_id)).model_dump())
 
 
 def twilio_client() -> TwilioClient:
@@ -1719,7 +1903,7 @@ class PhoneIn(BaseModel):
     phone: str
 
 
-@api_router.put("/stops/{stop_id}/phone", dependencies=STOP_DRIVER)
+@api_router.put("/stops/{stop_id}/phone", dependencies=ADMIN_ONLY)  # drivers never see or edit customer numbers
 async def set_customer_phone(stop_id: str, body: PhoneIn):
     phone = re.sub(r"[\s\-()]", "", body.phone)
     if not E164.match(phone):
@@ -1752,7 +1936,7 @@ async def upload(file: UploadFile = File(...)):
     ext = (file.filename or "photo.jpg").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "jpg"
     path = f"{APP_NAME}/uploads/pod/{uuid.uuid4()}.{ext}"
     try:
-        res = await run_in_threadpool(put_object, path, data, file.content_type or "image/jpeg")
+        res = await run_in_threadpool(put_object, path, enc_bytes(data), "application/octet-stream")
     except requests.HTTPError as e:
         code = e.response.status_code if e.response is not None else 500
         raise HTTPException(402 if code == 402 else 502, "Storage out of credits" if code == 402 else "Upload failed")
@@ -1787,6 +1971,7 @@ async def download(path: str, request: Request, t: str = ""):
     if not rec:
         raise HTTPException(404, "File not found")
     data, ct = await run_in_threadpool(get_object, path)
+    data = dec_bytes(data)
     return Response(content=data, media_type=rec.get("content_type") or ct, headers={"Cache-Control": "private, max-age=3600"})
 
 
@@ -2256,6 +2441,8 @@ async def process_row(row: dict) -> dict:
                 r = RUNS[row["run"]]
                 stop.window_start, stop.window_end, stop.window_date = r["window"][0], r["window"][1], row["manifest_id"].split(":")[1]
                 stop.batch_run, stop.manifest_id = row["run"], row["manifest_id"]
+            for k, v in (row.get("consent") or {}).items():
+                setattr(stop, k, v)
             stop.fee = compute_fee(stop.model_dump(), await get_pricing(row["merchant_id"]))
             note, source = await remembered_note(row["merchant_id"], stop.customer_phone)
             csv_note = " ".join((d.get("delivery_note") or "").split())[:200]
@@ -2784,9 +2971,14 @@ async def delete_saved_note(merchant_id: str, note_id: str, _: dict = Depends(me
 
 
 @api_router.post("/merchants/{merchant_id}/import")
-async def import_orders(merchant_id: str, file: UploadFile = File(...), run: Optional[str] = None, _: dict = Depends(merchant_access)):
+async def import_orders(merchant_id: str, request: Request, file: UploadFile = File(...), run: Optional[str] = None, consent: bool = False,
+                        u: dict = Depends(merchant_access)):
     """Upload a CSV of orders. Rows are validated now and geocoded in the background (about 1 per second).
-    Pharmacy partners pick a pickup run (afternoon | evening); uploads close at that run's cut-off."""
+    Pharmacy partners pick a pickup run (afternoon | evening); uploads close at that run's cut-off.
+    `consent=true` confirms the privacy consent statement; it is stored with every order (PIPEDA / PHIPA)."""
+    if not consent:
+        raise HTTPException(400, "Confirm the privacy consent statement before uploading orders")
+    consent_rec = {"consent_given": True, "consent_at": now_iso(), "consent_by": u.get("email") or u["id"], "consent_text": CONSENT_TEXT}
     m = await get_merchant_or_404(merchant_id)
     manifest_id = None
     if m.get("pharmacy_partner"):
@@ -2835,7 +3027,7 @@ async def import_orders(merchant_id: str, file: UploadFile = File(...), run: Opt
            "run": run, "manifest_id": manifest_id}
     await db.import_jobs.insert_one(dict(job))
     await db.import_rows.insert_many([{"id": str(uuid.uuid4()), "job_id": job["id"], "merchant_id": merchant_id, "line": i + 2, "data": d,
-                                       "run": run, "manifest_id": manifest_id,
+                                       "run": run, "manifest_id": manifest_id, "consent": consent_rec,
                                        "status": "queued", "error": None, "stop_id": None, "tracking_code": None, "created_at": job["created_at"]}
                                       for i, d in enumerate(rows)])
     spawn(process_import(job["id"]))
@@ -4486,6 +4678,8 @@ class SignupIn(BaseModel):
     phone: Optional[str] = None
     address: Optional[str] = None
     message: Optional[str] = None
+    privacy_consent: bool = False
+    consent_timestamp: Optional[str] = None  # when the person tapped Accept in the consent modal (device clock)
 
 
 @api_router.post("/signup-requests")
@@ -4498,6 +4692,10 @@ async def request_signup(body: SignupIn, request: Request):
         raise HTTPException(400, "Store name and your name are required")
     if not EMAIL_RE.match(doc["email"]):
         raise HTTPException(400, "Enter a valid email")
+    if not body.privacy_consent:
+        raise HTTPException(400, "Please agree to the Privacy Policy to continue")
+    doc.update(privacy_consent=True, privacy_consent_at=now_iso(), phipa_consent_given=True,
+               consent_timestamp=(body.consent_timestamp or "")[:40] or None, consent_version=CONSENT_VERSION)
     ip = client_ip(request)
     hour_ago = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
     if await db.signup_requests.count_documents({"ip": ip, "created_at": {"$gte": hour_ago}}) >= 5:
@@ -4537,6 +4735,9 @@ async def approve_signup(sid: str, request: Request):
     nonce = secrets.token_urlsafe(12)
     user = {"id": str(uuid.uuid4()), "email": sr["email"], "role": "merchant", "name": sr["contact_name"], "merchant_id": m["id"],
             "disabled": False, "created_at": now_iso(), "pw_nonce": nonce, "password_hash": hash_pw(secrets.token_urlsafe(24))}
+    if sr.get("phipa_consent_given"):  # consent given in the sign-up modal carries over to the new login
+        user.update(phipa_consent_given=True, consent_timestamp=sr.get("consent_timestamp"),
+                    consent_recorded_at=sr.get("privacy_consent_at"), consent_version=sr.get("consent_version"))
     await db.merchants.insert_one(dict(m))
     try:
         await db.users.insert_one(user)
@@ -4593,6 +4794,185 @@ async def setpw(body: SetPasswordIn, request: Request):
     user = {k: v for k, v in u.items() if k not in ("password_hash", "pw_nonce")}
     user["merchant_name"] = (await db.merchants.find_one({"id": u.get("merchant_id")}, {"_id": 0}) or {}).get("name")
     return {"token": issue_token(u["id"], u["role"]), "user": user}
+
+
+# ---------------------------------------------------------------- privacy & compliance (PIPEDA / PHIPA)
+CONSENT_TEXT = ("I consent to DashLocal and its designated independent drivers collecting and processing my name, address, and "
+                "contact details solely for the purpose of same-day parcel/prescription fulfillment.")
+PRIVACY_DEFAULT = {"retention_days": 730}
+CONSENT_VERSION = "2026-06"  # bump when the consent modal terms change: everyone is asked again
+AUDIT_SKIP = re.compile(r"^/api/(drivers/[^/]+/(location|simulate-step|badges/new|coaching)|rate-card|testimonials|$)")
+AUDIT_DEDUPE_S = 60
+_audit_seen: Dict[str, float] = {}
+AUDIT_LABELS = [  # first match wins: path pattern -> what kind of data was touched
+    (r"^/api/files/", "Proof photo"), (r"/invoices|/statement", "Invoices"), (r"^/api/admin/audit", "Audit log"),
+    (r"^/api/admin/privacy", "Privacy settings"), (r"^/api/(stops|track|orders)", "Order / customer details"),
+    (r"^/api/routes|/route$", "Route & stops"), (r"^/api/merchants/[^/]+/(import|orders|saved-notes)", "Store orders & customers"),
+    (r"^/api/merchants", "Store account"), (r"^/api/auth", "Sign-in"), (r"^/api/signup-requests|^/api/admin/signups", "Sign-up requests"),
+    (r"^/api/drivers", "Driver"), (r"^/api/admin", "Admin"),
+]
+
+
+def audit_label(path: str) -> str:
+    return next((lbl for pat, lbl in AUDIT_LABELS if re.search(pat, path)), "Other")
+
+
+def audit_actor(request: Request) -> Optional[dict]:
+    h = request.headers.get("authorization", "")
+    if h.lower().startswith("bearer "):
+        try:
+            p = pyjwt.decode(h[7:].strip(), JWT_SECRET, algorithms=[JWT_ALG])
+            return {"id": p.get("sub"), "role": p.get("role")}
+        except pyjwt.InvalidTokenError:
+            return {"id": None, "role": "invalid-token"}
+    if request.headers.get("x-order-token") or request.query_params.get("t"):
+        return {"id": None, "role": "customer"}
+    return None
+
+
+async def write_audit(entry: dict):
+    try:
+        if entry["actor_id"]:
+            u = await db.users.find_one({"id": entry["actor_id"]}, {"_id": 0, "email": 1, "driver_id": 1, "merchant_id": 1})
+            if u:
+                entry["actor"] = u.get("email") or (f"driver {u['driver_id']}" if u.get("driver_id") else entry["actor_id"])
+        await db.audit_log.insert_one(entry)
+    except Exception as e:
+        logger.warning(f"Audit write failed: {e}")
+
+
+@app.middleware("http")
+async def audit_and_security_headers(request: Request, call_next):
+    resp = await call_next(request)
+    resp.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"  # browsers must always use HTTPS
+    path = request.url.path
+    if path.startswith("/api/") and request.method != "OPTIONS" and not AUDIT_SKIP.match(path):
+        actor = audit_actor(request) or ({"id": None, "role": "public"} if request.method != "GET" else None)
+        if actor:
+            now = time.time()
+            key = f"{actor['id']}|{actor['role']}|{request.method}|{path}"
+            if request.method != "GET" or now - _audit_seen.get(key, 0) > AUDIT_DEDUPE_S:  # repeat polling logged once a minute
+                _audit_seen[key] = now
+                if len(_audit_seen) > 20000:
+                    _audit_seen.clear()
+                spawn(write_audit({"id": str(uuid.uuid4()), "at": now_iso(), "actor_id": actor["id"], "role": actor["role"],
+                                   "actor": actor["role"] if not actor["id"] else actor["id"], "method": request.method,
+                                   "path": path, "data": audit_label(path), "status": resp.status_code, "ip": client_ip(request)}))
+    return resp
+
+
+@api_router.get("/admin/audit", dependencies=ADMIN_ONLY)
+async def audit_log(q: Optional[str] = None, role: Optional[str] = None, before: Optional[str] = None, limit: int = 50):
+    """Who accessed what data and when (newest first). `before` = the `at` of the last row seen, for paging."""
+    flt: dict = {}
+    if role:
+        flt["role"] = role
+    if before:
+        flt["at"] = {"$lt": before}
+    if q:
+        rx = {"$regex": re.escape(q.strip()), "$options": "i"}
+        flt["$or"] = [{"actor": rx}, {"path": rx}, {"data": rx}, {"ip": rx}]
+    rows = await db.audit_log.find(flt, {"_id": 0}).sort("at", -1).to_list(max(1, min(limit, 200)))
+    return {"rows": rows, "total": await db.audit_log.count_documents(flt)}
+
+
+async def get_privacy() -> dict:
+    doc = await db.settings.find_one({"key": "privacy"}, {"_id": 0})
+    return {**PRIVACY_DEFAULT, **((doc or {}).get("value") or {})}
+
+
+def retention_cutoff(days: int) -> str:
+    return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+
+def old_stop_query(cutoff: str) -> dict:
+    """Finished (or never-delivered) orders whose last activity is older than the cutoff and still hold personal details."""
+    return {"erased_at": None, "$or": [{"delivered_at": {"$lt": cutoff}}, {"delivered_at": None, "created_at": {"$lt": cutoff}}]}
+
+
+ERASED = "Erased (retention)"
+
+
+async def run_retention() -> dict:
+    p = await get_privacy()
+    cutoff = retention_cutoff(p["retention_days"])
+    ids = [d["id"] for d in await db.stops.find(old_stop_query(cutoff), {"_id": 0, "id": 1}).to_list(5000)]
+    if ids:
+        await db.stops.update_many({"id": {"$in": ids}}, {"$set": {
+            "customer_name": ERASED, "customer_phone": "", "address": ERASED, "notes": "", "customer_note": None,
+            "pod_signature": None, "pod_photo_path": None, "rating_comment": None, "follow_up_note": None,
+            "lat": DEPOT["lat"], "lng": DEPOT["lng"], "share_token": None, "erased_at": now_iso()}})
+        # invoices keep their numbers and totals for tax records; only the recipient details go
+        await db.invoices.update_many({"stop_id": {"$in": ids}}, {"$set": {"delivery.customer_name": ERASED, "delivery.address": ERASED}})
+        await db.contact_logs.delete_many({"stop_id": {"$in": ids}})
+    notes = await db.saved_notes.delete_many({"$or": [{"updated_at": {"$lt": cutoff}}, {"updated_at": None, "created_at": {"$lt": cutoff}}]})
+    await db.audit_log.delete_many({"at": {"$lt": cutoff}})
+    await db.settings.update_one({"key": "privacy"}, {"$set": {"last_run_at": now_iso(), "last_run_erased": len(ids)}}, upsert=True)
+    return {"erased_orders": len(ids), "deleted_saved_notes": notes.deleted_count, "cutoff": cutoff}
+
+
+async def retention_watcher():
+    await asyncio.sleep(30)
+    while True:
+        try:
+            await run_retention()
+        except Exception as e:
+            logger.warning(f"Retention loop error: {e}")
+        await asyncio.sleep(6 * 3600)
+
+
+class PrivacyIn(BaseModel):
+    retention_days: int = Field(ge=30, le=3650)
+
+
+@api_router.get("/admin/privacy", dependencies=ADMIN_ONLY)
+async def privacy_settings():
+    p = await get_privacy()
+    doc = await db.settings.find_one({"key": "privacy"}, {"_id": 0}) or {}
+    cutoff = retention_cutoff(p["retention_days"])
+    soon = retention_cutoff(p["retention_days"] - 30)
+    return {**p, "last_run_at": doc.get("last_run_at"), "last_run_erased": doc.get("last_run_erased"),
+            "due_now": await db.stops.count_documents(old_stop_query(cutoff)),
+            "due_within_30_days": await db.stops.count_documents(old_stop_query(soon)),
+            "erased_total": await db.stops.count_documents({"erased_at": {"$ne": None}}),
+            "consent_text": CONSENT_TEXT}
+
+
+@api_router.put("/admin/privacy", dependencies=ADMIN_ONLY)
+async def update_privacy(body: PrivacyIn):
+    await db.settings.update_one({"key": "privacy"}, {"$set": {"value.retention_days": body.retention_days, "updated_at": now_iso()}}, upsert=True)
+    return await privacy_settings()
+
+
+@api_router.post("/admin/privacy/run-retention", dependencies=ADMIN_ONLY)
+async def run_retention_now():
+    return await run_retention()
+
+
+@api_router.get("/privacy/consent-text")
+async def consent_text():
+    return {"text": CONSENT_TEXT, "version": CONSENT_VERSION}
+
+
+class MyConsentIn(BaseModel):
+    consent_timestamp: str
+
+
+@api_router.get("/me/consent")
+async def my_consent(u: dict = Depends(current_user)):
+    """Has this login accepted the current privacy & compliance terms (consent modal)?"""
+    return {"phipa_consent_given": bool(u.get("phipa_consent_given")) and u.get("consent_version") == CONSENT_VERSION,
+            "consent_timestamp": u.get("consent_timestamp"), "consent_recorded_at": u.get("consent_recorded_at"), "role": u["role"]}
+
+
+@api_router.post("/me/consent")
+async def give_consent(body: MyConsentIn, u: dict = Depends(current_user)):
+    """Record acceptance: the device timestamp from the modal plus the server's own time (the authoritative one)."""
+    rec = {"phipa_consent_given": True, "consent_timestamp": body.consent_timestamp[:40], "consent_recorded_at": now_iso(),
+           "consent_version": CONSENT_VERSION}
+    await db.users.update_one({"id": u["id"]}, {"$set": rec})
+    await db.consent_log.insert_one({"id": str(uuid.uuid4()), "user_id": u["id"], "role": u["role"], **rec})
+    return {**rec, "user_id": u["id"], "role": u["role"]}
 
 
 app.include_router(api_router)

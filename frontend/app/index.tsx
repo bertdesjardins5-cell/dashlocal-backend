@@ -235,6 +235,7 @@ export default function Landing() {
           <View style={[s.container, s.footerInner]}>
             <LogoMark size={28} />
             <Text style={s.footerText}>© {new Date().getFullYear()} DashLocal · Same-day local delivery for small businesses</Text>
+            <Text style={[s.footerText, { flex: 0, textDecorationLine: "underline" }]} onPress={() => router.push("/privacy")} testID="landing-privacy-link">Privacy Policy</Text>
           </View>
         </View>
       </KeyboardAwareScrollView>

@@ -140,6 +140,14 @@ export default function AdminDashboard() {
             </View>
             <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />
           </Pressable>
+          <Pressable testID="admin-privacy-link" onPress={() => router.push("/admin/privacy")} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
+            <Ionicons name="shield-checkmark" size={24} color={colors.onSurface} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Display style={s.rowTitle}>PRIVACY & AUDIT LOG</Display>
+              <Mono style={s.meta}>Who accessed what, and how long records are kept</Mono>
+            </View>
+            <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />
+          </Pressable>
           <Mono style={s.section}>DAILY OPS DIGEST</Mono>
           <DailyDigest />
           <LowRatingAlerts notify={toast.show} />

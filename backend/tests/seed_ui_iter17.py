@@ -18,7 +18,7 @@ m = {"Authorization": "Bearer " + requests.post(f"{API}/auth/login", json={"emai
 assert requests.post(f"{API}/admin/reset", headers=a).status_code == 200
 for d, z in {"drv-1": "North", "drv-2": None, "drv-3": None}.items():
     requests.put(f"{API}/admin/drivers/{d}/compass-zone", json={"zone": z}, headers=a)
-r = requests.post(f"{API}/merchants/mer-1/import", headers=m, files={"file": ("p.csv", b"customer_name,phone,address\nTEST_UI Note,4155550193,1 Market St\n", "text/csv")})
+r = requests.post(f"{API}/merchants/mer-1/import?consent=true", headers=m, files={"file": ("p.csv", b"customer_name,phone,address\nTEST_UI Note,4155550193,1 Market St\n", "text/csv")})
 jid = r.json()["id"]
 for _ in range(40):
     if requests.get(f"{API}/imports/{jid}", headers=m).json()["status"] == "done":

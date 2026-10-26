@@ -263,7 +263,7 @@ def mstops(toks):
     assert raw("POST", f"{API}/admin/reset", headers=a).status_code == 200
     csv = ("customer_name,phone,address\nTEST_AlertFail,5195550181,200 King St W Kitchener\nTEST_AlertOff,5195550182,200 King St W Kitchener\n"
            "TEST_AlertLate,5195550183,200 King St W Kitchener\nTEST_AlertDLate,5195550184,200 King St W Kitchener\n").encode()
-    r = raw("POST", f"{API}/merchants/mer-1/import", headers=H(toks["m1"]), files={"file": ("a.csv", csv, "text/csv")})
+    r = raw("POST", f"{API}/merchants/mer-1/import?consent=true", headers=H(toks["m1"]), files={"file": ("a.csv", csv, "text/csv")})
     assert r.status_code == 200, r.text
     jid, end = r.json()["id"], time.time() + 60
     while time.time() < end:

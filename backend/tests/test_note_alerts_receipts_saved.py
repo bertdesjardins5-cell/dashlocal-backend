@@ -40,7 +40,7 @@ def cleanup():
 
 def import_one(m, name="TEST_SN Cust"):
     body = f"customer_name,phone,address\n{name},{PHONE_RAW},200 King St W Kitchener\n".encode()
-    r = requests.post(f"{API}/merchants/mer-1/import", headers=m, files={"file": ("t.csv", body, "text/csv")})
+    r = requests.post(f"{API}/merchants/mer-1/import?consent=true", headers=m, files={"file": ("t.csv", body, "text/csv")})
     assert r.status_code == 200, r.text
     job = r.json()["id"]
     for _ in range(30):
@@ -55,7 +55,15 @@ def import_one(m, name="TEST_SN Cust"):
 
 def stop_doc(sid):
     import json
-    return json.loads(mongo(f'print(JSON.stringify(db.stops.findOne({{id:"{sid}"}},{{_id:0}})))'))
+    from pathlib import Path
+    from dotenv import dotenv_values
+    from cryptography.fernet import Fernet  # notes/customer_note/pod_signature are encrypted at rest ("enc:" prefix)
+    d = json.loads(mongo(f'print(JSON.stringify(db.stops.findOne({{id:"{sid}"}},{{_id:0}})))'))
+    f = Fernet(dotenv_values(Path(__file__).resolve().parents[1] / ".env")["ENCRYPTION_KEY"].encode())
+    for k in ("notes", "customer_note", "pod_signature"):
+        if isinstance(d.get(k), str) and d[k].startswith("enc:"):
+            d[k] = f.decrypt(d[k][4:].encode()).decode()
+    return d
 
 
 @pytest.fixture(scope="module")

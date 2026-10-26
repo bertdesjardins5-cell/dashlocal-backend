@@ -22,7 +22,7 @@ def tok(e, p):
 
 
 def imp(mid, t, body):
-    r = requests.post(f"{API}/merchants/{mid}/import", headers=H(t), files={"file": ("ui.csv", body, "text/csv")})
+    r = requests.post(f"{API}/merchants/{mid}/import?consent=true", headers=H(t), files={"file": ("ui.csv", body, "text/csv")})
     r.raise_for_status()
     jid = r.json()["id"]
     for _ in range(40):

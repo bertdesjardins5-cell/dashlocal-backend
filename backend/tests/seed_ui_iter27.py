@@ -22,7 +22,7 @@ before = [s["id"] for s in db.stops.find({"merchant_id": "mer-1"}, {"id": 1})]
 csv = ("customer_name,phone,address\nTEST_INV UI One,+14155550181,\"3150 18th St, San Francisco, CA 94110\"\n"
        "TEST_INV UI Two,+14155550182,\"500 Castro St, San Francisco, CA 94114\"\nTEST_INV UI Three,+14155550183,\"2000 Mission St, San Francisco, CA 94110\"\n"
        "TEST_INV UI Keep,+14155550184,\"1 Ferry Building, San Francisco, CA 94111\"\n")
-job = requests.post(f"{API}/merchants/mer-1/import", files={"file": ("o.csv", io.BytesIO(csv.encode()), "text/csv")}, headers=bakery).json()["id"]
+job = requests.post(f"{API}/merchants/mer-1/import?consent=true", files={"file": ("o.csv", io.BytesIO(csv.encode()), "text/csv")}, headers=bakery).json()["id"]
 for _ in range(40):
     j = requests.get(f"{API}/imports/{job}", headers=bakery).json()
     if (j.get("job") or j).get("status") != "running":
