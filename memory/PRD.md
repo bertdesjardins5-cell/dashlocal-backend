@@ -135,3 +135,4 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - Photo shred on erase/retention (object overwritten empty + db.files.is_deleted; failures flagged shred_pending and retried by retention).
 - Missed pickup alert (admin + pharmacy, once per manifest, within 3h after pickup window end). Test hook POST /api/admin/missed-pickups/run?at=.
 - Left-store patient SMS on pickup check-in (no medication/pharmacy words; store name sanitized).
+- Rating tags stored separately (rating_tags, allowed set incl. DISCREET). Pharmacy weekly summary card + Monday email (GET/POST /api/merchants/{id}/pharmacy-summary[/email]). Driver map: pending pharmacy pickups shown as "P" markers, Pickup First banner, NAVIGATE goes to pickup until checked in.

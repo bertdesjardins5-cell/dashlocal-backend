@@ -1,0 +1,57 @@
+{
+  "summary": "Backend and frontend tested. New suite tests/test_rating_tags_pickup_first_pharmacy_summary.py: 10/10 pass. Regression with -n 0 on 8 related suites plus the new one: 114/114 pass (pickup check-in, photo shred/missed pickup, rx handoff/batch alerts, pickup-run geofence, low-rating badges, scorecard labels, pharmacy tiers, order privacy). (1) Rating tags: tags are uppercased, trimmed and deduped; unknown tags are dropped; at most 6 are kept; no tags gives []; re-rating returns 400; a pending order returns 400; no token returns 401; a non-list tags value returns 422. UI flow passed: a real CSV import for a pharmacy evening run, delivery with an uploaded photo and a signature, /customer/{code}, unlock with the last 4 digits, 5 stars plus 3 chips, then rating-thanks. The DB stored rating_tags ['ON TIME','HANDLED WITH CARE','DISCREET']. (2) Pickup-first: the route detail pickups and stops[].pickup_run include pickup_lat/pickup_lng equal to the mer-2 pickup. In the UI, pickup-first-banner shows 'PICKUP FIRST · EVENING BATCH · 5:00 PM – 5:30 PM | BAY BOOKS | 385 Fairway Rd S, Kitchener' and a red 'P' marker is on the map. Both pickup-navigate-button and the hero NAVIGATE open google.com/maps/dir to 43.4201383,-80.4404996. After the UI check-in, the banner and the P marker are gone and NAVIGATE goes to the next stop's coordinates. (3) Pharmacy summary: the numbers match seeded data: drops, delivered, failed, pickups, checked-in, on-time %, batch drops, savings = n×2.74, avg rating, ratings count and top tags. Other merchants and other weeks are excluded. A mid-week date snaps to Monday. A bad week returns 400. Non-pharmacy mer-1 returns 400 (both as bakery and as admin). Cross-merchant access returns 403 and no auth returns 401. The email endpoint returns 200 with sent_to ['delivered@resend.dev'] and the email provider returned 202. The Monday scheduler was checked live: after unsetting pharmacy_summary_week, it re-claimed 2026-W44 and sent the email within 60s. (4) Merchant portal card: values are correct for this week (2 drops, 100%, $0.00, 5★, tags). Prev week shows zeros and the email button is disabled. Next week returns to the current week. The email toast reads 'SUMMARY EMAILED TO DELIVERED@RESEND.DEV'. The mer-1 portal has no card and no error.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/merchants/{id}/pharmacy-summary/email", "issue": "Returns 200 {sent_to:[...]} even when the week has 0 drops: email_pharmacy_summary returns early and nothing is sent. The response should say nothing was sent, e.g. {sent:false} or a 400 'No drops this week'."},
+      {"endpoint": "pharmacy_summary()", "issue": "pickups_checked_in and on_time_pct count db.pickups docs per route. A manifest split across 2 routes counts as 2 check-ins against 1 'pickup', so pickups_checked_in can exceed pickups. Also, only stops with a run manifest are counted; pharmacy orders uploaded without ?run= are excluded from 'drops'. Confirm this is intended."},
+      {"endpoint": "POST /api/stops/{id}/rating", "issue": "RatingIn.tags has no max_length, so huge arrays are accepted and then truncated. Add Field(max_length=20) or similar."},
+      {"endpoint": "weekly_scheduler (pharmacy summary)", "issue": "The week is claimed before sending and the spawned email is never retried on failure, unlike the weekly report, which retries up to 3 times."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "PharmacySummaryCard next-week", "issue": "The button uses disabled={!week}. After prev then next, week is the current Monday (not null), so summary-next-week becomes enabled and the user can page into future empty weeks. Reset week to null when the shifted week reaches the current week_start, or compare against today. Reference: src/components/PharmacySummaryCard.tsx:58", "testID": "summary-next-week", "priority": "LOW"},
+      {"component": "RatingPrompt submit", "issue": "Sends comment = tags.join(', '), so rating_comment duplicates rating_tags. Admin low-rating views will show the tags as the patient's comment. Send comment null unless real free text is entered. Reference: src/components/RatingPrompt.tsx submit()", "testID": "rating-submit-button", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Tracking page RatingPrompt", "issues": ["Tag chips are 36px tall, below the 44px touch target", "Chips sit in a horizontal scroll, so 'HANDLED WITH CARE' etc. get cut off at the edge at 390px. Consider flexWrap so every option is visible."]},
+      {"screen": "Driver manifest (pickup-first)", "issues": ["While a pickup is pending, the red NEXT STOP card still shows stop #1, but its NAVIGATE button goes to the pharmacy. Relabel it (e.g. 'NAVIGATE TO PICKUP') or dim it to avoid confusion.", "On iOS, navigate() uses Apple Maps (maps:), while the spec says Google Maps (web and Android use Google)."]},
+      {"screen": "Merchant portal PharmacySummaryCard", "issues": ["The week label '26 MON – 1 SUN' has no month names, which is ambiguous across a month boundary (Oct 26 – Nov 1). Add the month."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_rating_tags_pickup_first_pharmacy_summary.py",
+    "/app/backend/tests/ui_seed_pickup_rating.py",
+    "/app/test_reports/pytest/iter36.xml",
+    "/app/test_reports/pytest/iter36_reg_a.xml",
+    "/app/test_reports/pytest/iter36_reg_b.xml",
+    "/app/test_reports/pytest/iter36_reg_c.xml"
+  ],
+  "action_items": [
+    "LOW: PharmacySummaryCard: stop summary-next-week from paging past the current week after prev/next",
+    "LOW: RatingPrompt: don't copy the tags into comment",
+    "LOW: Rating chips: 44px min height and wrap instead of horizontal scroll",
+    "LOW: Pickup-first: relabel the hero NAVIGATE while the pickup is pending",
+    "LOW: Week label: include the month",
+    "LOW: Email endpoint: report when nothing was sent (0 drops); consider retrying the scheduled pharmacy summary on failure; cap RatingIn.tags length"
+  ],
+  "critical_code_review_comments": [
+    "server.py is 5400 lines (well over 700); split it into modules (pharmacy, ratings, billing, scheduler)",
+    "FICTIONAL_NUMBER (555-0100..0199) overlaps the seeded history customer phones (random.Random(42) picks +1519555{100..199}). Tests that look up or erase by phone can hit seeded orders. Free fictional numbers right now: 0128, 0131, 0140, 0143, 0147, 0150, 0151, 0158, 0160, 0161, 0165, 0168, 0169, 0185, 0190.",
+    "The backend runs uvicorn --reload watching /app/backend, so creating or editing files in backend/tests restarts the backend mid-test."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_rating_tags_pickup_first_pharmacy_summary.py (new)",
+    "/app/backend/tests/ui_seed_pickup_rating.py (new UI seed helper)",
+    "/app/backend/tests/ui_seed_pickup_run.py (phone 0909 -> fictional 0189)",
+    "/app/backend/tests/test_customer_requests_pickup_checkin.py, test_rx_handoff_batch_alerts.py, test_pickup_run_geofence.py, test_tiers_pharmacy_kw.py (non-fictional phones 0977-0979/7777/0901-0902/7100-7102 remapped to free fictional 01xx numbers; Twilio is LIVE)"
+  ],
+  "success_rate": {"backend": "100% (10/10 new, 114/114 incl. regression)", "frontend": "100% of tested flows (rating with tags, pickup-first banner/P marker/navigate/check-in, summary card + week nav + email, non-pharmacy hidden)"},
+  "seed_data_creation": "TEST_ stops, pickups and invoices were created in the far-future weeks 2030-01/02 plus 2 real CSV-import drops on today's mer-2 evening run. All were cleaned up. POST /api/admin/reset was run once, because the first regression attempt (before the phone remap) collided with seeded orders. Final check: 0 TEST_ stops, 0 pickups, pricing 8.99/16, mer-2 pharmacy_partner=true with pickup 385 Fairway Rd S.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use only 555-01xx numbers that the seed does NOT use (see free list in critical_code_review_comments). Run suites in the foreground with -n 0 in chunks under 300s, because background runs get killed. The driver UI shows a badge-celebration overlay after login: click badge-celebration-dismiss. To capture Linking.openURL on web, override window.open with page.evaluate after login. ui_seed_pickup_rating.py setup/cleanup creates a delivered + pending Bay Books evening drop on drv-1's active route."
+}

@@ -176,7 +176,7 @@ class TestVolumeTiers:
 # ---- pharmacy runs + manifests
 class TestPharmacy:
     def test_import_without_run_400(self, books):
-        csv = "customer_name,phone,address\nTEST_TIER P0,+15195557100,\"200 King St W, Kitchener\"\n"
+        csv = "customer_name,phone,address\nTEST_TIER P0,+15195550151,\"200 King St W, Kitchener\"\n"
         r = requests.post(f"{API}/merchants/mer-2/import?consent=true", files={"file": ("o.csv", io.BytesIO(csv.encode()), "text/csv")}, headers=books)
         assert r.status_code == 400 and "run" in r.text.lower(), r.text
         r = requests.post(f"{API}/merchants/mer-2/import?run=night&consent=true", files={"file": ("o.csv", io.BytesIO(csv.encode()), "text/csv")}, headers=books)
@@ -190,8 +190,8 @@ class TestPharmacy:
     def test_import_with_run(self, books, route):
         before = {s["id"] for s in db.stops.find({"merchant_id": "mer-2"}, {"id": 1})}
         csv = ("customer_name,phone,address\n"
-               "TEST_TIER P1,+15195557101,\"200 King St W, Kitchener\"\n"
-               "TEST_TIER P2,+15195557102,\"75 King St S, Waterloo\"\n")
+               "TEST_TIER P1,+15195550158,\"200 King St W, Kitchener\"\n"
+               "TEST_TIER P2,+15195550160,\"75 King St S, Waterloo\"\n")
         r = requests.post(f"{API}/merchants/mer-2/import?run=evening&consent=true", files={"file": ("o.csv", io.BytesIO(csv.encode()), "text/csv")}, headers=books)
         assert r.status_code == 200, r.text
         job = r.json()

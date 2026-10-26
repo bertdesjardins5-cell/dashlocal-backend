@@ -14,8 +14,8 @@ BASE_URL = (os.environ.get("EXPO_PUBLIC_BACKEND_URL") or os.environ.get("EXPO_BA
 db = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
 
 CSV = ("customer_name,phone,address\n"
-       "TEST_Run One,+15195550901,200 King St W Kitchener\n"
-       "TEST_Run Two,+15195550902,100 Regina St S Waterloo\n")
+       "TEST_Run One,+15195550147,200 King St W Kitchener\n"
+       "TEST_Run Two,+15195550150,100 Regina St S Waterloo\n")
 
 
 def login(email, pw):

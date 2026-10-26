@@ -84,6 +84,11 @@ export default function Manifest() {
     q.refetch();
   };
   const next = route?.stops.find((st) => st.id === route.next_stop_id);
+  // Pharmacy pickups come first: until a pickup is checked in, the map and NAVIGATE point at the pharmacy.
+  const pendingPickups = (route?.status === "active" ? route.pickups ?? [] : [])
+    .filter((p) => !p.picked_up_at && p.pickup_lat != null && p.pickup_lng != null)
+    .map((p) => ({ ...p, lat: p.pickup_lat as number, lng: p.pickup_lng as number }));
+  const nextPickup = pendingPickups[0] ?? null;
   // Live alert for new customer delivery notes: the route socket pushes every change; polling stays as a fallback.
   const newNotes = route?.stops.filter((st) => st.customer_note && st.customer_note_seen === false && st.status === "pending") ?? [];
   const routeId = route?.id;
@@ -236,10 +241,11 @@ export default function Manifest() {
   };
 
   const navigate = () => {
-    if (!next) return;
+    const dest = nextPickup ?? next;
+    if (!dest) return;
     const url = Platform.select({
-      ios: `maps:0,0?daddr=${next.lat},${next.lng}`,
-      default: `https://www.google.com/maps/dir/?api=1&destination=${next.lat},${next.lng}`,
+      ios: `maps:0,0?daddr=${dest.lat},${dest.lng}`,
+      default: `https://www.google.com/maps/dir/?api=1&destination=${dest.lat},${dest.lng}`,
     });
     Linking.openURL(url!);
   };
@@ -303,9 +309,12 @@ export default function Manifest() {
           <RouteMap
             height={200}
             driver={route.status === "active" && route.driver ? route.driver : null}
-            geofence={next ?? null}
-            path={route.driver && next ? [route.driver, next] : []}
-            markers={route.stops.map((st) => ({ id: st.id, lat: st.lat, lng: st.lng, label: String(st.seq), tone: st.id === route.next_stop_id ? "red" : st.status === "delivered" ? "green" : st.status === "failed" ? "dark" : "light" }))}
+            geofence={nextPickup ? null : next ?? null}
+            path={route.driver && (nextPickup || next) ? [route.driver, (nextPickup ?? next)!] : []}
+            markers={[
+              ...route.stops.map((st) => ({ id: st.id, lat: st.lat, lng: st.lng, label: String(st.seq), tone: (!nextPickup && st.id === route.next_stop_id ? "red" : st.status === "delivered" ? "green" : st.status === "failed" ? "dark" : "light") as "red" | "green" | "dark" | "light" })),
+              ...pendingPickups.map((p) => ({ id: `pickup-${p.manifest_id}`, lat: p.lat, lng: p.lng, label: "P", tone: (p === nextPickup ? "red" : "dark") as "red" | "dark" })),
+            ]}
           />
 
           {route.status === "planned" && route.service_date > depotToday() ? (
@@ -347,11 +356,19 @@ export default function Manifest() {
             </View>
           ) : null}
 
+          {nextPickup ? (
+            <View style={s.block} testID="pickup-first-banner">
+              <Mono style={s.meta}>PICKUP FIRST · {nextPickup.label.toUpperCase()} · {nextPickup.pickup_label}</Mono>
+              <Display style={{ fontSize: 18 }}>{(nextPickup.pharmacy ?? "PHARMACY").toUpperCase()}</Display>
+              {nextPickup.pickup_address ? <Mono style={s.meta}>{nextPickup.pickup_address}</Mono> : null}
+              <Btn testID="pickup-navigate-button" label="DIRECTIONS TO PICKUP" icon="navigate" onPress={navigate} />
+            </View>
+          ) : null}
           {route.service_date > depotToday() ? null : next ? (
             <Animated.View entering={FadeIn}>
               <Pressable testID="next-stop-card" onPress={() => router.push(`/driver/stop/${next.id}`)} style={s.hero}>
                 <View style={s.heroTop}>
-                  <Mono style={s.heroKicker}>NEXT STOP · #{next.seq}</Mono>
+                  <Mono style={s.heroKicker}>{nextPickup ? `AFTER PICKUP · STOP #${next.seq}` : `NEXT STOP · #${next.seq}`}</Mono>
                   {next.status === "arrived" ? <Pill label="ARRIVED" tone="yellow" /> : null}
                   {next.priority ? <Pill label="PRIORITY" tone="red" /> : null}
                 </View>
@@ -369,7 +386,7 @@ export default function Manifest() {
                 <View style={s.heroActions}>
                   <Pressable testID="next-stop-navigate-button" onPress={navigate} style={s.heroBtn}>
                     <Ionicons name="navigate" size={20} color={colors.onBrandPrimary} />
-                    <Mono style={s.heroBtnText}>NAVIGATE</Mono>
+                    <Mono style={s.heroBtnText}>{nextPickup ? "TO PICKUP" : "NAVIGATE"}</Mono>
                   </Pressable>
                   <View style={[s.heroBtn, { borderLeftWidth: 2, borderColor: colors.onBrandPrimary }]}>
                     <Mono style={s.heroBtnText}>OPEN DROP</Mono>

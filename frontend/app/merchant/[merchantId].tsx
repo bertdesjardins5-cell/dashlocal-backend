@@ -15,6 +15,7 @@ import ProblemAlertsCard from "@/src/components/ProblemAlertsCard";
 import { money } from "@/src/components/BillCard";
 import InvoicesCard from "@/src/components/InvoicesCard";
 import BatchRateTracker from "@/src/components/BatchRateTracker";
+import PharmacySummaryCard from "@/src/components/PharmacySummaryCard";
 import { api, API, dayLabel, Stop, windowLabel } from "@/src/api";
 import { uploadForm } from "@/src/utils/upload";
 import FixRowSheet, { ImportRow } from "@/src/components/FixRowSheet";
@@ -212,6 +213,7 @@ export default function MerchantHome() {
           ) : null}
 
           <Mono style={s.section}>INVOICES · CAD + HST</Mono>
+          {d.runs ? <PharmacySummaryCard merchantId={merchantId} notify={toast.show} /> : null}
           <InvoicesCard merchantId={merchantId} notify={toast.show} paidSession={paid} />
 
           <Mono style={s.section}>DELIVERY REPORT</Mono>

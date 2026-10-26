@@ -16,8 +16,8 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 BASE = (os.environ.get("EXPO_PUBLIC_BACKEND_URL") or os.environ.get("EXPO_BACKEND_URL")).rstrip("/")
 db = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
 NA = {"X-No-Auto-Auth": "1"}
-CUST = "+15195550977"   # TEST erase customer
-PICK = ["+15195550978", "+15195550979"]  # TEST pickup drops
+CUST = "+15195550128"   # TEST erase customer
+PICK = ["+15195550131", "+15195550140"]  # TEST pickup drops
 
 
 def login(email, pw):
@@ -120,7 +120,7 @@ class TestExportErase:
         assert r.status_code == 200 and r.json()["expires_in"] == 300
         f = requests.get(f"{BASE}{r.json()['path']}", headers=NA)
         assert f.status_code == 200, f.text
-        assert "attachment" in f.headers.get("content-disposition", "") and "15195550977" in f.headers["content-disposition"]
+        assert "attachment" in f.headers.get("content-disposition", "") and "15195550128" in f.headers["content-disposition"]
         body = f.json()
         assert body["phone"] == CUST and len(body["orders"]) == 1
         o = body["orders"][0]

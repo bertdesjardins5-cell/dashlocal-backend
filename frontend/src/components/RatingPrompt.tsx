@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { Pressable, View } from "react-native";
 import Animated, { FadeInDown, ZoomIn } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
@@ -7,8 +7,8 @@ import { api, Stop } from "@/src/api";
 import { Btn, Display, Mono } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
 
-const POSITIVE = ["ON TIME", "FRIENDLY DRIVER", "CAREFUL WITH PARCEL", "EASY TO FOLLOW"];
-const NEGATIVE = ["LATE", "HARD TO FIND PARCEL", "DAMAGED PARCEL", "RUDE DRIVER", "WRONG ADDRESS"];
+const POSITIVE = ["ON TIME", "FRIENDLY DRIVER", "HANDLED WITH CARE", "DISCREET", "EASY TO FOLLOW"];
+const NEGATIVE = ["LATE", "HARD TO FIND PARCEL", "DAMAGED PARCEL", "NOT DISCREET", "RUDE DRIVER", "WRONG ADDRESS"];
 const tagsFor = (stars: number) => (stars >= 4 ? POSITIVE : stars <= 2 ? NEGATIVE : [...NEGATIVE.slice(0, 2), ...POSITIVE.slice(0, 2)]);
 const WORDS = ["", "POOR", "MEH", "OKAY", "GOOD", "GREAT"];
 
@@ -46,7 +46,7 @@ export default function RatingPrompt({ stop, orderToken, onRated, onError }: Pro
   const submit = async () => {
     setSaving(true);
     try {
-      const st = await api<Stop>(`/stops/${stop.id}/rating`, { method: "POST", body: { stars, comment: tags.join(", ") || null }, headers: { "X-Order-Token": orderToken } });
+      const st = await api<Stop>(`/stops/${stop.id}/rating`, { method: "POST", body: { stars, comment: null, tags }, headers: { "X-Order-Token": orderToken } });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       onRated(st);
     } catch (e: any) {
@@ -85,7 +85,7 @@ export default function RatingPrompt({ stop, orderToken, onRated, onError }: Pro
       </View>
       {stars ? (
         <>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ height: 56, flexGrow: 0, marginHorizontal: -spacing.lg }} contentContainerStyle={{ gap: spacing.sm, alignItems: "center", paddingHorizontal: spacing.lg }}>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
             {tagsFor(stars).map((t) => {
               const on = tags.includes(t);
               return (
@@ -94,7 +94,7 @@ export default function RatingPrompt({ stop, orderToken, onRated, onError }: Pro
                 </Pressable>
               );
             })}
-          </ScrollView>
+          </View>
           <Btn testID="rating-submit-button" label="SEND RATING" icon="send" loading={saving} onPress={submit} />
         </>
       ) : null}
@@ -108,7 +108,7 @@ const useStyles = makeStyles((c) => ({
   starsRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   star: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   word: { marginLeft: spacing.sm, fontSize: 13, fontWeight: "700", color: c.brandPrimary },
-  chip: { height: 36, flexShrink: 0, paddingHorizontal: spacing.md, borderWidth: 2, borderColor: c.border, justifyContent: "center" },
+  chip: { minHeight: 44, paddingHorizontal: spacing.md, borderWidth: 2, borderColor: c.border, justifyContent: "center" },
   chipText: { fontSize: 11, fontWeight: "700" },
   done: { flexDirection: "row", alignItems: "center", gap: spacing.md, borderWidth: 2, borderColor: c.border, padding: spacing.md },
   label: { fontSize: 11, fontWeight: "700", letterSpacing: 1 },

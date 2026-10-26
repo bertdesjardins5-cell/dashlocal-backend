@@ -47,7 +47,8 @@ export type Stop = {
   pharmacy_drop?: boolean;
 };
 
-export type PickupRun = { run: string; label: string; pickup_label: string; date: string | null; pharmacy: string | null; pickup_address: string | null };
+export type PickupRun = { run: string; label: string; pickup_label: string; date: string | null; pharmacy: string | null; pickup_address: string | null;
+  pickup_lat?: number | null; pickup_lng?: number | null };
 export const pickupRunText = (p: PickupRun) =>
   `${p.label}${p.date && p.date !== depotToday() ? ` ${dayLabel(p.date)}` : ""} · pickup ${p.pickup_label}${p.pharmacy ? ` · ${p.pharmacy}` : ""}`.toUpperCase();
 

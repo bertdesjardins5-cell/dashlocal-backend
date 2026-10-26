@@ -512,6 +512,7 @@ class Stop(BaseModel):
     consent_by: Optional[str] = None
     consent_text: Optional[str] = None
     erased_at: Optional[str] = None  # personal details removed by the retention job
+    rating_tags: List[str] = []  # quick feedback chips picked with the star rating
 
 
 class Route(BaseModel):
@@ -594,6 +595,7 @@ async def pickup_run_labels(stops: list) -> dict:
     for s in batch:
         r, m = RUNS[s.batch_run], names.get(s.merchant_id, {})
         out[s.id] = {"run": s.batch_run, "label": r["label"], "pickup_label": f"{hhmm12(r['pickup'][0])} – {hhmm12(r['pickup'][1])}",
+                     "pickup_lat": (m.get("pickup") or {}).get("lat"), "pickup_lng": (m.get("pickup") or {}).get("lng"),
                      "date": s.manifest_id.split(":")[1] if s.manifest_id else None,
                      "pharmacy": m.get("name"), "pickup_address": (m.get("pickup") or {}).get("address")}
     return out
@@ -1670,6 +1672,11 @@ async def set_window(stop_id: str, body: WindowIn, who: dict = Depends(require_o
 class RatingIn(BaseModel):
     stars: int
     comment: Optional[str] = None
+    tags: List[str] = []
+
+
+RATING_TAGS = {"ON TIME", "FRIENDLY DRIVER", "HANDLED WITH CARE", "EASY TO FOLLOW", "DISCREET",
+               "LATE", "HARD TO FIND PARCEL", "DAMAGED PARCEL", "RUDE DRIVER", "WRONG ADDRESS", "NOT DISCREET"}
 
 
 @api_router.post("/stops/{stop_id}/rating")
@@ -1683,7 +1690,8 @@ async def rate_delivery(stop_id: str, body: RatingIn, who: dict = Depends(requir
     if not 1 <= body.stars <= 5:
         raise HTTPException(400, "Stars must be between 1 and 5")
     comment = (body.comment or "").strip()[:300] or None
-    upd = {"rating": body.stars, "rating_comment": comment, "rated_at": now_iso()}
+    tags = [t for t in dict.fromkeys(x.strip().upper()[:40] for x in body.tags[:20]) if t in RATING_TAGS][:6]
+    upd = {"rating": body.stars, "rating_comment": comment, "rating_tags": tags, "rated_at": now_iso()}
     if body.stars <= LOW_RATING:
         upd["follow_up_status"] = "open"
         upd["apology_code"] = "SORRY-" + "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(5))
@@ -3498,6 +3506,10 @@ async def weekly_scheduler():
                         tries = await db.report_emails.count_documents({"merchant_id": m["id"], "trigger": "scheduled", "week_start": log["week_start"]})
                         if log["status"] == "failed" and tries < 3:  # retry next minute, at most 3 tries a week
                             await db.merchants.update_one({"id": m["id"]}, {"$unset": {"weekly_sent_week": ""}})
+                for m in await db.merchants.find({"pharmacy_partner": True}, {"_id": 0, "id": 1}).to_list(500):
+                    claimed = await db.merchants.update_one({"id": m["id"], "pharmacy_summary_week": {"$ne": wk}}, {"$set": {"pharmacy_summary_week": wk}})
+                    if claimed.modified_count:
+                        spawn(email_pharmacy_summary(m["id"], (now.date() - timedelta(days=7)).isoformat()))
         except Exception as e:
             logger.error(f"Weekly report scheduler error: {e}")
         await asyncio.sleep(60)
@@ -3766,6 +3778,72 @@ def week_bounds(week: Optional[str]) -> tuple:
         raise HTTPException(400, "week must be YYYY-MM-DD")
     start = d - timedelta(days=d.weekday())
     return start.isoformat(), (start + timedelta(days=6)).isoformat()
+
+
+async def pharmacy_summary(merchant_id: str, week: Optional[str]) -> dict:
+    """Pharmacy weekly summary: drops, on-time pickups, batch-rate savings and patient feedback (Mon..Sun Eastern)."""
+    since, until = week_bounds(week)
+    days = [(date_cls.fromisoformat(since) + timedelta(days=i)).isoformat() for i in range(7)]
+    manifests = [f"{merchant_id}:{d}:{k}" for d in days for k in RUNS]
+    stops = await db.stops.find({"merchant_id": merchant_id, "manifest_id": {"$in": manifests}},
+                                {"_id": 0, "status": 1, "rating": 1, "rating_tags": 1, "manifest_id": 1}).to_list(5000)
+    pickups = await db.pickups.find({"manifest_id": {"$in": manifests}}, {"_id": 0, "on_time": 1}).to_list(500)
+    invs = await db.invoices.find({"merchant_id": merchant_id, "date": {"$gte": since, "$lte": until}, "kind": {"$ne": "platform"}},
+                                  {"_id": 0, "tier": 1}).to_list(5000)
+    batch_drops = sum(1 for i in invs if i.get("tier") == "Pharmacy batch")
+    rated = [s["rating"] for s in stops if s.get("rating")]
+    tags: Dict[str, int] = {}
+    for s in stops:
+        for t in s.get("rating_tags") or []:
+            tags[t] = tags.get(t, 0) + 1
+    on_time = sum(1 for p in pickups if p.get("on_time"))
+    return {"week_start": since, "week_end": until, "drops": len(stops),
+            "delivered": sum(1 for s in stops if s["status"] == "delivered"), "failed": sum(1 for s in stops if s["status"] == "failed"),
+            "pickups": len({s["manifest_id"] for s in stops}), "pickups_checked_in": len(pickups), "pickups_on_time": on_time,
+            "on_time_pct": round(100 * on_time / len(pickups)) if pickups else None,
+            "batch_rate_drops": batch_drops, "savings": round(batch_drops * (PHARMACY["standard_rate"] - PHARMACY["batch_rate"]), 2),
+            "avg_rating": round(sum(rated) / len(rated), 1) if rated else None, "ratings": len(rated),
+            "top_tags": sorted(tags.items(), key=lambda x: -x[1])[:5]}
+
+
+@api_router.get("/merchants/{merchant_id}/pharmacy-summary")
+async def get_pharmacy_summary(merchant_id: str, week: Optional[str] = None, _: dict = Depends(merchant_access)):
+    m = await get_merchant_or_404(merchant_id)
+    if not m.get("pharmacy_partner"):
+        raise HTTPException(400, "Weekly summary is for pharmacy partners")
+    return await pharmacy_summary(merchant_id, week)
+
+
+@api_router.post("/merchants/{merchant_id}/pharmacy-summary/email")
+async def send_pharmacy_summary_now(merchant_id: str, week: Optional[str] = None, _: dict = Depends(merchant_access)):
+    """Email this week's (or `week`'s) summary to the pharmacy's logins now."""
+    m = await get_merchant_or_404(merchant_id)
+    if not m.get("pharmacy_partner"):
+        raise HTTPException(400, "Weekly summary is for pharmacy partners")
+    if not (await pharmacy_summary(merchant_id, week))["drops"]:
+        raise HTTPException(400, "No pharmacy drops that week — nothing to send")
+    await email_pharmacy_summary(merchant_id, week or today_str())
+    return {"sent_to": await merchant_alert_recipients(merchant_id)}
+
+
+async def email_pharmacy_summary(merchant_id: str, week: str):
+    m = await get_merchant_or_404(merchant_id)
+    s = await pharmacy_summary(merchant_id, week)
+    if not s["drops"]:
+        return
+    tags = ", ".join(f"{t.title()} ({n})" for t, n in s["top_tags"]) or "none yet"
+    pct = f" ({s['on_time_pct']}%)" if s["on_time_pct"] is not None else ""
+    body = (f"<p>Week of <b>{nice_date(s['week_start'])}</b> – {nice_date(s['week_end'])}</p><ul>"
+            f"<li><b>{s['drops']}</b> drops · {s['delivered']} delivered · {s['failed']} not delivered</li>"
+            f"<li><b>{s['pickups_on_time']}/{s['pickups_checked_in']}</b> pickups on time{pct}</li>"
+            f"<li><b>{s['batch_rate_drops']}</b> drops at the batch rate · <b>${s['savings']:.2f}</b> saved</li>"
+            f"<li>Patient rating: <b>{s['avg_rating'] or '—'}</b> from {s['ratings']} ratings · {escape(tags)}</li></ul>")
+    subject = f"{m['name']}: your DashLocal week — {s['drops']} drops, ${s['savings']:.2f} saved"
+    for to in await merchant_alert_recipients(merchant_id):
+        try:
+            await send_email(to=to, subject=subject, html=brand_email("Your week with DashLocal", body))
+        except Exception as e:
+            logger.warning(f"Pharmacy summary email failed: {e}")
 
 
 async def merchant_bill(merchant_id: str, week: Optional[str]) -> dict:

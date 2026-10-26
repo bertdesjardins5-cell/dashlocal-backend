@@ -79,7 +79,7 @@ def route():
 def _mk_stop(mid, route=None, manifest=None, run=None, qr=False, name="TEST_RX"):
     sid = str(uuid.uuid4())
     fee = {"base": 8.99, "km": 3.0, "distance_fee": 0.0, "priority_fee": 0.0, "total": 8.99, "currency": "CAD", "priced_at": "x"}
-    db.stops.insert_one({"id": sid, "seq": 900, "customer_name": f"{name} {mid}", "customer_phone": "+15195557777",
+    db.stops.insert_one({"id": sid, "seq": 900, "customer_name": f"{name} {mid}", "customer_phone": "+15195550143",
                          "address": "200 King St W, Kitchener", "postal_code": "N2G 4V6", "zone": "Downtown", "lat": 43.4516, "lng": -80.4925,
                          "status": "pending", "tracking_code": f"TR{uuid.uuid4().hex[:6].upper()}", "notes": "", "merchant_id": mid,
                          "route_id": route, "priority": False, "fee": fee, "manifest_id": manifest, "batch_run": run,
@@ -155,7 +155,7 @@ class TestRxHandoff:
         for g in (gp, gn):
             assert "customer_phone" not in g and "fee" not in g
         ga = requests.get(f"{API}/stops/{p}", headers=admin).json()
-        assert ga["pharmacy_drop"] is True and ga["customer_phone"] == "+15195557777" and "fee" in ga
+        assert ga["pharmacy_drop"] is True and ga["customer_phone"] == "+15195550143" and "fee" in ga
 
 
 # ---- Batch progress alert (simulated dates far in the future so the live watcher never touches them)
