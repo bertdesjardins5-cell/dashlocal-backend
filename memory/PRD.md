@@ -9,7 +9,7 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - Twilio: REAL integration (added 2026-10-24)
 
 ## Architecture
-- Backend: FastAPI + MongoDB (`/app/backend/server.py`), WebSocket hub (`/api/ws/track/{code}`, `/api/ws/route/{id}`), Emergent Object Storage for PoD photos, Twilio REST (calls bridged with `<Dial callerId>` + SMS from Twilio number)
+- Backend: FastAPI + MongoDB, split into modules (June 2026 refactor): `server.py` (app, startup, middleware, router includes), `core.py` (config, DB + encryption, auth deps/JWT, storage, geo, constants), `models.py` (Pydantic models + route helpers), `routes/*.py` (pickups, dispatch, stops, feedback, scorecards, auth, merchants, emails, alerts, billing, invoices, payments, onboarding, privacy — each with its own `router`), `services/` (realtime hub, seed). Cross-module calls use module attributes (e.g. `billing.compute_fee`) to avoid circular imports. Route table verified identical to the old single file; WebSocket hub (`/api/ws/track/{code}`, `/api/ws/route/{id}`), Emergent Object Storage for PoD photos, Twilio REST (calls bridged with `<Dial callerId>` + SMS from Twilio number)
 - Frontend: Expo Router, brutalist high-contrast theme (Space Grotesk + JetBrains Mono), react-native-maps (native) / SVG schematic map (web), draggable-flatlist, expo-location, expo-image-picker
 
 ## Implemented
@@ -138,3 +138,4 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - Rating tags stored separately (rating_tags, allowed set incl. DISCREET). Pharmacy weekly summary card + Monday email (GET/POST /api/merchants/{id}/pharmacy-summary[/email]). Driver map: pending pharmacy pickups shown as "P" markers, Pickup First banner, NAVIGATE goes to pickup until checked in.
 - Privacy Officer editable in Admin › Privacy (GET /api/privacy/officer, PUT /api/admin/privacy/officer); policy page reads it.
 - Driver feedback card on driver summary (GET /api/drivers/{id}/feedback). Pharmacy batch savings badge on invoices card (batch_savings in invoices response).
+- Compliment shout-outs: 5★ + positive tag → db.driver_shoutouts; driver manifest banner (GET /shoutouts/new, POST /shoutouts/seen {ids}).

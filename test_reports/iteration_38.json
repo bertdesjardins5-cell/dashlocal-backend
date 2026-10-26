@@ -1,0 +1,38 @@
+{
+  "summary": "Compliment Shout-Outs tested end-to-end. Backend: a 5★ rating with a positive tag creates a single driver_shoutouts doc with the route's driver_id and only the positive tags. 5★ with no tags, 5★ with only negative or unknown tags, 4★ and 1★ ratings with positive tags, and stops with no route do NOT create one. Only one doc is kept per stop (rating again gives 400; a forced re-rate hits the unique index and returns no 500). Patient ratings made with an order unlock also create one. GET new hides stop_id and _id and shows no patient details. Admin and the driver themself have access; another driver gets 403 on GET and POST; a request with no login gets 401. POST seen marks only that driver's docs and reports how many it marked (1, then 0). For admin, an unknown driver returns 200 with an empty list, not 404. UI: rating MH-style test order TSOUI1 on the tracking page (unlock 0185, 5 stars, ON TIME and DISCREET chips) created the shout-out. On /driver/drv-1 the green banner showed '5★ · on time · discreet'. Tapping it sent POST seen and the banner went away, and it stayed gone after a reload. The 30s poll showed a new banner without a reload, titled '2 PATIENTS SAID THANK YOU!' with LATE left out. Regression: test_rating_tags_pickup_first_pharmacy_summary.py and test_officer_feedback_batch_savings.py pass (25/25, -n 0). Combined run 37/37. All TEST_SO_ data cleaned up; the driver_shoutouts collection is empty again.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/drivers/{id}/shoutouts/seen", "issue": "Marks ALL unseen docs, including any created between the banner's last poll and the tap. The driver never sees those. Consider sending the ids shown, or a created_at cutoff."},
+      {"endpoint": "GET /api/drivers/{id}/shoutouts/new", "issue": "For admin, an unknown driver_id returns 200 {shoutouts: []}, not 404. Acceptable, but differs from other driver endpoints if those return 404."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/driver/[driverId]", "issues": [
+        "ShoutoutBanner renders below the 'SHARE YOUR LOCATION' permission box, so at 375x667 it is mostly below the fold until the driver taps NOT NOW. Consider placing it above the permission box.",
+        "The 'Tap to dismiss' line is white at opacity 0.7 and 12px on brandForest #2B8932, about 3:1 contrast, which is below WCAG AA. The main line, white on #2B8932, is about 4.4:1, which is borderline."
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_driver_shoutouts.py", "/app/backend/tests/ui_seed_iter38.py", "/app/test_reports/pytest/iter38_all.xml"],
+  "action_items": [
+    "Optional: send the shown shoutout ids (or a max created_at) to /shoutouts/seen so shout-outs that arrive mid-session are not silently marked seen.",
+    "Optional: move ShoutoutBanner above the location-permission box and raise the contrast of the 'Tap to dismiss' text."
+  ],
+  "critical_code_review_comments": [
+    "server.py:1742 redefines POSITIVE_TAGS (adds 'CAREFUL WITH PARCEL') after rate_delivery uses it. At runtime the union applies, but RATING_TAGS filters that tag out first, so it is harmless. It is confusing, though: use a separate name such as NON_COMPLAINT_TAGS.",
+    "ShoutoutBanner.dismiss: if the POST fails, the rejection is not handled (try/finally with no catch), and there is no optimistic hide, so the banner stays until the refetch finishes.",
+    "driver_shoutouts has no index on (driver_id, seen_at), which every 30s poll queries. Fine at current scale."
+  ],
+  "updated_files": ["/app/backend/tests/test_driver_shoutouts.py (new)", "/app/backend/tests/ui_seed_iter38.py (new)"],
+  "success_rate": {"backend": "100% (12/12 new + 25/25 regression)", "frontend": "100% (rate via tracking page, banner shows tags, tap dismisses, stays dismissed after reload, 30s poll, multi-count title)"},
+  "seed_data_creation": "TEST_SO_* stops on non-active drv-1/drv-2 routes (cleaned up). Side effect: the UI test dismissed drv-1's pending weekly-badge celebration (badges/seen).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Shout-out tests make their own TEST_SO_ stops with delivered_at=now, because order unlocks expire 7 days after delivery. UI seed: python /app/backend/tests/ui_seed_iter38.py seed|clean. On the drv-1 manifest the BadgeCelebration overlay (badge-celebration-dismiss) can cover the banner and swallow force-clicks, so dismiss it first.",
+  "rca_of_issue": ""
+}

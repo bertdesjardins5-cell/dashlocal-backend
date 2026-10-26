@@ -120,7 +120,7 @@ def test_photo_upload_roundtrip_and_signature_encrypted(driver, admin, drv2_stop
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     try:
-        from server import get_object  # noqa
+        from core import get_object  # noqa
         rawb, _ = get_object(path)
         assert rawb != payload and payload not in rawb
     except ImportError:

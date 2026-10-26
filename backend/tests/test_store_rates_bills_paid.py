@@ -185,12 +185,13 @@ class TestBillsPaid:
 
     def test_email_html_has_statement(self):
         sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-        import server  # noqa
+        import server  # noqa  (loads the app)
+        from routes import emails  # noqa
         bill = {"count": 1, "subtotal": 8, "hst": 1.04, "total": 9.04, "outstanding": 16, "unpaid_count": 2}
         s = {"delivered": 1, "failed": 0, "on_time_rate": None, "avg_rating": None, "complaints": 0, "orders": 1, "open": 0}
-        html = server.weekly_email_html("Store", LAST_MON, LAST_MON, s, "https://x/r", bill, "https://x/sign-in/merchant")
+        html = emails.weekly_email_html("Store", LAST_MON, LAST_MON, s, "https://x/r", bill, "https://x/sign-in/merchant")
         assert "Invoices this week" in html and "https://x/sign-in/merchant" in html and "Outstanding: CA$16.00 (2 invoices)" in html and "CA$9.04" in html
-        assert server.WEEKLY_LINK_DAYS == 7
+        assert emails.WEEKLY_LINK_DAYS == 7
 
     def test_mark_paid_access_and_current_week(self, toks, pastdrop):
         u = f"{API}/admin/merchants/mer-1/bills/{LAST_MON}/paid"

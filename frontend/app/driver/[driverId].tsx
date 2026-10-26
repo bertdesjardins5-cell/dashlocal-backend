@@ -14,6 +14,7 @@ import * as Haptics from "expo-haptics";
 import RouteMap from "@/src/components/RouteMap";
 import DriverConsentGate from "@/src/components/DriverConsentGate";
 import PickupCheckIn from "@/src/components/PickupCheckIn";
+import ShoutoutBanner from "@/src/components/ShoutoutBanner";
 import { startBackgroundTracking, stopBackgroundTracking } from "@/src/driverTracking";
 import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
@@ -356,6 +357,7 @@ export default function Manifest() {
             </View>
           ) : null}
 
+          <ShoutoutBanner driverId={driverId!} />
           {nextPickup ? (
             <View style={s.block} testID="pickup-first-banner">
               <Mono style={s.meta}>PICKUP FIRST · {nextPickup.label.toUpperCase()} · {nextPickup.pickup_label}</Mono>
