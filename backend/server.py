@@ -687,7 +687,95 @@ async def pickup_check_in(route_id: str, manifest_id: str, body: PickupIn):
     except DuplicateKeyError:
         raise HTTPException(400, "This pickup is already checked in")
     await broadcast_route(route_id)
+    spawn(text_patients_left_store(manifest_id, route_id))
     return doc
+
+
+async def text_patients_left_store(manifest_id: str, route_id: str):
+    """Pickup checked in: text each patient that their delivery is on its way, with the run's delivery window.
+    Wording never mentions medication or the pharmacy type (texts show on locked phones)."""
+    m = await db.merchants.find_one({"id": manifest_id.split(":")[0]}, {"_id": 0, "name": 1}) or {}
+    r = RUNS[manifest_id.split(":")[2]]
+    window = f"{hhmm12(r['window'][0])}–{hhmm12(r['window'][1])}"
+    store = re.sub(r"\b(pharmacy|pharmacie|drug\s*store|drugs|apothecary|rx|chemist|prescriptions?|medications?|meds)\b", "", m.get("name") or "", flags=re.I)
+    store = re.sub(r"\s{2,}", " ", store).strip(" -·&,") or "your local store"
+    for d in await db.stops.find({"manifest_id": manifest_id, "route_id": route_id, "status": {"$in": ["pending", "arrived"]}}, {"_id": 0}).to_list(500):
+        st = Stop(**d)
+        if await db.contact_logs.find_one({"stop_id": st.id, "kind": "left_store"}, {"_id": 1}):
+            continue
+        body = (f"DashLocal: your delivery {st.tracking_code} from {store} has left the store and is on its way. "
+                f"Expected today {window} (Eastern time). Someone will need to sign for it.")
+        status = "skipped_fictional" if FICTIONAL_NUMBER.match(st.customer_phone or "") else "not_configured"
+        sid = None
+        if status != "skipped_fictional" and os.environ.get("TWILIO_ACCOUNT_SID") and os.environ.get("TWILIO_AUTH_TOKEN") and os.environ.get("TWILIO_PHONE_NUMBER"):
+            try:
+                tw = TwilioClient(os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"])
+                res = await run_in_threadpool(lambda: tw.messages.create(to=st.customer_phone, from_=twilio_number(), body=body))
+                status, sid = res.status, res.sid
+            except Exception as e:
+                logger.error(f"Left-store SMS failed for {st.tracking_code}: {e}")
+                status = "failed"
+        await db.contact_logs.insert_one({"id": str(uuid.uuid4()), "stop_id": st.id, "channel": "sms", "kind": "left_store",
+                                          "message": body, "twilio_sid": sid, "status": status, "created_at": now_iso()})
+
+
+MISSED_PICKUP_GRACE_H = 3  # only alert within this many hours after the window ends (avoids alerting on old days at startup)
+
+
+async def send_missed_pickup_alerts(now: Optional[datetime] = None) -> list:
+    """After a run's pickup window ends, any pharmacy manifest today with drops not checked in → one email to admin + pharmacy."""
+    now = now or datetime.now(TZ)
+    day = now.date().isoformat()
+    sent = []
+    for key, r in RUNS.items():
+        end = pickup_window_end(f"x:{day}:{key}")
+        if not (end <= now < end + timedelta(hours=MISSED_PICKUP_GRACE_H)):
+            continue
+        for m in await db.merchants.find({"pharmacy_partner": True}, {"_id": 0}).to_list(500):
+            mid = f"{m['id']}:{day}:{key}"
+            stops = await db.stops.find({"manifest_id": mid, "status": {"$in": ["pending", "arrived"]}, "erased_at": None}, {"_id": 0, "route_id": 1}).to_list(1000)
+            if not stops:
+                continue
+            done = {p["route_id"] for p in await db.pickups.find({"manifest_id": mid}, {"_id": 0, "route_id": 1}).to_list(50)}
+            missing = sum(1 for s in stops if not s.get("route_id") or s["route_id"] not in done)
+            if not missing:
+                continue
+            try:
+                await db.missed_pickup_alerts.insert_one({"id": mid, "merchant_id": m["id"], "run": key, "missing": missing, "created_at": now_iso()})
+            except DuplicateKeyError:
+                continue
+            spawn(email_missed_pickup(m, r, mid, missing, len(stops)))
+            sent.append(mid)
+    return sent
+
+
+async def email_missed_pickup(m: dict, r: dict, mid: str, missing: int, total: int):
+    subject = f"Missed pickup: {m['name']} — {r['label']} ({missing} of {total} drops not collected)"
+    body = (f"<p>The <b>{r['label']}</b> pickup window at <b>{escape(m['name'])}</b> ended at <b>{hhmm12(r['pickup'][1])}</b>, "
+            f"but <b>{missing} of {total}</b> drops have not been checked in by a driver.</p>"
+            f"<p>Dispatch is following up. Pharmacy: if the parcels were collected, no action is needed; otherwise please keep them ready.</p>")
+    await notify_admin(subject, body, None)
+    for to in await merchant_alert_recipients(m["id"]):
+        try:
+            await send_email(to=to, subject=subject, html=brand_email(subject, body))
+        except Exception as e:
+            logger.warning(f"Missed pickup email failed: {e}")
+
+
+async def merchant_alert_recipients(merchant_id: str) -> list:
+    demo = {em for _, em, _ in DEMO_MERCHANT_USERS}
+    return [TEST_INBOX if u["email"] in demo else u["email"]
+            for u in await db.users.find({"merchant_id": merchant_id, "role": "merchant", "disabled": {"$ne": True}}, {"_id": 0, "email": 1}).to_list(20)]
+
+
+@api_router.post("/admin/missed-pickups/run", dependencies=ADMIN_ONLY)
+async def run_missed_pickups(at: Optional[str] = None):
+    """Run the missed-pickup check now; `at` (ISO, Eastern) pretends it is that time — for testing."""
+    try:
+        now = datetime.fromisoformat(at).replace(tzinfo=TZ) if at else None
+    except ValueError:
+        raise HTTPException(400, "at must be an ISO date-time, e.g. 2026-06-01T14:40:00")
+    return {"sent": await send_missed_pickup_alerts(now)}
 
 
 # ---------------------------------------------------------------- websocket hub
@@ -1065,6 +1153,7 @@ async def startup():
     spawn(retention_watcher())
     spawn(batch_progress_watcher())
     await db.batch_alerts.create_index("id", unique=True)
+    await db.missed_pickup_alerts.create_index("id", unique=True)
     if "manifest_id_1" in await db.pickups.index_information():
         await db.pickups.drop_index("manifest_id_1")  # a run split across routes gets one check-in per route
     await db.pickups.create_index([("manifest_id", 1), ("route_id", 1)], unique=True)
@@ -2049,6 +2138,8 @@ async def download(path: str, request: Request, t: str = ""):
     rec = await db.files.find_one({"storage_path": path}, {"_id": 0})
     if not rec:
         raise HTTPException(404, "File not found")
+    if rec.get("is_deleted"):
+        raise HTTPException(404, "This photo was erased under the privacy policy")
     data, ct = await run_in_threadpool(get_object, path)
     data = dec_bytes(data)
     return Response(content=data, media_type=rec.get("content_type") or ct, headers={"Cache-Control": "private, max-age=3600"})
@@ -4085,6 +4176,7 @@ async def batch_progress_watcher():
     while True:
         try:
             await send_batch_progress_alerts()
+            await send_missed_pickup_alerts()
         except Exception as e:
             logger.warning(f"Batch progress loop error: {e}")
         await asyncio.sleep(60)
@@ -5041,10 +5133,26 @@ def old_stop_query(cutoff: str) -> dict:
 ERASED = "Erased (retention)"
 
 
+async def shred_files(paths: list):
+    """Delete stored proof photos: the object is overwritten with nothing (storage has no delete call) and the
+    file record is marked deleted so it can never be served again."""
+    for p in paths:
+        try:
+            await run_in_threadpool(put_object, p, b"", "application/octet-stream")
+        except Exception as e:
+            logger.warning(f"Photo shred failed for {p}: {e}")  # still flagged below so it can never be served; retried later
+            await db.files.update_one({"storage_path": p}, {"$set": {"is_deleted": True, "deleted_at": now_iso(), "shred_pending": True}})
+            continue
+        await db.files.update_one({"storage_path": p}, {"$set": {"is_deleted": True, "deleted_at": now_iso(), "size": 0, "shred_pending": False}})
+
+
 async def erase_stops(ids: list, label: str = ERASED):
     """Remove the person's details from these orders; invoice numbers and totals stay for tax records."""
     if not ids:
         return
+    photos = [s["pod_photo_path"] for s in await db.stops.find({"id": {"$in": ids}, "pod_photo_path": {"$nin": [None, ""]}},
+                                                              {"_id": 0, "pod_photo_path": 1}).to_list(5000)]
+    await shred_files(photos)
     await db.stops.update_many({"id": {"$in": ids}}, {"$set": {
         "customer_name": label, "customer_phone": "", "address": label, "notes": "", "customer_note": None,
         "pod_signature": None, "pod_photo_path": None, "rating_comment": None, "follow_up_note": None,
@@ -5133,6 +5241,7 @@ async def run_retention() -> dict:
     ids = [d["id"] for d in await db.stops.find(old_stop_query(cutoff), {"_id": 0, "id": 1}).to_list(5000)]
     await erase_stops(ids)
     notes = await db.saved_notes.delete_many({"$or": [{"updated_at": {"$lt": cutoff}}, {"updated_at": None, "created_at": {"$lt": cutoff}}]})
+    await shred_files([f["storage_path"] for f in await db.files.find({"shred_pending": True}, {"_id": 0, "storage_path": 1}).to_list(500)])
     await db.audit_log.delete_many({"at": {"$lt": cutoff}})
     await db.settings.update_one({"key": "privacy"}, {"$set": {"last_run_at": now_iso(), "last_run_erased": len(ids)}}, upsert=True)
     return {"erased_orders": len(ids), "deleted_saved_notes": notes.deleted_count, "cutoff": cutoff}

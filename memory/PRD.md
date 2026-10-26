@@ -132,3 +132,6 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - Customer data requests (admin › Privacy): lookup by phone, JSON export (token link), erase (type ERASE; 409 if open orders); logged in db.data_requests.
 - Pharmacy pickup check-in: driver PICKED UP + parcel count per manifest per route (db.pickups); merchant batch-rate tracker shows progress, cut-off countdown and today's pickup status.
 - Known gap: erased/retained photos' stored files are unlinked but not deleted from object storage.
+- Photo shred on erase/retention (object overwritten empty + db.files.is_deleted; failures flagged shred_pending and retried by retention).
+- Missed pickup alert (admin + pharmacy, once per manifest, within 3h after pickup window end). Test hook POST /api/admin/missed-pickups/run?at=.
+- Left-store patient SMS on pickup check-in (no medication/pharmacy words; store name sanitized).
