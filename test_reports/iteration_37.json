@@ -1,0 +1,38 @@
+{
+  "summary": "Tested the three new features on backend and UI (375x667). Privacy Officer: public GET returns the default; PUT is admin-only (401 with no login, 403 for drivers and merchants); validation works (422 for name <2 or >80 chars or missing email, 400 for a bad email); input is trimmed and lowercased. The admin form saves and the public /privacy Contact section shows the new name and email. Driver Feedback: count, avg, avg_30d, count_30d, stars, compliments, issues and recent all match the DB (seeded tagged ratings on drv-1). Response has no patient names or addresses. drv-2 gets 403, a merchant gets 403, no login gets 401, admin gets 200. The card renders on /driver/summary/drv-1. Batch savings: mer-2 shows drops=4 and CA$10.96 (4 x 2.74). Last month's batch invoices and Standard-tier invoices are excluded. mer-1 has no batch_savings field and no badge. Two minor backend bugs found. Regression run with -n 0 (privacy_compliance, rating_tags_pickup_first_pharmacy_summary, invoices_hst, tiers_pharmacy_kw, low_ratings_badges, pricing_billing, scorecard_rating_labels, rx_handoff_batch_alerts, statement_card_pay): 144/144 passed. All test data cleaned up. Privacy officer is back to the default, pricing is still 8.99/16 and mer-2 is still a pharmacy partner.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/admin/privacy/officer", "issue": "min_length=2 is checked on the raw name, before whitespace is collapsed. A name of only spaces ('   ') returns 200 and saves an empty name, so GET falls back to 'Privacy Officer' but keeps the custom email. A name like ' a ' saves as the 1-character 'a'. Check the length after normalising (or use a field_validator) and return 400/422."},
+      {"endpoint": "GET /api/drivers/{id}/feedback", "issue": "Does not call get_driver_or_404. An admin asking for an unknown id (drv-nope) gets 200 with zero counts instead of 404."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "DriverFeedbackCard recent rows", "issue": "dayLabel(r.rated_at.slice(0,10)) uses the UTC date. Ratings given after about 8pm Toronto time will show the next day's label.", "testID": "driver-feedback-recent", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Merchant portal InvoicesCard", "issues": ["The badge text hard-codes '$6.25 INSTEAD OF $8.99'. These should come from the API (PHARMACY batch_rate/standard_rate) so the text cannot drift from the amount.", "The badge also shows for a pharmacy partner with 0 batch drops this month ('CA$0.00 SAVED'). Consider hiding it or showing a hint instead."]},
+      {"screen": "Driver summary", "issues": ["DriverFeedbackCard returns null while loading and on error, with no error or retry state.", "Legacy seeded ratings have only rating_comment and no rating_tags, so on a fresh seed TOP COMPLIMENTS / TO WORK ON stay empty until new tagged ratings arrive. Consider seeding rating_tags."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_officer_feedback_batch_savings.py", "/app/backend/tests/ui_seed_iter37.py", "/app/test_reports/pytest/iter37.xml"],
+  "action_items": [
+    "Reject a blank or too-short officer_name after trimming/collapsing whitespace in set_privacy_officer.",
+    "Add await get_driver_or_404(driver_id) to driver_feedback.",
+    "(Low) Convert rated_at to the America/Toronto date before calling dayLabel in DriverFeedbackCard. Take the batch and standard rates for the badge text from the API response."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 5452 lines; it should be split into routers.",
+    "The positive tag set is hard-coded inside driver_feedback; it should be a module constant next to RATING_TAGS.",
+    "The 'Pharmacy batch' tier string is repeated across server.py (rerate, summary, invoices). Use a constant."
+  ],
+  "updated_files": ["/app/backend/tests/test_officer_feedback_batch_savings.py (new)", "/app/backend/tests/ui_seed_iter37.py (new)"],
+  "success_rate": {"backend": "13/15 new tests passed (2 minor bugs); regression 144/144 passed", "frontend": "100% (officer form, /privacy contact, driver feedback card, mer-2 badge, mer-1 no badge)"},
+  "seed_data_creation": "Temporary only: TEST_ stops cloned from a drv-1 route stop with ratings and tags, and TEST_ invoices for mer-2 with tier 'Pharmacy batch'. All removed. Privacy officer settings unset, so the default is back.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Seeded stop docs must include the full Stop fields (clone an existing stop), or /drivers/{id}/summary returns 500. ui_seed_iter37.py seed|clean does this and also resets the privacy officer. Mer-1 saved notes include older leftover entries (xxxx..., +14155550166 Gate 2222) from previous iterations. Run suites with -n 0 in the foreground."
+}

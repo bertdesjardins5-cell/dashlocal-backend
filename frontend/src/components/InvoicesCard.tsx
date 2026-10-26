@@ -12,7 +12,8 @@ export type Invoice = {
   merchant: { name: string; address: string | null }; delivery: { tracking_code: string; customer_name: string; address: string; km: number; priority: boolean };
   lines: { description: string; amount: number }[]; subtotal: number; hst_pct: number; hst: number; total: number; merchant_id: string;
 };
-type Resp = { outstanding: number; paid: number; unpaid_count: number; count: number; invoices: Invoice[]; billing_address: string | null };
+type Resp = { outstanding: number; paid: number; unpaid_count: number; count: number; invoices: Invoice[]; billing_address: string | null;
+  batch_savings?: { month: string; label: string; drops: number; amount: number } };
 type Filter = "all" | "unpaid" | "paid";
 const LIMIT = 10;
 
@@ -153,6 +154,14 @@ export default function InvoicesCard({ merchantId, notify, paidSession }: { merc
           <Mono style={s.label}>PAID</Mono>
         </View>
       </View>
+      {d.batch_savings && d.batch_savings.drops > 0 ? (
+        <View style={s.savings} testID="batch-savings-badge">
+          <Display style={[s.val, { color: colors.brandForest }]}>{money(d.batch_savings.amount)}</Display>
+          <Mono style={s.label}>
+            SAVED WITH BATCH PRICING · {d.batch_savings.label.toUpperCase()} · {d.batch_savings.drops} DROP{d.batch_savings.drops === 1 ? "" : "S"} AT THE BATCH RATE
+          </Mono>
+        </View>
+      ) : null}
       <View style={s.block}>
         <View style={s.row}>
           {(["all", "unpaid", "paid"] as Filter[]).map((f) => (
@@ -250,6 +259,7 @@ export default function InvoicesCard({ merchantId, notify, paidSession }: { merc
 
 const useStyles = makeStyles((c) => ({
   totals: { flexDirection: "row", borderBottomWidth: 2, borderColor: c.border },
+  savings: { padding: spacing.lg, gap: 4, borderBottomWidth: 2, borderColor: c.border, backgroundColor: c.surfaceSecondary },
   cell: { flex: 1, padding: spacing.md, gap: 2 },
   val: { fontSize: 24 },
   label: { fontSize: 10, fontWeight: "700", letterSpacing: 1 },

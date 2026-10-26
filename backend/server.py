@@ -1839,6 +1839,29 @@ async def send_coaching(driver_id: str, body: CoachingIn):
     return rec
 
 
+@api_router.get("/drivers/{driver_id}/feedback", dependencies=DRIVER_SELF)
+async def driver_feedback(driver_id: str):
+    """The driver's own patient ratings: average, star split, top compliments and recent ratings (no patient details)."""
+    if not await db.drivers.find_one({"id": driver_id}, {"_id": 1}):
+        raise HTTPException(404, "Driver not found")
+    rids = [r["id"] for r in await db.routes.find({"driver_id": driver_id}, {"_id": 0, "id": 1}).to_list(5000)]
+    rows = await db.stops.find({"route_id": {"$in": rids}, "rating": {"$ne": None}}, {"_id": 0, "rating": 1, "rating_tags": 1, "rated_at": 1}).sort("rated_at", -1).to_list(2000)
+    positive = {"ON TIME", "FRIENDLY DRIVER", "HANDLED WITH CARE", "EASY TO FOLLOW", "DISCREET"}
+    praise: Dict[str, int] = {}
+    issues: Dict[str, int] = {}
+    for r in rows:
+        for t in r.get("rating_tags") or []:
+            bucket = praise if t in positive else issues
+            bucket[t] = bucket.get(t, 0) + 1
+    since = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    recent30 = [r["rating"] for r in rows if (r.get("rated_at") or "") >= since]
+    return {"count": len(rows), "avg": round(sum(r["rating"] for r in rows) / len(rows), 2) if rows else None,
+            "avg_30d": round(sum(recent30) / len(recent30), 2) if recent30 else None, "count_30d": len(recent30),
+            "stars": {str(k): sum(1 for r in rows if r["rating"] == k) for k in range(5, 0, -1)},
+            "compliments": sorted(praise.items(), key=lambda x: -x[1])[:5], "issues": sorted(issues.items(), key=lambda x: -x[1])[:3],
+            "recent": [{"stars": r["rating"], "tags": r.get("rating_tags") or [], "rated_at": r.get("rated_at")} for r in rows[:8]]}
+
+
 @api_router.get("/drivers/{driver_id}/coaching", dependencies=DRIVER_SELF)
 async def list_coaching(driver_id: str, unread: bool = False):
     await get_driver_or_404(driver_id)
@@ -4363,7 +4386,13 @@ async def merchant_invoices(merchant_id: str, status: Optional[str] = None, _: d
     invs = await db.invoices.find({"merchant_id": merchant_id}, {"_id": 0}).sort("number", -1).to_list(2000)
     # "unpaid" = everything still owed (including payments the shop reported but dispatch hasn't confirmed)
     shown = [i for i in invs if not status or i["status"] == status or (status == "unpaid" and i["status"] == "reported")]
-    return {**invoice_summary(invs), "invoices": shown[:200], "billing_address": m.get("address"), "currency": "CAD"}
+    out = {**invoice_summary(invs), "invoices": shown[:200], "billing_address": m.get("address"), "currency": "CAD"}
+    if m.get("pharmacy_partner"):  # savings badge: what the batch rate saved this month vs the standard rate
+        month = datetime.now(TZ).strftime("%Y-%m")
+        n = sum(1 for i in invs if i.get("tier") == "Pharmacy batch" and i["date"].startswith(month))
+        out["batch_savings"] = {"month": month, "label": datetime.now(TZ).strftime("%B %Y"), "drops": n,
+                                "amount": round(n * (PHARMACY["standard_rate"] - PHARMACY["batch_rate"]), 2)}
+    return out
 
 
 class AddressIn(BaseModel):
@@ -5366,6 +5395,33 @@ async def run_retention_now():
 @api_router.get("/privacy/consent-text")
 async def consent_text():
     return {"text": CONSENT_TEXT, "version": CONSENT_VERSION}
+
+
+PRIVACY_OFFICER_DEFAULT = {"officer_name": "Privacy Officer", "officer_email": "privacy@dashlocal.app"}
+
+
+@api_router.get("/privacy/officer")
+async def privacy_officer():
+    """Public: who to contact about privacy (shown on the Privacy Policy page)."""
+    p = await get_privacy()
+    return {k: p.get(k) or v for k, v in PRIVACY_OFFICER_DEFAULT.items()}
+
+
+class OfficerIn(BaseModel):
+    officer_name: str = Field(min_length=2, max_length=80)
+    officer_email: str = Field(max_length=120)
+
+
+@api_router.put("/admin/privacy/officer", dependencies=ADMIN_ONLY)
+async def set_privacy_officer(body: OfficerIn):
+    email = body.officer_email.strip().lower()
+    name = " ".join(body.officer_name.split())
+    if len(name) < 2:
+        raise HTTPException(400, "Enter the Privacy Officer's full name")
+    if not EMAIL_RE.match(email):
+        raise HTTPException(400, "Enter a valid email")
+    await db.settings.update_one({"key": "privacy"}, {"$set": {"value.officer_name": name, "value.officer_email": email}}, upsert=True)
+    return await privacy_officer()
 
 
 class MyConsentIn(BaseModel):

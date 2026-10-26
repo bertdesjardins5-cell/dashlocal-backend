@@ -9,6 +9,7 @@ import { Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone } from "@/
 import { makeStyles, spacing, useTheme } from "@/src/theme";
 import WeekScorecard, { ScoreDay, ScoreTotals } from "@/src/components/WeekScorecard";
 import Badges, { Badge } from "@/src/components/Badges";
+import DriverFeedbackCard from "@/src/components/DriverFeedbackCard";
 
 type Summary = {
   driver: Driver;
@@ -113,6 +114,7 @@ export default function DriverSummary() {
               </View>
             </View>
           ))}
+          <DriverFeedbackCard driverId={driverId!} />
         </ScrollView>
       )}
     </View>

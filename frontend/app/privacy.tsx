@@ -2,16 +2,16 @@ import React from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/src/api";
 import BrandHeader, { Kicker } from "@/src/components/brand/BrandHeader";
 import BrandButton from "@/src/components/brand/BrandButton";
 import { fonts, makeStyles } from "@/src/theme";
 
 // Public Privacy Policy. Editable placeholder contact; have a lawyer review before launch.
-const PRIVACY_OFFICER = "Privacy Officer";
-const PRIVACY_EMAIL = "privacy@dashlocal.app";
 const UPDATED = "June 2026";
 
-const SECTIONS: { h: string; p: string[] }[] = [
+const sections = (officer: string, email: string): { h: string; p: string[] }[] => [
   { h: "Who we are", p: [
     "DashLocal Inc. (\"DashLocal\") provides same-day local delivery for shops and pharmacies in Kitchener-Waterloo, Ontario. This policy explains how we handle personal information under Canada's Personal Information Protection and Electronic Documents Act (PIPEDA) and, for pharmacy deliveries, Ontario's Personal Health Information Protection Act, 2004 (PHIPA).",
     "For pharmacy orders, the pharmacy is the health information custodian. DashLocal acts as its agent and only handles what it needs to complete the delivery.",
@@ -44,13 +44,14 @@ const SECTIONS: { h: string; p: string[] }[] = [
     "Under PIPEDA and PHIPA you can ask to see the personal information we hold about you, ask us to correct it, ask how it has been used or shared, and withdraw your consent. You can also complain to us, and if you are not satisfied, to the Office of the Privacy Commissioner of Canada (priv.gc.ca) or, for health information, the Information and Privacy Commissioner of Ontario (ipc.on.ca).",
     "If a privacy breach puts you at real risk of significant harm, we will notify you and the relevant commissioner as the law requires.",
   ] },
-  { h: "Contact", p: [`${PRIVACY_OFFICER}, DashLocal Inc. · ${PRIVACY_EMAIL}. We reply within 30 days.`] },
+  { h: "Contact", p: [`${officer}, Privacy Officer, DashLocal Inc. · ${email}. We reply within 30 days.`] },
 ];
 
 export default function PrivacyPolicy() {
   const s = useStyles();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const officer = useQuery({ queryKey: ["privacy-officer"], queryFn: () => api<{ officer_name: string; officer_email: string }>("/privacy/officer") });
   return (
     <View style={s.root} testID="privacy-policy-screen">
       <BrandHeader />
@@ -58,7 +59,7 @@ export default function PrivacyPolicy() {
         <Kicker>Privacy</Kicker>
         <Text style={s.title}>Privacy Policy</Text>
         <Text style={s.updated}>Last updated {UPDATED} · PIPEDA &amp; PHIPA (Ontario)</Text>
-        {SECTIONS.map((sec) => (
+        {sections(officer.data?.officer_name === "Privacy Officer" ? "DashLocal" : officer.data?.officer_name ?? "DashLocal", officer.data?.officer_email ?? "privacy@dashlocal.app").map((sec) => (
           <View key={sec.h} style={s.section}>
             <Text style={s.h}>{sec.h}</Text>
             {sec.p.map((t, i) => <Text key={i} style={s.p}>{t}</Text>)}

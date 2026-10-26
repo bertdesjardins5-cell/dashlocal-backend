@@ -136,3 +136,5 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - Missed pickup alert (admin + pharmacy, once per manifest, within 3h after pickup window end). Test hook POST /api/admin/missed-pickups/run?at=.
 - Left-store patient SMS on pickup check-in (no medication/pharmacy words; store name sanitized).
 - Rating tags stored separately (rating_tags, allowed set incl. DISCREET). Pharmacy weekly summary card + Monday email (GET/POST /api/merchants/{id}/pharmacy-summary[/email]). Driver map: pending pharmacy pickups shown as "P" markers, Pickup First banner, NAVIGATE goes to pickup until checked in.
+- Privacy Officer editable in Admin › Privacy (GET /api/privacy/officer, PUT /api/admin/privacy/officer); policy page reads it.
+- Driver feedback card on driver summary (GET /api/drivers/{id}/feedback). Pharmacy batch savings badge on invoices card (batch_savings in invoices response).
