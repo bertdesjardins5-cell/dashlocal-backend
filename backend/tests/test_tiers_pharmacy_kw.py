@@ -19,8 +19,10 @@ BASE_URL = (os.environ.get("EXPO_PUBLIC_BACKEND_URL") or os.environ.get("EXPO_BA
 API = f"{BASE_URL}/api"
 NOAUTH = {"X-No-Auto-Auth": "1"}
 db = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
+for _p in ("uploads/TEST_rx_photo.jpg", "uploads/TEST_tier.jpg"):  # pharmacy hand-off needs a real uploaded file record
+    db.files.update_one({"storage_path": _p}, {"$set": {"storage_path": _p, "content_type": "image/jpeg"}}, upsert=True)
 TZ = ZoneInfo("America/Toronto")
-SIG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+SIG = "M10 10 L60 40 L80 20"  # drawn signature path (pharmacy hand-off checks the format)
 S = {}
 
 
@@ -100,7 +102,7 @@ def _mk_stop(mid, route, i, priority=False, dist=0.0, manifest=None, run=None):
 
 
 def _deliver(admin, sid):
-    r = requests.post(f"{API}/stops/{sid}/deliver", json={"signature": SIG}, headers=admin)
+    r = requests.post(f"{API}/stops/{sid}/deliver", json={"signature": SIG, "photo_path": "uploads/TEST_tier.jpg"}, headers=admin)  # pharmacy drops need both (iter 33)
     assert r.status_code == 200, r.text
     inv = db.invoices.find_one({"stop_id": sid}, {"_id": 0})
     assert inv, "no invoice issued"

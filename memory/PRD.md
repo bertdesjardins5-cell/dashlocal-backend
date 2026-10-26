@@ -127,3 +127,5 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - Driver API views hide phone/fee/consent; drivers can't edit customer phone; drivers must accept consent modal (server-enforced).
 - Audit log middleware + /admin/privacy screen; retention (default 730 days, erase PII keep invoice totals, every 6h).
 - /privacy policy page (placeholder Privacy Officer privacy@dashlocal.app). Consent modal on sign-up; consent checkbox on CSV upload (stored per order).
+- Prescription hand-off: pharmacy drops require uploaded photo AND drawn signature (server-validated).
+- Batch progress email: 30 min before each run cut-off, pharmacy pickups with 7–9 drops get one email (db.batch_alerts). Test hook POST /api/admin/batch-alerts/run?at=.

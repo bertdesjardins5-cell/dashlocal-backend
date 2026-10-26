@@ -145,7 +145,7 @@ export default function StopDetail() {
   };
 
   const closed = stop && (stop.status === "delivered" || stop.status === "failed");
-  const canComplete = !!(photo?.path || signature || stop?.pod_qr_verified) && !uploading;
+  const canComplete = (stop?.pharmacy_drop ? !!(photo?.path && signature) : !!(photo?.path || signature || stop?.pod_qr_verified)) && !uploading;
 
   return (
     <View style={s.root} testID="stop-detail-screen">
@@ -232,6 +232,14 @@ export default function StopDetail() {
             ) : (
               <View style={s.section}>
                 <Display style={s.h2}>PROOF OF DELIVERY</Display>
+                {stop.pharmacy_drop ? (
+                  <View style={s.rxBox} testID="rx-handoff-notice">
+                    <Mono style={s.rxTitle}>PRESCRIPTION HAND-OFF</Mono>
+                    <Mono style={s.rxText}>
+                      Take a doorstep photo {photo?.path ? "✓" : "○"} and get the recipient&apos;s signature {signature ? "✓" : "○"} — both are required. No unattended drops.
+                    </Mono>
+                  </View>
+                ) : null}
                 {permPrompt ? (
                   <View style={s.permBox} testID="camera-permission-box">
                     <Mono style={{ fontSize: 13 }}>Snap the parcel at the door so the customer sees exactly where it was left.</Mono>
@@ -327,6 +335,9 @@ const useStyles = makeStyles((c) => ({
   input: { height: 52, borderWidth: 2, borderColor: c.border, paddingHorizontal: spacing.md, fontFamily: fonts.mono, fontSize: 16, color: c.onSurface, backgroundColor: c.surface },
   section: { padding: spacing.lg, gap: spacing.md },
   h2: { fontSize: 20 },
+  rxBox: { backgroundColor: c.warning, padding: spacing.md, gap: 4, borderWidth: 2, borderColor: c.border },
+  rxTitle: { fontSize: 12, fontWeight: "700", letterSpacing: 1, color: c.onWarning },
+  rxText: { fontSize: 13, color: c.onWarning },
   permBox: { padding: spacing.lg, gap: spacing.md, backgroundColor: c.warning, borderWidth: 2, borderColor: c.border },
   photoBox: { height: 200, borderWidth: 2, borderColor: c.border, alignItems: "center", justifyContent: "center", gap: spacing.sm, overflow: "hidden" },
   qrBox: { minHeight: 72, borderWidth: 2, borderColor: c.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.md },

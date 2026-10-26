@@ -1,0 +1,39 @@
+{
+  "summary": "Tested Prescription Hand-Off and Batch Progress Alert. Backend: wrote 20 pytest cases in tests/test_rx_handoff_batch_alerts.py. 19 pass; the 1 failure is invalid ?at= returning 500. Pharmacy drops (mer-2 partner OR batch_run set) reject photo-only, signature-only, QR-only and QR+photo with the exact 400 message. Photo+signature returns 200 with an invoice at the standard rate of 8.99 ('Standard rate — pickup had 1 drop', tier Standard). Non-pharmacy drops still accept signature-only, photo-only or QR-only, and no proof still gives 400. GET /stops/{id} pharmacy_drop is true/false correctly, and the driver view hides customer_phone and fee (the admin view keeps them). Batch alerts: 7/8/9 drops are sent once and not resent; 6 and 10 drops are not sent; 12:50, 12:59:59, 13:30 and 13:31 are outside the window (13:29 is sent); the evening window works 16:00-16:29 (15:59 and 13:00 are not sent); recipients are recorded as books@dashlocal.app -> delivered@resend.dev; merchant and driver get 403, no auth gets 401. Frontend (375x667 web preview, drv-1): the pharmacy stop shows rx-handoff-notice going ○○ -> ○✓ (signature) -> ✓✓ (photo upload). complete-drop-button stays disabled until both are present and disables again when the signature is cleared. Completing the drop gave POST /deliver 200 and went back to the route screen. The non-pharmacy stop shows no notice and enables the button after a signature only. No deprecated Expo packages found in the reviewed file.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/admin/batch-alerts/run?at=not-a-date", "issue": "datetime.fromisoformat raises ValueError -> 500 Internal Server Error; should be 400/422. Also an 'at' with a tz offset has the offset silently replaced by Eastern (.replace(tzinfo=TZ))."},
+      {"endpoint": "POST /api/stops/{id}/deliver", "issue": "photo_path / signature are free strings with no check, so a client can 'satisfy' the prescription photo+signature rule with any text (e.g. photo_path='x'). Consider checking that photo_path matches an uploaded file (db.files / pod upload prefix) and that signature is non-trivial SVG/data."},
+      {"endpoint": "POST /api/stops/{id}/deliver (broadcast_route)", "issue": "broadcast_route does Route(**find_one(...)) and returns a TypeError 500 if the route doc is missing. Seen when a parallel test deleted the route; the stop is already marked delivered before the crash. Guard it with a None check."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_rx_handoff_batch_alerts.py", "/app/test_reports/pytest/iter33_rx_batch.xml"],
+  "action_items": [
+    "Return 400 for an unparsable ?at= on POST /api/admin/batch-alerts/run (currently 500).",
+    "Optional hardening: validate that photo_path refers to a real uploaded proof photo for pharmacy hand-offs.",
+    "Optional: guard broadcast_route against a missing route document."
+  ],
+  "critical_code_review_comments": [
+    "send_batch_progress_alerts only loops over merchants with pharmacy_partner=true. A manifest from a store whose partner flag was turned off after upload gets no alert. This is probably acceptable.",
+    "The batch_alerts record is inserted before the email is sent, so a failed send (e.g. Resend 429) is never retried. It is recorded as 'failed: ...' in recipients, which matches the send-once design.",
+    "Manifest drop count includes stops of any status (failed or cancelled). This is consistent with apply_manifest_rate.",
+    "server.py is 5065 lines and should be split into modules."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_rx_handoff_batch_alerts.py (new)",
+    "/app/backend/tests/test_tiers_pharmacy_kw.py (_deliver now sends photo_path + signature because pharmacy drops require both)"
+  ],
+  "success_rate": {"backend": "95% (19/20)", "frontend": "100%"},
+  "seed_data_creation": "Test stops, routes and 2030-dated manifests/batch_alerts are created and cleaned up by the test file. The UI pharmacy stop came from ui_seed_pickup_run.py setup and was removed with cleanup; its invoice was deleted. drv-1 consent was set in the DB for the UI run, then unset again. mer-2 is still pharmacy_partner=true; pricing is untouched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "pytest runs with xdist --dist loadscope (pytest.ini). Module-scoped regex cleanups in older suites (e.g. test_tiers_pharmacy_kw deletes TEST_TIER routes) can delete data that another worker's class is still using, which gives flaky 500s. Run with -n 0 to confirm (test_tiers_pharmacy_kw passes 11/11 serially). Batch-alert tests use far-future dates (2030-01-15..21) so the live watcher never touches them. On web, the stop photo is uploaded through the file chooser (page.expect_file_chooser on pod-photo-box). complete-drop-button uses aria-disabled.",
+  "rca_of_issue": "500 on invalid at: run_batch_alerts calls datetime.fromisoformat(at) with no try/except. Fix: wrap it in try/except ValueError and raise HTTPException(400)."
+}

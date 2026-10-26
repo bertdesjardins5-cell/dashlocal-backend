@@ -1004,6 +1004,8 @@ async def startup():
     spawn(backfill_invoices())
     spawn(platform_fee_watcher())
     spawn(retention_watcher())
+    spawn(batch_progress_watcher())
+    await db.batch_alerts.create_index("id", unique=True)
     await db.audit_log.create_index("at")
     for coll, fields in ENC_FIELDS.items():  # one-time: encrypt rows stored before encryption at rest was switched on
         raw = client[os.environ['DB_NAME']][coll]
@@ -1388,6 +1390,15 @@ async def get_stop_or_404(stop_id: str) -> Stop:
     return Stop(**doc)
 
 
+async def is_pharmacy_drop(stop: Stop) -> bool:
+    """Prescription hand-off: orders from a pharmacy batch run or a pharmacy-partner store need photo + signature."""
+    if stop.batch_run:
+        return True
+    if not stop.merchant_id:
+        return False
+    return bool(await db.merchants.find_one({"id": stop.merchant_id, "pharmacy_partner": True}, {"_id": 1}))
+
+
 @api_router.get("/stops/{stop_id}")
 async def get_stop(stop_id: str, u: dict = Depends(require_stop_driver)):
     """Stop for its driver/admin, plus a doorstep hint: the latest proof photo from an earlier drop to the same customer."""
@@ -1396,7 +1407,8 @@ async def get_stop(stop_id: str, u: dict = Depends(require_stop_driver)):
                                     "merchant_id": stop.merchant_id, "status": "delivered", "pod_photo_path": {"$ne": None}},
                                    {"_id": 0, "pod_photo_path": 1, "delivered_at": 1}, sort=[("delivered_at", -1)])
     hint = {"photo_url": file_url(prev["pod_photo_path"]), "delivered_at": prev.get("delivered_at")} if prev else None
-    out = {**stop.model_dump(), "doorstep_hint": hint, "pickup_run": (await pickup_run_labels([stop])).get(stop.id)}
+    out = {**stop.model_dump(), "doorstep_hint": hint, "pickup_run": (await pickup_run_labels([stop])).get(stop.id),
+           "pharmacy_drop": await is_pharmacy_drop(stop)}
     return driver_stop_view(out) if u.get("role") == "driver" else out
 
 
@@ -1807,7 +1819,12 @@ async def deliver(stop_id: str, body: DeliverIn, u: dict = Depends(require_stop_
     if stop.status in ("delivered", "failed"):
         raise HTTPException(400, f"Stop is already {stop.status}")
     await ensure_stop_actionable_today(stop)
-    if not body.photo_path and not body.signature and not stop.pod_qr_verified:
+    if await is_pharmacy_drop(stop):
+        if not (body.photo_path and body.signature):
+            raise HTTPException(400, "Prescription hand-off needs both a doorstep photo and the recipient's signature")
+        if not await db.files.find_one({"storage_path": body.photo_path}, {"_id": 1}) or not re.match(r"^\s*M[\d\s.,MLQCZmlqcz-]+$", body.signature):
+            raise HTTPException(400, "Prescription hand-off needs a real uploaded photo and a drawn signature")
+    elif not body.photo_path and not body.signature and not stop.pod_qr_verified:
         raise HTTPException(400, "Proof of delivery requires a photo, signature or parcel QR scan")
     upd = {"status": "delivered", "delivered_at": now_iso(), "pod_photo_path": body.photo_path, "pod_signature": body.signature}
     if not stop.arrived_at:
@@ -3995,6 +4012,72 @@ async def ensure_platform_invoices():
             await db.invoices.insert_one(inv)
         except DuplicateKeyError:
             pass
+
+
+async def batch_progress_watcher():
+    """Pharmacy pickups 1-3 drops short of the batch rate get one email 30 min before the run's cut-off."""
+    await asyncio.sleep(25)
+    while True:
+        try:
+            await send_batch_progress_alerts()
+        except Exception as e:
+            logger.warning(f"Batch progress loop error: {e}")
+        await asyncio.sleep(60)
+
+
+BATCH_ALERT_LEAD_MIN = 30
+BATCH_ALERT_MAX_SHORT = 3
+
+
+async def send_batch_progress_alerts(now: Optional[datetime] = None) -> list:
+    now = now or datetime.now(TZ)
+    sent = []
+    for key, r in RUNS.items():
+        cut = datetime.combine(now.date(), time_cls(*map(int, r["cutoff"].split(":"))), TZ)
+        if not (cut - timedelta(minutes=BATCH_ALERT_LEAD_MIN) <= now < cut):
+            continue
+        for m in await db.merchants.find({"pharmacy_partner": True}, {"_id": 0}).to_list(500):
+            manifest = f"{m['id']}:{now.date().isoformat()}:{key}"
+            n = await db.stops.count_documents({"manifest_id": manifest})
+            short = PHARMACY["min_drops"] - n
+            if n < 1 or not (1 <= short <= BATCH_ALERT_MAX_SHORT):
+                continue
+            try:
+                await db.batch_alerts.insert_one({"id": manifest, "merchant_id": m["id"], "run": key, "drops": n, "created_at": now_iso(), "recipients": []})
+            except DuplicateKeyError:
+                continue  # already sent for this pickup
+            spawn(email_batch_progress(m, r, n, short, manifest))
+            sent.append(manifest)
+    return sent
+
+
+async def email_batch_progress(m: dict, r: dict, n: int, short: int, manifest: str):
+    saving = round((PHARMACY["standard_rate"] - PHARMACY["batch_rate"]) * PHARMACY["min_drops"], 2)
+    html = brand_email(f"{short} more drop{'s' if short > 1 else ''} for the batch rate",
+                       f"<p>Your <b>{r['label']}</b> pickup today has <b>{n} drop{'s' if n != 1 else ''}</b>. "
+                       f"Add <b>{short} more</b> before the <b>{hhmm12(r['cutoff'])}</b> cut-off and every drop on this pickup is billed at "
+                       f"<b>${PHARMACY['batch_rate']:.2f}</b> instead of ${PHARMACY['standard_rate']:.2f} — at least ${saving:.2f} saved.</p>"
+                       f"<p>Upload more orders in the merchant portal and pick the {r['label']}.</p>")
+    demo = {em for _, em, _ in DEMO_MERCHANT_USERS}
+    recips = []
+    for u in await db.users.find({"merchant_id": m["id"], "role": "merchant", "disabled": {"$ne": True}}, {"_id": 0, "email": 1}).to_list(20):
+        to = TEST_INBOX if u["email"] in demo else u["email"]
+        try:
+            await send_email(to=to, subject=f"{m['name']}: {short} drop{'s' if short > 1 else ''} short of the batch rate — {r['label']}", html=html)
+            recips.append({"login": u["email"], "to": to, "status": "sent"})
+        except Exception as e:
+            recips.append({"login": u["email"], "to": to, "status": f"failed: {e}"})
+    await db.batch_alerts.update_one({"id": manifest}, {"$set": {"recipients": recips}})
+
+
+@api_router.post("/admin/batch-alerts/run", dependencies=ADMIN_ONLY)
+async def run_batch_alerts(at: Optional[str] = None):
+    """Run the batch-progress check now; `at` (ISO, Eastern) pretends it is that time — for testing."""
+    try:
+        now = datetime.fromisoformat(at).astimezone(TZ) if at and ("+" in at[10:] or at.endswith("Z")) else (datetime.fromisoformat(at).replace(tzinfo=TZ) if at else None)
+    except ValueError:
+        raise HTTPException(400, "at must be an ISO date-time, e.g. 2026-06-01T13:10:00")
+    return {"sent": await send_batch_progress_alerts(now)}
 
 
 async def platform_fee_watcher():
