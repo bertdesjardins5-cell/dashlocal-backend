@@ -13,6 +13,7 @@ import { clearSession, getToken } from "@/src/session";
 import * as Haptics from "expo-haptics";
 import RouteMap from "@/src/components/RouteMap";
 import DriverConsentGate from "@/src/components/DriverConsentGate";
+import PickupCheckIn from "@/src/components/PickupCheckIn";
 import { startBackgroundTracking, stopBackgroundTracking } from "@/src/driverTracking";
 import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
@@ -385,6 +386,9 @@ export default function Manifest() {
             </View>
           )}
 
+          {route.status === "active" && route.pickups?.length ? (
+            <PickupCheckIn routeId={route.id} pickups={route.pickups} onDone={() => q.refetch()} notify={toast.show} />
+          ) : null}
           <Mono style={s.section}>MANIFEST · {route.total} STOPS</Mono>
           {remaining.map((st) => (
             <Pressable key={st.id} testID={`manifest-stop-${st.seq}`} onPress={() => router.push(`/driver/stop/${st.id}`)} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }, (st.status === "delivered" || st.status === "failed") && { opacity: 0.5 }]}>

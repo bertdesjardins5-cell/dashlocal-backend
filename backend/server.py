@@ -21,6 +21,7 @@ import math
 import random
 import logging
 import uuid
+import json
 import re
 import requests
 import secrets
@@ -611,6 +612,7 @@ async def route_detail(route: Route) -> dict:
     now = base.astimezone(timezone.utc)
     plan = {s["id"]: x for s, x in zip(open_, schedule(start, open_, base))}
     runs = await pickup_run_labels(stops)
+    pickups = await route_pickups(stops, runs)
     out_stops = []
     for s in stops:
         d = s.model_dump()
@@ -628,7 +630,64 @@ async def route_detail(route: Route) -> dict:
         "late_stops": sum(1 for d in out_stops if d["late_min"] > 0),
         "next_stop_id": next((s.id for s in stops if s.status in ("pending", "arrived")), None),
         "depot": DEPOT,
+        "pickups": pickups,
     }
+
+
+async def merchant_pickup(merchant_id: str, r: dict) -> Optional[dict]:
+    """Today's check-in for this run (shown even after the run rolls over to tomorrow), summed across routes."""
+    for day in dict.fromkeys([today_str(), r["date"]]):
+        mid = f"{merchant_id}:{day}:{r['key']}"
+        docs = await db.pickups.find({"manifest_id": mid}, {"_id": 0}).sort("picked_up_at", 1).to_list(20)
+        if docs:
+            return {"date": day, "picked_up_at": docs[-1]["picked_up_at"], "parcel_count": sum(d["parcel_count"] for d in docs),
+                    "expected": await db.stops.count_documents({"manifest_id": mid}), "on_time": all(d["on_time"] for d in docs),
+                    "routes": len(docs)}
+    return None
+
+
+async def route_pickups(stops: list, runs: dict) -> list:
+    """One entry per pharmacy pickup manifest on this route, with its check-in (picked-up time + parcel count)."""
+    by: Dict[str, dict] = {}
+    for s in stops:
+        if s.manifest_id and s.id in runs:
+            p = by.setdefault(s.manifest_id, {"manifest_id": s.manifest_id, **runs[s.id], "drops": 0})
+            p["drops"] += 1
+    if not by:
+        return []
+    done = {d["manifest_id"]: d for d in await db.pickups.find({"manifest_id": {"$in": list(by)}, "route_id": stops[0].route_id}, {"_id": 0}).to_list(100)}
+    return [{**p, "picked_up_at": done.get(k, {}).get("picked_up_at"), "parcel_count": done.get(k, {}).get("parcel_count"),
+             "on_time": done.get(k, {}).get("on_time")} for k, p in by.items()]
+
+
+def pickup_window_end(manifest_id: str) -> datetime:
+    _, day, run = manifest_id.split(":")
+    h, m = map(int, RUNS[run]["pickup"][1].split(":"))
+    return datetime.combine(date_cls.fromisoformat(day), time_cls(h, m), TZ)
+
+
+class PickupIn(BaseModel):
+    parcel_count: int = Field(ge=0, le=500)
+
+
+@api_router.post("/routes/{route_id}/pickups/{manifest_id}/check-in", dependencies=ROUTE_DRIVER)
+async def pickup_check_in(route_id: str, manifest_id: str, body: PickupIn):
+    """Driver confirms a pharmacy pickup: time + how many parcels they collected (shop sees it in the portal)."""
+    if not await db.stops.find_one({"route_id": route_id, "manifest_id": manifest_id}, {"_id": 1}):
+        raise HTTPException(404, "That pickup is not on this route")
+    if await db.pickups.find_one({"manifest_id": manifest_id, "route_id": route_id}, {"_id": 1}):
+        raise HTTPException(400, "This pickup is already checked in")
+    expected = await db.stops.count_documents({"manifest_id": manifest_id, "route_id": route_id})  # parcels for this driver's route
+    now = datetime.now(TZ)
+    rdoc = await db.routes.find_one({"id": route_id}, {"_id": 0, "driver_id": 1})
+    doc = {"id": f"{manifest_id}|{route_id}", "manifest_id": manifest_id, "merchant_id": manifest_id.split(":")[0], "route_id": route_id, "driver_id": (rdoc or {}).get("driver_id"),
+           "picked_up_at": now_iso(), "parcel_count": body.parcel_count, "expected": expected, "on_time": now <= pickup_window_end(manifest_id)}
+    try:
+        await db.pickups.insert_one(dict(doc))
+    except DuplicateKeyError:
+        raise HTTPException(400, "This pickup is already checked in")
+    await broadcast_route(route_id)
+    return doc
 
 
 # ---------------------------------------------------------------- websocket hub
@@ -1006,6 +1065,9 @@ async def startup():
     spawn(retention_watcher())
     spawn(batch_progress_watcher())
     await db.batch_alerts.create_index("id", unique=True)
+    if "manifest_id_1" in await db.pickups.index_information():
+        await db.pickups.drop_index("manifest_id_1")  # a run split across routes gets one check-in per route
+    await db.pickups.create_index([("manifest_id", 1), ("route_id", 1)], unique=True)
     await db.audit_log.create_index("at")
     for coll, fields in ENC_FIELDS.items():  # one-time: encrypt rows stored before encryption at rest was switched on
         raw = client[os.environ['DB_NAME']][coll]
@@ -2946,7 +3008,10 @@ async def merchant_detail(merchant_id: str, _: dict = Depends(merchant_access)):
         runs = runs_today()
         for r in runs:
             r["drops_today"] = await db.stops.count_documents({"merchant_id": merchant_id, "manifest_id": f"{merchant_id}:{r['date']}:{r['key']}"})
-        m = {**m, "runs": runs, "pharmacy_terms": PHARMACY}
+            r["cutoff_at"] = datetime.combine(date_cls.fromisoformat(r["date"]), time_cls(*map(int, r["cutoff"].split(":"))), TZ).isoformat()
+            r["pickup"] = await merchant_pickup(merchant_id, r)
+        recent = await db.pickups.find({"merchant_id": merchant_id}, {"_id": 0}).sort("picked_up_at", -1).to_list(5)
+        m = {**m, "runs": runs, "pharmacy_terms": PHARMACY, "recent_pickups": recent}
     return {**m, "orders": [Stop(**o).model_dump() for o in orders], "flagged": flagged, "jobs": jobs,
             "counts": {"orders": len(orders), "pending": sum(1 for o in orders if o["status"] in ("pending", "arrived")),
                        "delivered": sum(1 for o in orders if o["status"] == "delivered"), "failed": sum(1 for o in orders if o["status"] == "failed"),
@@ -4889,7 +4954,7 @@ AUDIT_DEDUPE_S = 60
 _audit_seen: Dict[str, float] = {}
 AUDIT_LABELS = [  # first match wins: path pattern -> what kind of data was touched
     (r"^/api/files/", "Proof photo"), (r"/invoices|/statement", "Invoices"), (r"^/api/admin/audit", "Audit log"),
-    (r"^/api/admin/privacy", "Privacy settings"), (r"^/api/(stops|track|orders)", "Order / customer details"),
+    (r"^/api/admin/customers", "Customer data request"), (r"^/api/admin/privacy", "Privacy settings"), (r"^/api/(stops|track|orders)", "Order / customer details"),
     (r"^/api/routes|/route$", "Route & stops"), (r"^/api/merchants/[^/]+/(import|orders|saved-notes)", "Store orders & customers"),
     (r"^/api/merchants", "Store account"), (r"^/api/auth", "Sign-in"), (r"^/api/signup-requests|^/api/admin/signups", "Sign-up requests"),
     (r"^/api/drivers", "Driver"), (r"^/api/admin", "Admin"),
@@ -4976,18 +5041,97 @@ def old_stop_query(cutoff: str) -> dict:
 ERASED = "Erased (retention)"
 
 
+async def erase_stops(ids: list, label: str = ERASED):
+    """Remove the person's details from these orders; invoice numbers and totals stay for tax records."""
+    if not ids:
+        return
+    await db.stops.update_many({"id": {"$in": ids}}, {"$set": {
+        "customer_name": label, "customer_phone": "", "address": label, "notes": "", "customer_note": None,
+        "pod_signature": None, "pod_photo_path": None, "rating_comment": None, "follow_up_note": None,
+        "lat": DEPOT["lat"], "lng": DEPOT["lng"], "share_token": None, "erased_at": now_iso()}})
+    await db.invoices.update_many({"stop_id": {"$in": ids}}, {"$set": {"delivery.customer_name": label, "delivery.address": label}})
+    await db.contact_logs.delete_many({"stop_id": {"$in": ids}})
+
+
+CUSTOMER_EXPORT_FIELDS = ("tracking_code", "customer_name", "customer_phone", "address", "postal_code", "status", "created_at",
+                          "window_date", "window_start", "window_end", "arrived_at", "delivered_at", "notes", "customer_note",
+                          "rating", "rating_comment", "rated_at", "fail_reason", "consent_given", "consent_at", "consent_by", "erased_at")
+
+
+def customer_phone_or_400(phone: str) -> str:
+    p = normalize_phone(phone or "")
+    if not p:
+        raise HTTPException(400, "Enter the customer's phone number, e.g. +15195550123")
+    return p
+
+
+async def customer_data(phone: str) -> dict:
+    stops = await db.stops.find({"customer_phone": phone}, {"_id": 0}).sort("created_at", -1).to_list(2000)
+    merchants = {m["id"]: m["name"] for m in await db.merchants.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(1000)}
+    orders = [{**{k: s.get(k) for k in CUSTOMER_EXPORT_FIELDS}, "store": merchants.get(s.get("merchant_id")),
+               "has_photo": bool(s.get("pod_photo_path")), "has_signature": bool(s.get("pod_signature"))} for s in stops]
+    notes = await db.saved_notes.find({"phone": phone}, {"_id": 0}).to_list(200)
+    return {"phone": phone, "orders": orders, "saved_notes": [{"store": merchants.get(n.get("merchant_id")), "note": n.get("note"),
+                                                                 "updated_at": n.get("updated_at")} for n in notes]}
+
+
+@api_router.get("/admin/customers/lookup", dependencies=ADMIN_ONLY)
+async def customer_lookup(phone: str):
+    """PIPEDA access request: everything DashLocal holds about one customer, found by phone number."""
+    d = await customer_data(customer_phone_or_400(phone))
+    names = sorted({o["customer_name"] for o in d["orders"] if o["customer_name"]})
+    return {"phone": d["phone"], "names": names, "orders": len(d["orders"]), "saved_notes": len(d["saved_notes"]),
+            "latest": d["orders"][:5], "requests": await db.data_requests.find({"phone": d["phone"]}, {"_id": 0}).sort("at", -1).to_list(20)}
+
+
+@api_router.post("/admin/customers/export-link", dependencies=ADMIN_ONLY)
+async def customer_export_link(phone: str, request: Request):
+    p = customer_phone_or_400(phone)
+    u = await current_user(request)
+    tok = issue_token(u["id"], "admin", purpose="customer-export", minutes=5, phone=p)
+    return {"path": f"/api/admin/customers/export.json?token={tok}", "expires_in": 300}
+
+
+@api_router.get("/admin/customers/export.json")
+async def customer_export(token: str, request: Request):
+    t = decode_token(token, "customer-export")
+    d = await customer_data(t["phone"])
+    await db.data_requests.insert_one({"id": str(uuid.uuid4()), "kind": "export", "phone": t["phone"], "by": t["sub"], "at": now_iso(),
+                                       "orders": len(d["orders"]), "ip": client_ip(request)})
+    body = {"exported_at": now_iso(), "exported_by": "DashLocal Inc. — PIPEDA access request", **d}
+    fname = f"dashlocal-customer-{t['phone'].lstrip('+')}.json"
+    return Response(content=json.dumps(body, indent=2, default=str), media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="{fname}"', "Cache-Control": "no-store"})
+
+
+class EraseIn(BaseModel):
+    phone: str
+    confirm: str  # must be "ERASE"
+
+
+@api_router.post("/admin/customers/erase", dependencies=ADMIN_ONLY)
+async def customer_erase(body: EraseIn, request: Request):
+    """PIPEDA erasure request: wipe one customer's details from every order and delete their saved notes."""
+    if body.confirm != "ERASE":
+        raise HTTPException(400, 'Type ERASE to confirm')
+    p = customer_phone_or_400(body.phone)
+    u = await current_user(request)
+    open_ = await db.stops.count_documents({"customer_phone": p, "status": {"$in": ["pending", "arrived"]}})
+    if open_:
+        raise HTTPException(409, f"{open_} order{'s are' if open_ > 1 else ' is'} still out for delivery — erase after they are closed")
+    ids = [s["id"] for s in await db.stops.find({"customer_phone": p}, {"_id": 0, "id": 1}).to_list(5000)]
+    await erase_stops(ids, "Erased (customer request)")
+    notes = await db.saved_notes.delete_many({"phone": p})
+    await db.data_requests.insert_one({"id": str(uuid.uuid4()), "kind": "erase", "phone": p, "by": u.get("email") or u["id"], "at": now_iso(),
+                                       "orders": len(ids), "saved_notes": notes.deleted_count, "ip": client_ip(request)})
+    return {"erased_orders": len(ids), "deleted_saved_notes": notes.deleted_count}
+
+
 async def run_retention() -> dict:
     p = await get_privacy()
     cutoff = retention_cutoff(p["retention_days"])
     ids = [d["id"] for d in await db.stops.find(old_stop_query(cutoff), {"_id": 0, "id": 1}).to_list(5000)]
-    if ids:
-        await db.stops.update_many({"id": {"$in": ids}}, {"$set": {
-            "customer_name": ERASED, "customer_phone": "", "address": ERASED, "notes": "", "customer_note": None,
-            "pod_signature": None, "pod_photo_path": None, "rating_comment": None, "follow_up_note": None,
-            "lat": DEPOT["lat"], "lng": DEPOT["lng"], "share_token": None, "erased_at": now_iso()}})
-        # invoices keep their numbers and totals for tax records; only the recipient details go
-        await db.invoices.update_many({"stop_id": {"$in": ids}}, {"$set": {"delivery.customer_name": ERASED, "delivery.address": ERASED}})
-        await db.contact_logs.delete_many({"stop_id": {"$in": ids}})
+    await erase_stops(ids)
     notes = await db.saved_notes.delete_many({"$or": [{"updated_at": {"$lt": cutoff}}, {"updated_at": None, "created_at": {"$lt": cutoff}}]})
     await db.audit_log.delete_many({"at": {"$lt": cutoff}})
     await db.settings.update_one({"key": "privacy"}, {"$set": {"last_run_at": now_iso(), "last_run_erased": len(ids)}}, upsert=True)

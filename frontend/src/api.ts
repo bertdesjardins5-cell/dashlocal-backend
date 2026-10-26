@@ -55,6 +55,7 @@ export type Driver = { id: string; name: string; phone: string; vehicle: string;
 export type LatLng = { lat: number; lng: number };
 
 export type RouteDetail = {
+  pickups?: (PickupRun & { manifest_id: string; drops: number; picked_up_at: string | null; parcel_count: number | null; on_time: boolean | null })[];
   id: string;
   name: string;
   zone: string;

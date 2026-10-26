@@ -14,6 +14,7 @@ import WelcomeChecklist from "@/src/components/WelcomeChecklist";
 import ProblemAlertsCard from "@/src/components/ProblemAlertsCard";
 import { money } from "@/src/components/BillCard";
 import InvoicesCard from "@/src/components/InvoicesCard";
+import BatchRateTracker from "@/src/components/BatchRateTracker";
 import { api, API, dayLabel, Stop, windowLabel } from "@/src/api";
 import { uploadForm } from "@/src/utils/upload";
 import FixRowSheet, { ImportRow } from "@/src/components/FixRowSheet";
@@ -21,7 +22,8 @@ import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useT
 import { makeStyles, spacing, useTheme } from "@/src/theme";
 
 type Job = { id: string; filename: string; total: number; processed: number; created: number; flagged: number; status: "running" | "done"; created_at: string };
-type Run = { key: "afternoon" | "evening"; label: string; today: boolean; date: string; cutoff_label: string; pickup_label: string; window_label: string; drops_today: number };
+type Run = { key: "afternoon" | "evening"; label: string; today: boolean; date: string; cutoff_label: string; pickup_label: string; window_label: string; drops_today: number;
+  cutoff_at: string; pickup: { picked_up_at: string; parcel_count: number; expected: number; on_time: boolean } | null };
 type Detail = {
   id: string; name: string; orders: Stop[]; flagged: ImportRow[]; jobs: Job[]; pharmacy_partner?: boolean; runs?: Run[];
   pharmacy_terms?: { batch_rate: number; standard_rate: number; min_drops: number };
@@ -165,6 +167,7 @@ export default function MerchantHome() {
                         <Mono style={[s.meta, sel && { color: colors.onSurfaceInverse }]} testID={`run-${r.key}-drops`}>
                           {r.drops_today} drop{r.drops_today === 1 ? "" : "s"} on this pickup · {need > 0 ? `${need} more for the $${d.pharmacy_terms?.batch_rate.toFixed(2)} batch rate` : `batch rate $${d.pharmacy_terms?.batch_rate.toFixed(2)}/drop`}
                         </Mono>
+                        <BatchRateTracker run={r} minDrops={d.pharmacy_terms?.min_drops ?? 10} inverse={sel} />
                       </View>
                       {sel ? <Ionicons name="checkmark-circle" size={22} color={colors.onSurfaceInverse} /> : null}
                     </Pressable>

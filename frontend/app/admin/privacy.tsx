@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "@/src/api";
 import { Btn, ErrorBlock, Header, Loading, Mono, Pill, useToast } from "@/src/ui";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
+import CustomerDataRequests from "@/src/components/CustomerDataRequests";
 
 type Privacy = {
   retention_days: number; last_run_at: string | null; last_run_erased: number | null; due_now: number;
@@ -96,6 +97,9 @@ export default function PrivacyScreen() {
             <Btn testID="retention-run-now" label="RUN CHECK NOW" variant="dark" icon="trash" loading={busy === "run"} onPress={runNow} />
           </View>
         ) : null}
+
+        <Mono style={s.section}>CUSTOMER DATA REQUESTS</Mono>
+        <CustomerDataRequests notify={toast.show} />
 
         <Mono style={s.section}>AUDIT LOG · {audit.data?.total ?? "…"} ENTRIES</Mono>
         <View style={s.block}>

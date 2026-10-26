@@ -129,3 +129,6 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - /privacy policy page (placeholder Privacy Officer privacy@dashlocal.app). Consent modal on sign-up; consent checkbox on CSV upload (stored per order).
 - Prescription hand-off: pharmacy drops require uploaded photo AND drawn signature (server-validated).
 - Batch progress email: 30 min before each run cut-off, pharmacy pickups with 7–9 drops get one email (db.batch_alerts). Test hook POST /api/admin/batch-alerts/run?at=.
+- Customer data requests (admin › Privacy): lookup by phone, JSON export (token link), erase (type ERASE; 409 if open orders); logged in db.data_requests.
+- Pharmacy pickup check-in: driver PICKED UP + parcel count per manifest per route (db.pickups); merchant batch-rate tracker shows progress, cut-off countdown and today's pickup status.
+- Known gap: erased/retained photos' stored files are unlinked but not deleted from object storage.
