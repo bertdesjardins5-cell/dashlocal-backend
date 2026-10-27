@@ -15,6 +15,7 @@ from routes import merchants as merchant_routes
 from routes import onboarding
 from routes import pickups as pickup_routes
 from routes import scorecards
+from routes import setup
 from services import realtime
 from services import seed
 
@@ -105,6 +106,7 @@ async def update_pricing(body: PricingIn):
             raise HTTPException(400, f"{PRICING_NAMES[k]} must be between 0 and {cap}")
         v[k] = round(v[k], 2)
     await db.settings.update_one({"key": "pricing"}, {"$set": {"key": "pricing", "value": v, "updated_at": now_iso()}}, upsert=True)
+    await setup.mark_pricing_reviewed()  # ticks the pricing step of the first-store setup guide
     return await get_pricing()
 
 

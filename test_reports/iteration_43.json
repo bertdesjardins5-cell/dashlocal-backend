@@ -1,0 +1,32 @@
+{
+  "summary": "Tested the First Store Setup guide, admin Add Driver, push registration and push that does not block dispatch. Backend: 16/16 pytest pass. GET /api/admin/setup returns 401 with no token and 403 for merchants and drivers. The show/done/steps logic is correct (show only with demo_removed and not done; pricing step set by pricing-reviewed and by PUT /admin/pricing; finish hides the guide). POST /api/admin/drivers checks every input: blank name or vehicle, bad phone, 5-digit or non-digit PIN, weak PINs 123456 and 777777, and a bad zone all return 400; a duplicate phone returns 409. '519 555 0999' is saved as +15195550999, and the new driver can log in with phone+PIN. POST /api/register-push returns 401 with no auth, 403 for another user's id, 400 for platform 'web' or a blank token, 422 when fields are missing, and the expected 500 'EMERGENT_PUSH_KEY missing or invalid'. /routes/batch (0.12s) and /routes/auto-dispatch (0.17s) succeed, and 'Push failed (non-blocking)' is logged. Frontend (390x844): /admin opens /admin/setup automatically, only once per session. The banner shows on the dashboard with '2 of 3 done'. Steps show checkmarks and the setup-open-* buttons go to the right screens. 'Prices look good' changes the progress to ALL SET and shows 'Back to dashboard'. Skip hides the guide and returns to the dashboard; it does not reopen after a reload. The add-driver form works: the PIN field keeps only digits, max 6; the new driver shows 'PIN set'; a duplicate phone shows an error toast. The new driver can sign in on web and the /driver manifest loads with no page errors. The landing page / loads. One bug: the setup guide does not refresh when you come back from Pricing, Merchants or Drivers. No deprecated Expo packages found.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Setup guide -> OPEN PRICING / ADD A STORE / ADD A DRIVER -> save -> back", "issue": "Reproduced: saved pricing at /admin/pricing (backend set setup_pricing), went back, and the guide still said '2 OF 3 DONE' with an unchecked pricing step. The setup screen stays mounted in the stack and its ['setup'] query is never refetched or invalidated. drivers.tsx addDriver, merchant create and the pricing save do not invalidate ['setup']. In a real post-cleanup setup, adding the first store or driver will look like it did nothing until pull-to-refresh, and the dashboard banner count is stale too.", "affected_testIDs": ["setup-step-pricing", "setup-step-store", "setup-step-driver", "setup-progress", "admin-setup-banner"]}
+    ],
+    "design_issues": [
+      {"screen": "admin/setup", "issues": ["The success toast ('PRICES CONFIRMED') covers the setup-progress line and the top of the first card for a moment (minor)."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_setup_guide_push_new_driver.py", "/app/test_reports/pytest/pytest_iter43.xml"],
+  "action_items": [
+    "app/admin/setup.tsx: refetch the ['setup'] query when the screen regains focus (useFocusEffect(() => { q.refetch(); })). Or call queryClient.invalidateQueries({queryKey:['setup']}) after creating a driver (admin/drivers.tsx addDriver), a merchant (admin/merchants.tsx) and saving pricing (admin/pricing.tsx), so checkmarks and the dashboard banner update right away.",
+    "Optional: in setup.tsx only call router.replace('/admin') after the skip POST succeeds (post() swallows errors, so it currently navigates even when /admin/setup/finish fails)."
+  ],
+  "critical_code_review_comments": [
+    "setup.py: done = setup_done OR all steps. With demo data present, store and driver are always true, so only the pricing step matters in preview (expected).",
+    "create_driver checks for a duplicate phone only in db.drivers, which is fine because driver users store no phone. compass_zone accepts the full words North/South/East/West, not the letters N/S/E/W from the review request; this matches COMPASS in dispatch.py.",
+    "push.py: one module-level httpx.AsyncClient, and the X-Push-Key is read when the module is imported, so changing EMERGENT_PUSH_KEY needs a backend restart (expected).",
+    "_layout.tsx creates the Android notification channel and the notification handler only when not on web. push.ts skips web and simulators. On web, no errors showed on /, /admin or /driver."
+  ],
+  "updated_files": ["/app/backend/tests/test_setup_guide_push_new_driver.py"],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "~92% (all flows pass; guide does not refresh after you return from a linked screen)"},
+  "seed_data_creation": "Temporarily inserted settings demo_removed, and created TEST_Nova (+15195550999) and TEST_UI Driver (+15195550988). All removed afterwards: settings demo_removed, setup_done and setup_pricing deleted, TEST drivers and their users deleted, login_attempts cleared. Ran /api/admin/reset at the end (200); 3 demo drivers remain.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run test_setup_guide_push_new_driver.py with '-n 0' (no xdist). The dispatch class calls /admin/reset, which wipes drivers created at the same time by the other class. demo_removed blocks /admin/reset (400), so always delete it after UI tests. In preview, store and driver steps are always true because of demo data; to make show=true, delete setup_pricing and setup_done and insert demo_removed.",
+  "rca_of_issue": "Stale setup guide: the expo-router Stack keeps /admin/setup mounted under /admin/pricing, /admin/merchants and /admin/drivers. React Query only refetches on mount or window focus, and a stack screen regaining focus does neither on native or web, so q.data keeps the old steps. Fix: useFocusEffect refetch, or invalidate ['setup'] in the create/save handlers."
+}

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1009774956122",
+    "project_id": "arrivewise",
+    "storage_bucket": "arrivewise.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1009774956122:android:7ff451bff6cff665d69263",
+        "android_client_info": {
+          "package_name": "com.emergent.arrivewise.ue3on3"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDil-aaS1UmkyaaV38LxJgJn0Sj78mvpno"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -7,7 +7,8 @@ import re
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
-from core import ADMIN_ONLY, DUMMY_HASH, admin_user, check_pw, current_user, db, hash_pw, issue_token, now_iso
+from core import ADMIN_ONLY, DEPOT, DUMMY_HASH, admin_user, check_pw, current_user, db, hash_pw, issue_token, now_iso
+from models import Driver
 from routes import merchants as merchant_routes
 
 router = APIRouter(prefix="/api")
@@ -183,6 +184,39 @@ async def driver_accounts():
     return [{"id": d["id"], "name": d["name"], "phone": d["phone"], "vehicle": d["vehicle"],
              "has_pin": d["id"] in users, "last_login_at": (users.get(d["id"]) or {}).get("last_login_at")}
             for d in await db.drivers.find({}, {"_id": 0}).sort("id", 1).to_list(500)]
+
+
+class NewDriverIn(BaseModel):
+    name: str
+    phone: str
+    vehicle: str
+    pin: str
+    compass_zone: Optional[str] = None
+
+
+@router.post("/admin/drivers", dependencies=ADMIN_ONLY)
+async def create_driver(body: NewDriverIn):
+    name, vehicle = body.name.strip(), body.vehicle.strip()
+    phone = merchant_routes.normalize_phone(body.phone)
+    if not name or not vehicle:
+        raise HTTPException(400, "Name and vehicle are required")
+    if not phone:
+        raise HTTPException(400, "Enter a valid phone number")
+    if body.compass_zone not in (None, "North", "South", "East", "West"):
+        raise HTTPException(400, "Zone must be North, South, East or West")
+    if await db.drivers.find_one({"phone": phone}, {"_id": 1}):
+        raise HTTPException(409, "A driver with this phone number already exists")
+    pin = body.pin.strip()
+    if not PIN_RE.match(pin):
+        raise HTTPException(400, "PIN must be exactly 6 digits")
+    if pin in WEAK_PINS or len(set(pin)) == 1:
+        raise HTTPException(400, "PIN is too easy to guess — pick another")
+    d = Driver(id=f"drv-{uuid.uuid4().hex[:8]}", name=name, phone=phone, vehicle=vehicle, lat=DEPOT["lat"], lng=DEPOT["lng"],
+               updated_at=now_iso(), compass_zone=body.compass_zone)
+    await db.drivers.insert_one(d.model_dump())
+    await db.users.insert_one({"id": str(uuid.uuid4()), "role": "driver", "driver_id": d.id, "pin_hash": hash_pw(pin),
+                               "disabled": False, "created_at": now_iso()})
+    return {"id": d.id, "name": d.name, "phone": d.phone, "vehicle": d.vehicle, "has_pin": True, "last_login_at": None}
 
 
 @router.put("/admin/drivers/{driver_id}/pin", dependencies=ADMIN_ONLY)

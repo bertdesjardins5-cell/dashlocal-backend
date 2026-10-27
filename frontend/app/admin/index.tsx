@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
@@ -13,11 +13,13 @@ import { clearSession } from "@/src/session";
 import AutoDispatch from "@/src/components/AutoDispatch";
 import { queryClient } from "@/src/query-client";
 import Badges, { Badge } from "@/src/components/Badges";
+import type { SetupStatus } from "./setup";
 import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
 
 type Zone = { zone: string; postal_code: string; count: number };
 type RouteRow = { id: string; name: string; status: string; total: number; completed: number; driver: Driver | null; planned_distance_m: number; service_date: string };
+let setupOpened = false;
 type Analytics = {
   drops_per_hour: number; avg_deviation_pct: number; delivered: number; failed: number; total_orders: number; unassigned: number;
   success_rate: number; geofence_arrival_pct: number; active_routes: number; avg_rating: number | null;
@@ -34,6 +36,15 @@ export default function AdminDashboard() {
   const [busy, setBusy] = useState<string | null>(null);
 
   const [day, setDay] = useState(depotToday());
+  const setup = useQuery({ queryKey: ["setup"], queryFn: () => api<SetupStatus>("/admin/setup") });
+  useFocusEffect(useCallback(() => { setup.refetch(); }, [setup.refetch])); // banner count stays current
+  useEffect(() => {
+    // after the launch cleanup, open the setup guide automatically (once per app session) until it's done
+    if (setup.data?.show && !setupOpened) {
+      setupOpened = true;
+      router.push("/admin/setup");
+    }
+  }, [setup.data?.show, router]);
   const days = Array.from({ length: 7 }, (_, i) => addDays(depotToday(), i));
   const an = useQuery({ queryKey: ["analytics"], queryFn: () => api<Analytics>("/analytics"), refetchInterval: 10000 });
   const zones = useQuery({ queryKey: ["zones", day], queryFn: () => api<Zone[]>(`/zones?date=${day}`) });
@@ -44,7 +55,7 @@ export default function AdminDashboard() {
     queryFn: () => api<{ driver: Driver; on_time_rate: number | null; drops_per_hour: number; delivered: number; avg_rating: number | null; trend: number[]; badges: Badge[] }[]>("/scorecards"),
   });
 
-  const refresh = () => { an.refetch(); zones.refetch(); routes.refetch(); drivers.refetch(); cards.refetch(); queryClient.invalidateQueries({ queryKey: ["dispatch-preview"] }); };
+  const refresh = () => { an.refetch(); zones.refetch(); routes.refetch(); drivers.refetch(); cards.refetch(); setup.refetch(); queryClient.invalidateQueries({ queryKey: ["dispatch-preview"] }); };
 
   const batch = async (zone: string) => {
     const driver_id = assign[zone];
@@ -92,6 +103,16 @@ export default function AdminDashboard() {
       } />
       {an.isLoading ? <Loading /> : an.error ? <ErrorBlock message={(an.error as Error).message} onRetry={refresh} /> : (
         <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }} refreshControl={<RefreshControl refreshing={false} onRefresh={refresh} />}>
+          {setup.data?.show ? (
+            <Pressable testID="admin-setup-banner" onPress={() => router.push("/admin/setup")} style={({ pressed }) => [s.row, { backgroundColor: pressed ? colors.surfaceTertiary : colors.brandPrimary }]}>
+              <Ionicons name="flag" size={24} color={colors.onBrandPrimary} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Display style={[s.rowTitle, { color: colors.onBrandPrimary }]}>FINISH SETTING UP</Display>
+                <Mono style={[s.meta, { color: colors.onBrandPrimary }]}>{Object.values(setup.data.steps).filter(Boolean).length} of 3 done · prices, first store, first driver</Mono>
+              </View>
+              <Ionicons name="chevron-forward" size={22} color={colors.onBrandPrimary} />
+            </Pressable>
+          ) : null}
           <Pressable testID="admin-merchant-accounts-link" onPress={() => router.push("/admin/merchants")} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
             <Ionicons name="storefront" size={24} color={colors.onSurface} />
             <View style={{ flex: 1, gap: 2 }}>

@@ -13,7 +13,9 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Share live location so customers track deliveries",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Auto-mark stops arrived even with phone locked",
-        "UIBackgroundModes": ["location"],
+        "UIBackgroundModes": [
+          "location"
+        ],
         "NSCameraUsageDescription": "Scan parcel labels and photograph deliveries",
         "NSPhotoLibraryUsageDescription": "Attach delivery photos from your gallery"
       }
@@ -31,7 +33,8 @@
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION",
         "CAMERA"
-      ]
+      ],
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "bundler": "metro",
@@ -76,7 +79,8 @@
         {
           "cameraPermission": "Scan parcel labels and photograph deliveries"
         }
-      ]
+      ],
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true

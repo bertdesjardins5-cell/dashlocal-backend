@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { View } from "react-native";
 import { Redirect, Stack, usePathname } from "expo-router";
 import { useSession } from "@/src/session";
+import { registerForPush } from "@/src/push";
 import DriverSignInForm from "@/src/components/DriverSignInForm";
 import { Header, Loading } from "@/src/ui";
 import { makeStyles } from "@/src/theme";
@@ -11,6 +12,8 @@ export default function DriverLayout() {
   const s = useStyles();
   const path = usePathname();
   const { ready, user } = useSession();
+  const pushUser = user?.role === "driver" ? user.id : null;
+  useEffect(() => { if (pushUser) registerForPush(pushUser); }, [pushUser]); // new-run alerts on this phone
   if (!ready) return <View style={s.root}><Header title="DRIVER" /><Loading /></View>;
   if (user?.role !== "driver" && user?.role !== "admin") {
     return (

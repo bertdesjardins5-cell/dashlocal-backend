@@ -19,6 +19,23 @@ export default function DriverPins() {
   const [open, setOpen] = useState<string | null>(null);
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [nd, setNd] = useState({ name: "", phone: "", vehicle: "", pin: "" });
+
+  const addDriver = async () => {
+    setBusy(true);
+    try {
+      await api("/admin/drivers", { method: "POST", body: nd });
+      toast.show(`DRIVER ${nd.name.trim().toUpperCase()} ADDED`, "green");
+      setNd({ name: "", phone: "", vehicle: "", pin: "" });
+      setAdding(false);
+      q.refetch();
+    } catch (e: any) {
+      toast.show(e.message, "red");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const save = async (d: DriverAccount) => {
     setBusy(true);
@@ -42,6 +59,29 @@ export default function DriverPins() {
         <KeyboardAwareScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }} keyboardShouldPersistTaps="handled" bottomOffset={24}
           refreshControl={<RefreshControl refreshing={false} onRefresh={() => { q.refetch(); }} />}>
           <Mono style={s.note}>Drivers sign in with the phone number on file and this PIN. Tell the driver their new PIN in person — it is never shown again.</Mono>
+          <View style={s.row} testID="add-driver-section">
+            {adding ? (
+              <>
+                <Display style={s.name}>NEW DRIVER</Display>
+                <TextInput testID="new-driver-name" value={nd.name} onChangeText={(v) => setNd({ ...nd, name: v })} placeholder="Full name"
+                  placeholderTextColor={colors.muted} style={s.field} />
+                <TextInput testID="new-driver-phone" value={nd.phone} onChangeText={(v) => setNd({ ...nd, phone: v })} placeholder="Mobile, e.g. 519 555 0123"
+                  keyboardType="phone-pad" placeholderTextColor={colors.muted} style={s.field} />
+                <TextInput testID="new-driver-vehicle" value={nd.vehicle} onChangeText={(v) => setNd({ ...nd, vehicle: v })} placeholder="Vehicle, e.g. VAN-01"
+                  autoCapitalize="characters" placeholderTextColor={colors.muted} style={s.field} />
+                <TextInput testID="new-driver-pin" value={nd.pin} onChangeText={(v) => setNd({ ...nd, pin: v.replace(/\D/g, "").slice(0, 6) })} placeholder="6-digit PIN"
+                  keyboardType="number-pad" maxLength={6} placeholderTextColor={colors.muted} style={s.input} />
+                <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                  <Btn testID="new-driver-save" label="ADD DRIVER" loading={busy} style={{ flex: 1 }}
+                    disabled={!nd.name.trim() || !nd.phone.trim() || !nd.vehicle.trim() || nd.pin.length !== 6} onPress={addDriver} />
+                  <Btn testID="new-driver-cancel" label="CANCEL" variant="outline" onPress={() => setAdding(false)} />
+                </View>
+              </>
+            ) : (
+              <Btn testID="add-driver-button" label="ADD DRIVER" icon="person-add" variant="dark" onPress={() => setAdding(true)} />
+            )}
+          </View>
+          {q.data?.length === 0 ? <Mono style={s.note} testID="no-drivers">No drivers yet — add your first one above.</Mono> : null}
           {q.data?.map((d) => (
             <View key={d.id} style={s.row} testID={`driver-pin-${d.id}`}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
@@ -77,6 +117,7 @@ const useStyles = makeStyles((c) => ({
   name: { fontSize: 18 },
   meta: { fontSize: 11, color: c.muted },
   input: { height: 56, borderWidth: 2, borderColor: c.border, paddingHorizontal: spacing.md, fontFamily: fonts.mono, fontSize: 18, letterSpacing: 6, color: c.onSurface },
+  field: { height: 52, borderWidth: 2, borderColor: c.border, paddingHorizontal: spacing.md, fontFamily: fonts.mono, fontSize: 15, color: c.onSurface },
   smallBtn: { minHeight: 44, paddingHorizontal: spacing.md, borderWidth: 2, borderColor: c.border, justifyContent: "center", alignSelf: "flex-start" },
   smallBtnText: { fontSize: 11, fontWeight: "700" },
 }));

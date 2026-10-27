@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from typing import Optional, Dict
 from core import ADMIN_ONLY, DEPOT, DRIVER_SELF, GEOFENCE_M, ROUTE_DRIVER, admin_user, current_user, db, haversine_m, now_iso, optimize_sequence, path_length_m, plan_base, require_driver_self, require_route_driver, today_str
 from models import BatchIn, Driver, LocationIn, Route, SequenceIn, Stop, apply_sequence, get_driver_or_404, get_route_or_404, get_stops, route_detail
+from routes import push
 from services import realtime
 from services import seed
 
@@ -136,7 +137,9 @@ async def batch(body: BatchIn):
     await get_driver_or_404(body.driver_id)
     async with _dispatch_lock:
         route = await seed.create_batch(body.zone, body.driver_id, service_date=body.service_date)
-    return await route_detail(route)
+    detail = await route_detail(route)
+    push.notify_run(route.driver_id, route.id, route.name, len(detail["stops"]))
+    return detail
 
 
 # ---------------------------------------------------------------- zone-based auto dispatch (N / S / E / W of the depot)
@@ -287,6 +290,7 @@ async def _auto_dispatch(body: AutoDispatchIn):
             for i, s in enumerate(ordered):
                 await db.stops.update_one({"id": s["id"]}, {"$set": {"route_id": route.id, "seq": i + 1}})
             created = True
+        push.notify_run(did, route.id, route.name, len(stops), added=not created)
         drv = next(d for d in drivers if d.id == did)
         helping = [x["zone"] for x in splits if x["helper_id"] == did]
         out.append({"route_id": route.id, "route_name": route.name, "driver_id": did, "driver_name": drv.name, "zones": list(zones),
