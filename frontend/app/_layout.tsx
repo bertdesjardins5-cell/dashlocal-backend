@@ -29,16 +29,15 @@ if (Platform.OS === "android") {
   Notifications.setNotificationChannelAsync("default", { name: "Default", importance: Notifications.AndroidImportance.MAX, sound: "default" });
 }
 
-function usePushTaps() {
+function usePushTaps(ready: boolean) {
   const router = useRouter();
   useEffect(() => {
-    if (Platform.OS === "web") return;
+    if (Platform.OS === "web" || !ready) return; // wait until the screens are mounted (cold-start taps)
     const open = (response: Notifications.NotificationResponse | null) => {
       const data: any = response?.notification.request.content.data || {};
-      const url = data.deeplink || data.action_url;
-      if (!url) return;
-      if (String(url).startsWith("http")) Linking.openURL(url);
-      else router.push(url);
+      const url = String(data.deeplink || data.action_url || "");
+      // only in-app screens we send alerts for; anything else (e.g. external links) is ignored
+      if (/^\/(driver|merchant|admin)(\/[\w-]+)*$/.test(url)) router.push(url as any);
     };
     const tapSub = Notifications.addNotificationResponseReceivedListener(open); // tapped while the app is open
     Notifications.getLastNotificationResponseAsync().then(open); // tapped while the app was closed
@@ -55,12 +54,11 @@ function usePushTaps() {
       ]);
     })();
     return () => tapSub.remove();
-  }, [router]);
+  }, [router, ready]);
 }
 
 export default function RootLayout() {
   const { colors } = useTheme();
-  usePushTaps();
   const [loaded] = useFonts({
     SpaceGrotesk: require("../assets/fonts/SpaceGrotesk.ttf"),
     JetBrainsMono: require("../assets/fonts/JetBrainsMono.ttf"),
@@ -69,6 +67,7 @@ export default function RootLayout() {
     PTSerif: require("../assets/fonts/PT_Serif-Web-Regular.ttf"),
     "PTSerif-Bold": require("../assets/fonts/PT_Serif-Web-Bold.ttf"),
   });
+  usePushTaps(loaded);
   // One app level ErrorBoundary; a render crash shows a reload screen
   // instead of a blank app. GestureHandlerRootView must wrap the whole tree
   // or any gesture/swipe/drawer screen crashes in Expo Go.
