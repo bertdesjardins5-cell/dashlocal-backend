@@ -6,12 +6,13 @@ import time
 import uuid
 import re
 from core import ENC_FIELDS, HTML_CSP, client, db, enc_str, init_storage, logger, now_iso
-from routes import alerts, auth, billing, dispatch, emails, feedback, invoices, launch, merchants as merchant_routes, onboarding, payments, pickups as pickup_routes, privacy, push, receipts, setup, scorecards, stops as stop_routes
+from routes import alerts, auth, billing, dispatch, emails, feedback, invoices, launch, merchants as merchant_routes, onboarding, payments, pickups as pickup_routes, privacy, push, receipts, setup, linkpages, scorecards, stops as stop_routes
 from services import realtime
 from services import seed
 
 
 app = FastAPI()
+app.add_exception_handler(linkpages.LinkPageError, linkpages.link_error_page)
 
 
 @app.get("/health", include_in_schema=False)

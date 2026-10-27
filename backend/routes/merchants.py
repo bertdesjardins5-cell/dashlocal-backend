@@ -12,10 +12,11 @@ import secrets
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timedelta, date as date_cls, time as time_cls
-from core import RUNS, TZ, admin_user, check_merchant_access, current_user, db, decode_token, haversine_m, issue_token, logger, merchant_access, now_iso, today_str
+from core import RUNS, TZ, admin_user, check_merchant_access, current_user, db, haversine_m, issue_token, logger, merchant_access, now_iso, today_str
 from models import Stop, merchant_pickup
 from routes import billing
 from routes import feedback
+from routes import linkpages
 from routes import privacy
 from routes import scorecards
 from routes import stops as stop_routes
@@ -248,11 +249,13 @@ def csv_safe(v) -> str:
 
 
 @router.get("/merchants/{merchant_id}/report.csv")
-async def report_csv(merchant_id: str, token: str, request: Request):
-    p = decode_token(token, "report")
+async def report_csv(merchant_id: str, request: Request, token: str = ""):
+    p = linkpages.download_payload(token, "report")
     if p.get("mid") != merchant_id:
-        raise HTTPException(403, "This link is for a different store")
-    m = await get_merchant_or_404(merchant_id)
+        raise linkpages.LinkPageError("report", "wrong", 403)
+    m = await db.merchants.find_one({"id": merchant_id}, {"_id": 0})
+    if not m:
+        raise linkpages.LinkPageError("report", "missing", 404)
     since, until = report_window(p.get("rng"))
     host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
     proto = request.headers.get("x-forwarded-proto") or ("http" if host.startswith(("localhost", "127.")) else "https")

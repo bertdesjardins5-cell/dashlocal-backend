@@ -11,6 +11,7 @@ from core import ADMIN_ONLY, db, issue_token, logger, merchant_access, now_iso
 from routes import billing
 from routes import invoices
 from routes import merchants as merchant_routes
+from routes import linkpages
 from routes import onboarding
 from services import realtime
 
@@ -65,11 +66,13 @@ def statement_pdf(m: dict, month: str, invs: list, biz: dict, owed: float) -> by
 
 
 @router.get("/merchants/{merchant_id}/statements/{month}.pdf")
-async def download_statement_pdf(merchant_id: str, month: str, token: str):
-    p = onboarding.link_payload(token, "mstatement")
+async def download_statement_pdf(merchant_id: str, month: str, token: str = ""):
+    p = linkpages.download_payload(token, "mstatement")
     if p["sub"] != merchant_id or p.get("month") != month:
-        raise HTTPException(403, "This link is for a different statement")
-    m = await merchant_routes.get_merchant_or_404(merchant_id)
+        raise linkpages.LinkPageError("mstatement", "wrong", 403)
+    m = await db.merchants.find_one({"id": merchant_id}, {"_id": 0})
+    if not m:
+        raise linkpages.LinkPageError("mstatement", "missing", 404)
     invs = await db.invoices.find({"merchant_id": merchant_id, "date": {"$regex": f"^{re.escape(month)}-"}}, {"_id": 0}).sort("number", 1).to_list(5000)
     owed = invoices.invoice_summary(await db.invoices.find({"merchant_id": merchant_id}, {"_id": 0, "status": 1, "total": 1}).to_list(10000))["outstanding"]
     pdf = await run_in_threadpool(statement_pdf, m, month, invs, await invoices.get_business(), owed)

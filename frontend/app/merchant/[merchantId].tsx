@@ -14,6 +14,7 @@ import WelcomeChecklist from "@/src/components/WelcomeChecklist";
 import ProblemAlertsCard from "@/src/components/ProblemAlertsCard";
 import { money } from "@/src/components/BillCard";
 import InvoicesCard from "@/src/components/InvoicesCard";
+import ReceiptArchive from "@/src/components/ReceiptArchive";
 import BatchRateTracker from "@/src/components/BatchRateTracker";
 import PharmacySummaryCard from "@/src/components/PharmacySummaryCard";
 import { api, API, dayLabel, Stop, windowLabel } from "@/src/api";
@@ -215,6 +216,7 @@ export default function MerchantHome() {
           <Mono style={s.section}>INVOICES · CAD + HST</Mono>
           {d.runs ? <PharmacySummaryCard merchantId={merchantId} notify={toast.show} /> : null}
           <InvoicesCard merchantId={merchantId} notify={toast.show} paidSession={paid} />
+          <ReceiptArchive merchantId={merchantId} notify={toast.show} />
 
           <Mono style={s.section}>DELIVERY REPORT</Mono>
           <ReportDownload merchantId={merchantId} notify={toast.show} />

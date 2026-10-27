@@ -1,16 +1,21 @@
 import re
 import secrets
+import zipfile
+from datetime import datetime
+from typing import Optional
 from html import escape
 from io import BytesIO
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
-from core import db, issue_token, logger, now_iso
+from core import TZ, db, issue_token, logger, merchant_access, now_iso
 from models import Stop
 from routes import dispatch
 from routes import emails
 from routes import invoices
 from routes import merchants as merchant_routes
+from routes import linkpages
 from routes import onboarding
 
 router = APIRouter(prefix="/api")
@@ -103,15 +108,78 @@ async def send_signed_receipt(stop_id: str):
 
 
 @router.get("/stops/{stop_id}/receipt.pdf")
-async def download_receipt(stop_id: str, token: str):
-    p = onboarding.link_payload(token, "receipt")
+async def download_receipt(stop_id: str, token: str = ""):
+    p = linkpages.download_payload(token, "receipt")
     if p["sub"] != stop_id:
-        from fastapi import HTTPException
-        raise HTTPException(403, "This link is for a different delivery")
-    st = await dispatch.get_stop_or_404(stop_id)
-    store = await merchant_routes.get_merchant_or_404(st.merchant_id)
-    r = await db.routes.find_one({"id": st.route_id}, {"_id": 0, "driver_id": 1}) if st.route_id else None
-    d = await db.drivers.find_one({"id": (r or {}).get("driver_id")}, {"_id": 0, "name": 1}) if r else None
-    pdf = await run_in_threadpool(receipt_pdf, st, store, await invoices.get_business(), d["name"].split(" ")[0] if d else "—")
+        raise linkpages.LinkPageError("receipt", "wrong", 403)
+    doc = await db.stops.find_one({"id": stop_id, "pod_signature": {"$nin": [None, ""]}}, {"_id": 0})
+    if not doc or not doc.get("merchant_id"):
+        raise linkpages.LinkPageError("receipt", "missing", 404)
+    st = Stop(**doc)
+    store = await db.merchants.find_one({"id": st.merchant_id}, {"_id": 0})
+    if not store:
+        raise linkpages.LinkPageError("receipt", "missing", 404)
+    pdf = await _pdf_for(st, store, await invoices.get_business())
     return Response(content=pdf, media_type="application/pdf",
                     headers={"Content-Disposition": f'attachment; filename="DashLocal-receipt-{st.tracking_code}.pdf"', "Cache-Control": "no-store"})
+
+
+# ---------------------------------------------------------------- receipt archive (store portal)
+async def _signed_stops(merchant_id: str, limit: int = 500) -> list:
+    q = {"merchant_id": merchant_id, "status": "delivered", "pod_signature": {"$nin": [None, ""]}}
+    docs = await db.stops.find(q, {"_id": 0}).sort("delivered_at", -1).to_list(limit)
+    return [Stop(**d) for d in docs]
+
+
+async def _pdf_for(st: Stop, store: dict, biz: dict) -> bytes:
+    r = await db.routes.find_one({"id": st.route_id}, {"_id": 0, "driver_id": 1}) if st.route_id else None
+    d = await db.drivers.find_one({"id": (r or {}).get("driver_id")}, {"_id": 0, "name": 1}) if r else None
+    return await run_in_threadpool(receipt_pdf, st, store, biz, d["name"].split(" ")[0] if d else "—")
+
+
+@router.get("/merchants/{merchant_id}/receipts")
+async def list_receipts(merchant_id: str, u: dict = Depends(merchant_access)):
+    m = await merchant_routes.get_merchant_or_404(merchant_id)
+    if m.get("business_type") != "law_office":
+        return {"law_office": False, "receipts": []}
+    return {"law_office": True, "receipts": [{"id": s.id, "tracking_code": s.tracking_code, "customer_name": s.customer_name,
+                                              "delivered_at": s.delivered_at} for s in await _signed_stops(merchant_id, 500)]}
+
+
+class ReceiptLinkIn(BaseModel):
+    stop_id: Optional[str] = None  # None = all receipts as one ZIP
+
+
+@router.post("/merchants/{merchant_id}/receipts/link")
+async def receipt_link(merchant_id: str, body: ReceiptLinkIn, request: Request, u: dict = Depends(merchant_access)):
+    """Short-lived (5 min) download link so the PDF/ZIP opens in a browser tab without a sign-in header."""
+    m = await merchant_routes.get_merchant_or_404(merchant_id)
+    if m.get("business_type") != "law_office":
+        raise HTTPException(403, "Signed receipts are for law offices")
+    await merchant_routes.remember_public_base(request)
+    if body.stop_id:
+        st = await db.stops.find_one({"id": body.stop_id, "merchant_id": merchant_id, "status": "delivered", "pod_signature": {"$nin": [None, ""]}}, {"_id": 1})
+        if not st:
+            raise HTTPException(404, "No signed receipt for this delivery")
+        tok = issue_token(body.stop_id, "merchant", purpose="receipt", minutes=5)
+        return {"path": f"/api/stops/{body.stop_id}/receipt.pdf?token={tok}"}
+    tok = issue_token(merchant_id, "merchant", purpose="receipts", minutes=5)
+    return {"path": f"/api/merchants/{merchant_id}/receipts.zip?token={tok}"}
+
+
+@router.get("/merchants/{merchant_id}/receipts.zip")
+async def download_receipts_zip(merchant_id: str, token: str = ""):
+    p = linkpages.download_payload(token, "receipts")
+    if p["sub"] != merchant_id:
+        raise linkpages.LinkPageError("receipts", "wrong", 403)
+    store = await db.merchants.find_one({"id": merchant_id}, {"_id": 0})
+    stops = await _signed_stops(merchant_id, 500) if store else []
+    if not stops:
+        raise linkpages.LinkPageError("receipts", "missing", 404)
+    biz = await invoices.get_business()
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for st in stops:
+            z.writestr(f"DashLocal-receipt-{st.tracking_code}-{(st.delivered_at or '')[:10]}.pdf", await _pdf_for(st, store, biz))
+    return Response(content=buf.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="DashLocal-signed-receipts-{datetime.now(TZ).date()}.zip"', "Cache-Control": "no-store"})

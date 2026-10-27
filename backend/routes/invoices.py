@@ -13,6 +13,7 @@ from routes import auth
 from routes import billing
 from routes import emails
 from routes import merchants as merchant_routes
+from routes import linkpages
 from routes import onboarding
 from routes import pickups as pickup_routes
 from services import realtime
@@ -322,13 +323,13 @@ def invoice_pdf(inv: dict) -> bytes:
 
 
 @router.get("/invoices/{invoice_id}.pdf")
-async def download_invoice(invoice_id: str, token: str):
-    p = onboarding.link_payload(token, "invoice")
+async def download_invoice(invoice_id: str, token: str = ""):
+    p = linkpages.download_payload(token, "invoice")
     if p["sub"] != invoice_id:
-        raise HTTPException(403, "This link is for a different invoice")
+        raise linkpages.LinkPageError("invoice", "wrong", 403)
     inv = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
     if not inv:
-        raise HTTPException(404, "Invoice not found")
+        raise linkpages.LinkPageError("invoice", "missing", 404)
     pdf = await run_in_threadpool(invoice_pdf, inv)
     return Response(content=pdf, media_type="application/pdf",
                     headers={"Content-Disposition": f'attachment; filename="DashLocal-{inv["number"]}.pdf"', "Cache-Control": "no-store"})

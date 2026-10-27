@@ -14,6 +14,7 @@ from datetime import datetime, timezone, timedelta
 from core import ADMIN_ONLY, DRIVER_SELF, ORDER_ACCESS, TZ, current_user, db, logger, now_iso, require_order_access
 from models import Stop, get_driver_or_404
 from routes import dispatch
+from routes import linkpages
 from routes import stops as stop_routes
 from services import realtime
 
@@ -282,13 +283,10 @@ async def share_proof(stop_id: str):
 async def proof_page(token: str):
     doc = await db.stops.find_one({"share_token": token}, {"_id": 0})
     if not doc:
-        raise HTTPException(404, "Link not found")
+        raise linkpages.LinkPageError("proof", "invalid", 404)
     st = Stop(**doc)
     if not st.share_created_at or datetime.now(timezone.utc) - datetime.fromisoformat(st.share_created_at) >= timedelta(days=PROOF_LINK_DAYS):
-        return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex"><title>Link expired</title></head><body style="font-family:'Courier New',monospace;padding:24px">
-<h1 style="font-family:Arial,sans-serif">LINK EXPIRED</h1><p>Proof-of-delivery links last {PROOF_LINK_DAYS} days to protect your privacy.
-Open your order in the DashLocal app to share a fresh link.</p></body></html>""", status_code=410)
+        raise linkpages.LinkPageError("proof", "expired", 410)
     esc = lambda v: xml_escape(str(v), {'"': "&quot;", "'": "&#x27;"})  # noqa: E731 — attribute-safe
     when = datetime.fromisoformat(st.delivered_at).astimezone(TZ).strftime("%a %d %b %Y, %H:%M") if st.delivered_at else ""
     photo = f'<img src="{esc(realtime.file_url(st.pod_photo_path))}" alt="Delivery photo">' if st.pod_photo_path else ""

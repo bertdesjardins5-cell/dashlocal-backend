@@ -193,15 +193,15 @@ class TestReceiptPdf:
     def test_expired_token_400(self, done):
         tok = issue_token(done["id"], "merchant", purpose="receipt", minutes=-5)
         r = requests.get(f"{BASE_URL}/api/stops/{done['id']}/receipt.pdf", params={"token": tok}, headers=NA)
-        assert r.status_code == 400 and "expired" in r.json()["detail"]
+        assert r.status_code == 400 and "This link has expired" in r.text  # friendly branded page
 
     def test_session_token_wrong_purpose_400(self, done, toks):
         r = requests.get(f"{BASE_URL}/api/stops/{done['id']}/receipt.pdf", params={"token": toks["m1"]}, headers=NA)
         assert r.status_code == 400
 
-    def test_missing_token_422(self, done):
+    def test_missing_token_friendly_page(self, done):
         r = requests.get(f"{BASE_URL}/api/stops/{done['id']}/receipt.pdf", headers=NA)
-        assert r.status_code == 422
+        assert r.status_code == 400 and "link-error-page" in r.text
 
 
 # --- admin one-tap new PIN by text ---
