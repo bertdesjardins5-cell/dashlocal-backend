@@ -7,9 +7,12 @@ import re
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
-from core import ADMIN_ONLY, DEPOT, DUMMY_HASH, admin_user, check_pw, current_user, db, hash_pw, issue_token, now_iso
+from fastapi.concurrency import run_in_threadpool
+from core import ADMIN_ONLY, DEPOT, DUMMY_HASH, admin_user, check_pw, current_user, db, hash_pw, issue_token, logger, now_iso
 from models import Driver
 from routes import merchants as merchant_routes
+from routes import onboarding
+from routes import stops as stop_routes
 
 router = APIRouter(prefix="/api")
 
@@ -195,7 +198,7 @@ class NewDriverIn(BaseModel):
 
 
 @router.post("/admin/drivers", dependencies=ADMIN_ONLY)
-async def create_driver(body: NewDriverIn):
+async def create_driver(body: NewDriverIn, request: Request):
     name, vehicle = body.name.strip(), body.vehicle.strip()
     phone = merchant_routes.normalize_phone(body.phone)
     if not name or not vehicle:
@@ -213,10 +216,53 @@ async def create_driver(body: NewDriverIn):
         raise HTTPException(400, "PIN is too easy to guess — pick another")
     d = Driver(id=f"drv-{uuid.uuid4().hex[:8]}", name=name, phone=phone, vehicle=vehicle, lat=DEPOT["lat"], lng=DEPOT["lng"],
                updated_at=now_iso(), compass_zone=body.compass_zone)
+    base = await onboarding.app_base(request)  # before saving, so a missing app address can't leave a half-created driver
     await db.drivers.insert_one(d.model_dump())
     await db.users.insert_one({"id": str(uuid.uuid4()), "role": "driver", "driver_id": d.id, "pin_hash": hash_pw(pin),
                                "disabled": False, "created_at": now_iso()})
-    return {"id": d.id, "name": d.name, "phone": d.phone, "vehicle": d.vehicle, "has_pin": True, "last_login_at": None}
+    invite = await send_driver_invite(d, pin, base)
+    return {"id": d.id, "name": d.name, "phone": d.phone, "vehicle": d.vehicle, "has_pin": True, "last_login_at": None, "invite": invite}
+
+
+async def send_driver_invite(d: Driver, pin: str, base: str) -> str:
+    """Welcome text with the sign-in link, phone and PIN (owner's choice). Never blocks creating the driver."""
+    body = (f"Welcome to DashLocal, {d.name.split()[0]}! Sign in to the driver app at {base}/sign-in/staff "
+            f"(Driver tab) with this phone number and PIN {pin}. Keep your PIN private.")
+    try:
+        tw = stop_routes.twilio_client()
+        await run_in_threadpool(lambda: tw.messages.create(to=d.phone, from_=stop_routes.twilio_number(), body=body))
+        status = "sent"
+    except HTTPException:
+        status = "not_configured"
+    except Exception as e:
+        logger.warning(f"Driver invite SMS failed for {d.id}: {e}")
+        status = "failed"
+    await db.drivers.update_one({"id": d.id}, {"$set": {"invite_status": status, "invite_sent_at": now_iso()}})
+    return status
+
+
+class MerchantSettingsIn(BaseModel):
+    business_type: Optional[str] = None
+    signature_required: Optional[bool] = None
+
+
+@router.put("/admin/merchants/{merchant_id}/settings", dependencies=ADMIN_ONLY)
+async def merchant_settings(merchant_id: str, body: MerchantSettingsIn):
+    upd = {}
+    if body.business_type is not None:
+        if body.business_type not in onboarding.BUSINESS_TYPES:
+            raise HTTPException(400, "Unknown business type")
+        upd["business_type"] = body.business_type
+        if body.business_type == "law_office" and body.signature_required is None:
+            upd["signature_required"] = True  # switching to law office turns the signature rule on (can be turned off after)
+    if body.signature_required is not None:
+        upd["signature_required"] = body.signature_required
+    if not upd:
+        raise HTTPException(400, "Nothing to change")
+    res = await db.merchants.update_one({"id": merchant_id}, {"$set": upd})
+    if not res.matched_count:
+        raise HTTPException(404, "Store not found")
+    return await db.merchants.find_one({"id": merchant_id}, {"_id": 0})
 
 
 @router.put("/admin/drivers/{driver_id}/pin", dependencies=ADMIN_ONLY)
@@ -272,6 +318,7 @@ class MerchantAccountIn(BaseModel):
     store_name: str
     email: str
     password: str
+    business_type: str = "store"
 
 
 class PasswordIn(BaseModel):
@@ -306,7 +353,10 @@ async def create_merchant_account(body: MerchantAccountIn, _: dict = Depends(adm
     check_password(body.password)
     if await db.users.find_one({"email": email}):
         raise HTTPException(409, "An account with this email already exists")
-    m = {"id": f"mer-{uuid.uuid4().hex[:8]}", "name": name, "contact": email}
+    if body.business_type not in onboarding.BUSINESS_TYPES:
+        raise HTTPException(400, "Unknown business type")
+    m = {"id": f"mer-{uuid.uuid4().hex[:8]}", "name": name, "contact": email, "business_type": body.business_type,
+         "signature_required": body.business_type == "law_office"}  # law offices: signature at the door by default
     await db.merchants.insert_one(dict(m))
     user = {"id": str(uuid.uuid4()), "email": email, "role": "merchant", "name": None, "merchant_id": m["id"], "disabled": False, "created_at": now_iso()}
     try:

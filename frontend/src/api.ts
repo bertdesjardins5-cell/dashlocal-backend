@@ -45,6 +45,7 @@ export type Stop = {
   customer_note_source?: string | null;
   pickup_run?: PickupRun | null;
   pharmacy_drop?: boolean;
+  signature_required?: boolean;
 };
 
 export type PickupRun = { run: string; label: string; pickup_label: string; date: string | null; pharmacy: string | null; pickup_address: string | null;

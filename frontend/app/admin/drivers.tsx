@@ -25,8 +25,9 @@ export default function DriverPins() {
   const addDriver = async () => {
     setBusy(true);
     try {
-      await api("/admin/drivers", { method: "POST", body: nd });
-      toast.show(`DRIVER ${nd.name.trim().toUpperCase()} ADDED`, "green");
+      const r = await api<{ invite: string }>("/admin/drivers", { method: "POST", body: nd });
+      const inviteMsg = r.invite === "sent" ? " · WELCOME TEXT ON ITS WAY" : " · WELCOME TEXT NOT SENT — SHARE THE PIN IN PERSON";
+      toast.show(`DRIVER ${nd.name.trim().toUpperCase()} ADDED${inviteMsg}`, r.invite === "sent" ? "green" : "dark");
       setNd({ name: "", phone: "", vehicle: "", pin: "" });
       setAdding(false);
       q.refetch();
@@ -58,7 +59,7 @@ export default function DriverPins() {
       {q.isLoading ? <Loading /> : q.error ? <ErrorBlock message={(q.error as Error).message} onRetry={q.refetch} /> : (
         <KeyboardAwareScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }} keyboardShouldPersistTaps="handled" bottomOffset={24}
           refreshControl={<RefreshControl refreshing={false} onRefresh={() => { q.refetch(); }} />}>
-          <Mono style={s.note}>Drivers sign in with the phone number on file and this PIN. Tell the driver their new PIN in person — it is never shown again.</Mono>
+          <Mono style={s.note}>New drivers get a welcome text with the sign-in link and their PIN. Drivers sign in with the phone number on file and this PIN.</Mono>
           <View style={s.row} testID="add-driver-section">
             {adding ? (
               <>

@@ -1,0 +1,39 @@
+{
+  "summary": "Tested driver welcome text, store business type + signature at the door, and the admin Stores type filter. Backend: new test_invite_signature_business_type.py passes 23/23. Checked: POST /admin/drivers returns invite='sent' and stores invite_status/invite_sent_at; non-admins are blocked. The Twilio log shows the SMS body has {base}/sign-in/staff, the Driver tab hint and the PIN; it was undelivered (30006) only because the number is fictional. Merchant accounts accept all 5 types, reject unknown ones with 400 and default to store; law_office gets signature_required=true. Approving a law_office signup sets signature_required=true. PUT settings: 200/400 (empty body or unknown type)/404, and 401/403 for merchant, driver and no auth. GET stop has a signature_required flag. On deliver, photo only gives 400 'This store needs the recipient's signature at the door'; photo+SVG gives 200; signature only gives 200; a bad signature gives 400; after switching the store off, photo only gives 200. The pharmacy rule is unchanged. Frontend (375x667): /admin/merchants filter chips show counts (ALL 2 to 3 after creating) and filter the list. The empty state shows for flower_shop. The new-store law office chip shows the hint and the new store gets Switch ON. The Switch toggles with OPTIONAL/REQUIRED toasts and persists. The type button opens 5 chips; choosing FLOWER SHOP updates the label and counts and closes the chips. /admin/drivers Add driver toast reads 'DRIVER TEST_UI DRIVER2 ADDED · WELCOME TEXT SENT' (shows after 0.8s; the toast only lasts 3.2s). Driver stop screen for a law-office stop: signature-required-notice is visible and rx notice hidden. Complete drop stays aria-disabled after the photo upload and enables after drawing a signature. Completing navigates back; the DB has status delivered with photo and signature. No deprecated expo packages found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/admin/drivers", "issue": "onboarding.app_base(request) is called AFTER the driver and user docs are inserted. If settings.public_base is unknown, the request returns 400 'App address unknown yet' but the driver already exists. A retry then gives 409. Resolve the base (or fall back to status 'not_configured') before inserting, or catch the error inside send_driver_invite. Reference: /app/backend/routes/auth.py:222"},
+      {"endpoint": "POST /api/admin/drivers", "issue": "invite='sent' only means Twilio accepted the message. Delivery failures such as 30006 (undeliverable/landline) are never shown, so the admin sees 'WELCOME TEXT SENT' even when the text never arrives. Optional: add a Twilio status callback or poll the status to update invite_status."},
+      {"endpoint": "PUT /api/admin/merchants/{id}/settings", "issue": "Changing an existing store's business_type to law_office leaves signature_required as it was (false). That doesn't match 'on by default for law offices'. Consider auto-enabling it when the type changes to law_office and signature_required isn't in the body."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/admin/merchants", "issues": ["The store-signature-{id} Switch renders 40x20 on web, below the 44pt touch target. Native is fine; consider wrapping it in a 44pt hit area."]},
+      {"screen": "/driver/stop/{id}", "issues": ["A signature-required stop can still show a customer note like 'NOTE: Leave at door'. This conflicts with the SIGNATURE REQUIRED box. Consider a hint such as 'Signature required — do not leave unattended'."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_invite_signature_business_type.py", "/app/test_reports/pytest/pytest_iter46.xml"],
+  "action_items": [
+    "Move app_base() resolution before the driver insert in create_driver (or catch HTTPException there → invite 'not_configured') so a missing public_base can't leave a half-created driver (routes/auth.py:222).",
+    "Optional: when business_type is changed to law_office via /settings, default signature_required to true.",
+    "Optional: show undelivered invite texts (Twilio status) so the admin knows to share the PIN in person.",
+    "Avoid leaving non-TEST_-prefixed test data. A driver 'TEST Invite' (drv-930a8142, +15195550998) from your own run was still in the DB; I deleted it."
+  ],
+  "critical_code_review_comments": [
+    "deliver(): the signature_required check runs after the pharmacy/proof checks and before signature validation. The order is correct: photo-only gives the specific message and a bad SVG is still rejected.",
+    "Frontend canComplete correctly gates signature-required stops on the signature alone (photo optional). This matches the backend, which accepts signature-only.",
+    "Seed stores mer-1/mer-2 have no business_type field. The frontend falls back via typeOf (pharmacy_partner → pharmacy, otherwise store) and this works.",
+    "Approving a pharmacy signup sets business_type=pharmacy but not pharmacy_partner. This is intentional per the code comment; noted for awareness."
+  ],
+  "updated_files": ["/app/backend/tests/test_invite_signature_business_type.py (new)"],
+  "success_rate": {"backend": "100% (23/23)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "Created TEST_ stores/drivers, cloned TSIG* stops on drv-1's active route and set drv-1 consent temporarily for the UI. All were removed afterwards: TEST stores, users, invoices, stops and drivers deleted (including E1's leftover 'TEST Invite'), drv-1 consent fields unset, mer-1 unchanged. Delivered test stops created invoices; these were deleted, so the invoice numbering may now have gaps.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run with: export EXPO_PUBLIC_BACKEND_URL=<frontend/.env value>; pytest tests/test_invite_signature_business_type.py -n 0 (pytest.ini enables xdist; -n 0 keeps the module cleanup fixture single-process). The test clones a pending drv-1 stop (needs an active drv-1 route; POST /api/admin/reset if none) and cleans up all TEST_/TSIG data and restores mer-1. Twilio is configured, and texts to 555-01xx numbers are 'accepted' then undelivered (30006). Driver UI login testIDs: driver-sign-in-phone/pin/submit after staff-toggle-driver. drv-1 must have users.phipa_consent_given=true + consent_version '2026-06' or the stop screen shows a consent error. In the web preview the photo uses a file chooser (expo-image-picker library). Signature pad: testID signature-pad, mouse down/move/up works. Backend WatchFiles reloads when tests/ files change."
+}

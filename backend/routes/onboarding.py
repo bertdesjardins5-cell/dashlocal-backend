@@ -321,7 +321,8 @@ async def approve_signup(sid: str, request: Request):
     base = await app_base(request)
     m = {"id": f"mer-{uuid.uuid4().hex[:8]}", "name": sr["store_name"], "contact": sr["email"], "onboarding": True,
          "approved_via_signup": True, "first_delivery_email_at": None, "address": sr.get("address"),
-         "business_type": sr.get("business_type", "store")}  # pharmacy partner pricing is still switched on by the admin
+         "business_type": sr.get("business_type", "store"),  # pharmacy partner pricing is still switched on by the admin
+         "signature_required": sr.get("business_type") == "law_office"}  # law offices: signature at the door by default
     nonce = secrets.token_urlsafe(12)
     user = {"id": str(uuid.uuid4()), "email": sr["email"], "role": "merchant", "name": sr["contact_name"], "merchant_id": m["id"],
             "disabled": False, "created_at": now_iso(), "pw_nonce": nonce, "password_hash": hash_pw(secrets.token_urlsafe(24))}

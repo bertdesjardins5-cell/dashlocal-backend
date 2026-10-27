@@ -145,7 +145,7 @@ export default function StopDetail() {
   };
 
   const closed = stop && (stop.status === "delivered" || stop.status === "failed");
-  const canComplete = (stop?.pharmacy_drop ? !!(photo?.path && signature) : !!(photo?.path || signature || stop?.pod_qr_verified)) && !uploading;
+  const canComplete = (stop?.pharmacy_drop ? !!(photo?.path && signature) : stop?.signature_required ? !!signature : !!(photo?.path || signature || stop?.pod_qr_verified)) && !uploading;
 
   return (
     <View style={s.root} testID="stop-detail-screen">
@@ -237,6 +237,13 @@ export default function StopDetail() {
                     <Mono style={s.rxTitle}>PRESCRIPTION HAND-OFF</Mono>
                     <Mono style={s.rxText}>
                       Take a doorstep photo {photo?.path ? "✓" : "○"} and get the recipient&apos;s signature {signature ? "✓" : "○"} — both are required. No unattended drops.
+                    </Mono>
+                  </View>
+                ) : stop.signature_required ? (
+                  <View style={s.rxBox} testID="signature-required-notice">
+                    <Mono style={s.rxTitle}>SIGNATURE REQUIRED</Mono>
+                    <Mono style={s.rxText}>
+                      This store needs the recipient&apos;s signature at the door {signature ? "✓" : "○"}. A photo alone won&apos;t complete the drop.
                     </Mono>
                   </View>
                 ) : null}

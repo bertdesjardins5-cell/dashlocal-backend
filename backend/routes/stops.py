@@ -37,7 +37,7 @@ async def get_stop(stop_id: str, u: dict = Depends(require_stop_driver)):
                                    {"_id": 0, "pod_photo_path": 1, "delivered_at": 1}, sort=[("delivered_at", -1)])
     hint = {"photo_url": realtime.file_url(prev["pod_photo_path"]), "delivered_at": prev.get("delivered_at")} if prev else None
     out = {**stop.model_dump(), "doorstep_hint": hint, "pickup_run": (await pickup_run_labels([stop])).get(stop.id),
-           "pharmacy_drop": await dispatch.is_pharmacy_drop(stop)}
+           "pharmacy_drop": await dispatch.is_pharmacy_drop(stop), "signature_required": await dispatch.signature_required(stop)}
     return dispatch.driver_stop_view(out) if u.get("role") == "driver" else out
 
 
@@ -190,6 +190,8 @@ async def deliver(stop_id: str, body: DeliverIn, u: dict = Depends(require_stop_
             raise HTTPException(400, "Prescription hand-off needs a real uploaded photo and a drawn signature")
     elif not body.photo_path and not body.signature and not stop.pod_qr_verified:
         raise HTTPException(400, "Proof of delivery requires a photo, signature or parcel QR scan")
+    if not body.signature and await dispatch.signature_required(stop):
+        raise HTTPException(400, "This store needs the recipient's signature at the door")
     if body.signature and (len(body.signature) > 200000 or not SIG_RE.match(body.signature)):
         raise HTTPException(400, "The signature must be drawn on the signature pad")
     if body.photo_path and u["role"] != "admin" and (

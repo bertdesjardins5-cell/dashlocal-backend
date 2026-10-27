@@ -387,6 +387,13 @@ async def get_stop_or_404(stop_id: str) -> Stop:
     return Stop(**doc)
 
 
+async def signature_required(stop: Stop) -> bool:
+    """Stores set to 'signature at the door' (on by default for law offices) can't be completed without one."""
+    if not stop.merchant_id:
+        return False
+    return bool(await db.merchants.find_one({"id": stop.merchant_id, "signature_required": True}, {"_id": 1}))
+
+
 async def is_pharmacy_drop(stop: Stop) -> bool:
     """Prescription hand-off: orders from a pharmacy batch run or a pharmacy-partner store need photo + signature."""
     if stop.batch_run:
