@@ -5,7 +5,7 @@ import { api, BACKEND_URL } from "@/src/api";
 import { Btn, Display, Mono } from "@/src/ui";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
-type Receipt = { id: string; tracking_code: string; customer_name: string; delivered_at: string };
+type Receipt = { id: string; tracking_code: string; customer_name: string; delivered_at: string; matter_ref?: string | null };
 type Data = { law_office: boolean; receipts: Receipt[] };
 type Notify = (m: string, tone?: "dark" | "red" | "green") => void;
 const SHOW = 5;
@@ -52,7 +52,7 @@ export default function ReceiptArchive({ merchantId, notify }: { merchantId: str
       <Mono style={s.meta}>Every delivery signed for at the door, as a PDF with the recipient&apos;s signature. Download any time.</Mono>
       {list.length > 0 ? (
         <View style={s.searchRow}>
-          <TextInput testID="receipt-search-input" value={search} onChangeText={setSearch} placeholder="Client, code or date"
+          <TextInput testID="receipt-search-input" value={search} onChangeText={setSearch} placeholder="Client, matter, code or date"
             placeholderTextColor={colors.muted} autoCorrect={false} autoCapitalize="none" style={s.search} />
           {search ? (
             <Pressable testID="receipt-search-clear" onPress={() => setSearch("")} style={s.clear} accessibilityLabel="Clear search">
@@ -68,7 +68,7 @@ export default function ReceiptArchive({ merchantId, notify }: { merchantId: str
         <View key={r.id} style={s.row} testID={`receipt-row-${r.id}`}>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Mono style={s.code}>{r.tracking_code} · {r.customer_name}</Mono>
-            <Mono style={s.meta}>{when(r.delivered_at)}</Mono>
+            <Mono style={s.meta}>{r.matter_ref ? `MATTER ${r.matter_ref} · ` : ""}{when(r.delivered_at)}</Mono>
           </View>
           <Btn testID={`receipt-download-${r.id}`} label="PDF" icon="download" variant="outline" loading={busy === r.id} onPress={() => open(r.id)} />
         </View>
@@ -92,7 +92,7 @@ const searchText = (r: Receipt) => {
   const [y, m, day] = iso.split("-");
   const opt = (o: Intl.DateTimeFormatOptions) => d.toLocaleString("en-CA", { timeZone: TZ, ...o });
   const dd = String(Number(day));
-  return [r.customer_name, r.tracking_code, iso, `${y}/${m}/${day}`, `${day}/${m}/${y}`, `${m}/${day}/${y}`,
+  return [r.customer_name, r.tracking_code, r.matter_ref ?? "", iso, `${y}/${m}/${day}`, `${day}/${m}/${y}`, `${m}/${day}/${y}`,
     opt({ month: "long" }), opt({ month: "short" }).replace(".", ""), dd, y].join(" ").toLowerCase();
 };
 

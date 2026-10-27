@@ -9,23 +9,24 @@ import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
 export type ImportRow = {
   id: string; line: number; status: string; error: string | null;
-  data: { customer_name: string; phone: string; address: string; notes: string; window_date: string; window_start: string; window_end: string; priority?: string };
+  data: { customer_name: string; phone: string; address: string; notes: string; window_date: string; window_start: string; window_end: string; priority?: string; matter_ref?: string };
 };
 
 const FIELDS: { k: keyof ImportRow["data"]; label: string; ph: string }[] = [
   { k: "customer_name", label: "CUSTOMER NAME", ph: "Jane Doe" },
   { k: "phone", label: "PHONE", ph: "+1 519 555 0123" },
-  { k: "address", label: "STREET ADDRESS (SAN FRANCISCO)", ph: "1 Market St" },
+  { k: "address", label: "STREET ADDRESS (KITCHENER-WATERLOO)", ph: "200 King St W" },
   { k: "notes", label: "NOTES (OPTIONAL)", ph: "Leave at reception" },
   { k: "window_date", label: "DELIVERY DATE (OPTIONAL, YYYY-MM-DD)", ph: "2026-06-30" },
   { k: "window_start", label: "WINDOW FROM (OPTIONAL, HH:MM)", ph: "14:00" },
   { k: "window_end", label: "WINDOW TO (OPTIONAL, HH:MM)", ph: "16:00" },
   { k: "priority", label: "PRIORITY (OPTIONAL, YES / BLANK)", ph: "yes" },
+  { k: "matter_ref", label: "MATTER / FILE NO. (OPTIONAL)", ph: "2026-0142" },
 ];
 
 // Merchant sheet: correct a flagged CSV row and try it again, or drop it.
-export default function FixRowSheet({ row, onClose, onDone, notify }: {
-  row: ImportRow; onClose: () => void; onDone: () => void; notify: (m: string, tone?: "dark" | "red" | "green") => void;
+export default function FixRowSheet({ row, onClose, onDone, notify, lawOffice }: {
+  row: ImportRow; onClose: () => void; onDone: () => void; notify: (m: string, tone?: "dark" | "red" | "green") => void; lawOffice?: boolean;
 }) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -76,7 +77,7 @@ export default function FixRowSheet({ row, onClose, onDone, notify }: {
           {error ? (
             <View style={s.err} testID="fix-row-error"><Mono style={s.errText}>{error}</Mono></View>
           ) : null}
-          {FIELDS.map((f) => (
+          {FIELDS.filter((f) => f.k !== "matter_ref" || lawOffice).map((f) => (
             <View key={f.k} style={{ gap: 4 }}>
               <Mono style={s.label}>{f.label}</Mono>
               <TextInput

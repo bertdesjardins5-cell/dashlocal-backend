@@ -44,11 +44,17 @@ COLUMNS = {
     "window_end": {"window_end", "to", "end", "window_to"},
     "priority": {"priority", "priority_delivery", "rush", "express"},
     "delivery_note": {"delivery_note", "gate_code", "customer_note", "dropoff_note", "door_note"},
+    "matter_ref": {"matter_ref", "matter", "matter_number", "matter_no", "file_number", "file_no", "file", "client_matter", "reference"},
 }
 TRUTHY = {"yes", "y", "true", "1", "x", "priority", "rush", "express"}
-TEMPLATE_CSV = ("customer_name,phone,address,notes,window_date,window_start,window_end,priority,delivery_note\n"
-                "Jane Doe,519 555 0123,200 King St W Kitchener,Leave at reception,,,,,\n"
-                "Sam Lee,+15195550188,75 King St S Waterloo,Ring twice,,14:00,16:00,yes,Gate code 2468\n")
+TEMPLATE_CSV = ("customer_name,phone,address,notes,window_date,window_start,window_end,priority,delivery_note,matter_ref\n"
+                "Jane Doe,519 555 0123,200 King St W Kitchener,Leave at reception,,,,,,\n"
+                "Sam Lee,+15195550188,75 King St S Waterloo,Ring twice,,14:00,16:00,yes,Gate code 2468,2026-0142\n")
+MATTER_MAX = 60
+
+
+def clean_matter(v) -> Optional[str]:
+    return " ".join(str(v or "").split())[:MATTER_MAX] or None
 _geo_lock = asyncio.Lock()
 _geo_last = [0.0]
 
@@ -143,7 +149,7 @@ async def process_row(row: dict) -> dict:
                         tracking_code=await new_tracking_code(), notes=d.get("notes") or "",
                         window_start=d.get("window_start") or None, window_end=d.get("window_end") or None,
                         window_date=d.get("window_date") or None, merchant_id=row["merchant_id"], created_at=now_iso(),
-                        priority=(d.get("priority") or "").strip().lower() in TRUTHY)
+                        priority=(d.get("priority") or "").strip().lower() in TRUTHY, matter_ref=clean_matter(d.get("matter_ref")))
             if row.get("run") in RUNS:  # pharmacy batch: the run sets the day and the patient delivery window
                 r = RUNS[row["run"]]
                 stop.window_start, stop.window_end, stop.window_date = r["window"][0], r["window"][1], row["manifest_id"].split(":")[1]
@@ -442,6 +448,21 @@ class RowFixIn(BaseModel):
     window_start: Optional[str] = None
     window_end: Optional[str] = None
     priority: Optional[str] = None
+    matter_ref: Optional[str] = None
+
+
+class MatterIn(BaseModel):
+    matter_ref: Optional[str] = None
+
+
+@router.put("/merchants/{merchant_id}/stops/{stop_id}/matter")
+async def set_matter(merchant_id: str, stop_id: str, body: MatterIn, _: dict = Depends(merchant_access)):
+    """Tag (or clear) the client file / matter number on one of the store's deliveries."""
+    ref = clean_matter(body.matter_ref)
+    res = await db.stops.update_one({"id": stop_id, "merchant_id": merchant_id}, {"$set": {"matter_ref": ref}})
+    if not res.matched_count:
+        raise HTTPException(404, "Delivery not found")
+    return {"ok": True, "matter_ref": ref}
 
 
 @router.put("/import-rows/{row_id}")

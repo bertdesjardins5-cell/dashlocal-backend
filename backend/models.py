@@ -51,6 +51,7 @@ class Stop(BaseModel):
     nearby_sms_status: Optional[str] = None  # "driver is 2 stops away" text: sending | sent | skipped_fictional | not_configured | failed
     nearby_sms_at: Optional[str] = None
     merchant_id: Optional[str] = None  # set when the order came from a merchant CSV import
+    matter_ref: Optional[str] = None  # law offices: client file / matter number, printed on the signed receipt
     compass_zone: Optional[str] = None  # North / South / East / West of the depot (set by auto dispatch)
     priority: bool = False  # priority delivery: served first on the route, carries a surcharge
     fee: Optional[dict] = None  # price snapshot when the order was created / re-priced (merchant orders)

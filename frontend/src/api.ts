@@ -34,6 +34,7 @@ export type Stop = {
   planned_eta?: string | null;
   nearby_sms_status?: string | null;
   priority?: boolean;
+  matter_ref?: string | null;
   fee?: { base: number; km: number; distance_fee: number; priority_fee: number; total: number; currency: string } | null;
   late_min?: number;
   fail_reason: string | null;

@@ -1,0 +1,32 @@
+{
+  "summary": "Frontend retest of the iteration 51 Matter Reference fixes (375x667, mer-1 temporarily set to law_office, with a seeded signed delivered stop TSMRUIDEL, a pending stop TSMRUIPEN and 1 flagged import row). (HIGH) STILL FAILING on web: with matter-editor-{id} open, clicking matter-input-{id} navigates to /customer/TSMRUIPEN. Clicking the gap between the input and SAVE, the gap between SAVE and ✕, the top strip of the editor, or its left edge also navigates. Typing, SAVE (toast 'MATTER LIT-2026-07 SAVED', label 'MATTER LIT-2026-07 ✎') and ✕ work. Tapping the customer name in the row still opens the tracking page. (MEDIUM) PASS: after saving NEW-22 on the delivered and signed stop, the Signed Receipts row changes from 'MATTER OLD-11 · date' to 'MATTER NEW-22 · date' without a reload, and searching for NEW-22 gives '1 OF 1 MATCH'. (LOW) PASS: FixRowSheet shows fix-row-matter_ref (prefilled FLAG-1) for law_office. For business_type store it hides the field (the priority field is still shown), and the order rows have no matter-edit buttons. Cleanup is done: mer-1 is restored to {business_type:'store', signature_required:false}, and the TSMR stops and the new import job and its rows are deleted.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "MatterTag editor inside merchant order-row Pressable (web)",
+        "issue": "The fix (onStartShouldSetResponder={() => true} on the editor View) does nothing on web. In react-native-web 0.21.4, Pressable.onPress is not driven by the responder system. It fires from the native DOM 'click' event in PressResponder.onClick, which calls stopPropagation and onPress on the first ancestor that uses PressResponder (see node_modules/react-native-web/dist/modules/usePressEvents/PressResponder.js:295-321). A click on the TextInput or on blank editor space bubbles to the row Pressable, which runs router.push('/customer/{code}'). The fix probably works on native but not on the web preview or the PWA. Reference: frontend/src/components/MatterTag.tsx:41, frontend/app/merchant/[merchantId].tsx:233-252",
+        "testID": "matter-input-{stopId} / matter-editor-{stopId}",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/tmp/seed52.py (temporary seed and restore helper, not in tests/)"],
+  "action_items": [
+    "HIGH: Make the MatterTag editor stop the click from reaching the row. Option A (simplest): change the editor wrapper <View ... onStartShouldSetResponder> in MatterTag.tsx:41 to <Pressable testID={`matter-editor-${stopId}`} onPress={() => {}} accessible={false} style={s.row}>. RN-web's Pressable onClick calls stopPropagation, so the click stops there on web and native alike. Option B (cleaner): restructure the order row in [merchantId].tsx:233 so the row is a View, with a Pressable only around the name, meta and chevron, and MatterTag (and the MAKE PRIORITY button) as siblings outside it. Then retest: clicking matter-input, the input/SAVE gap, the SAVE/✕ gap and the editor edges must keep the URL at /merchant/{mid}."
+  ],
+  "critical_code_review_comments": [
+    "On web, the responder-system props (onStartShouldSetResponder) do not stop RN-web Pressable onPress, which is triggered by DOM click. Nested-press isolation needs a nested Pressable or a sibling layout.",
+    "The same nesting affects order-priority-{code} (Pressable inside Pressable), which works only because the inner Pressable claims the click. Any blank space around it also goes to the row, as intended for the row itself."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not retested (iteration 51 22/22 passed)", "frontend": "2/3 fixes verified (MEDIUM, LOW pass; HIGH still failing on web)"},
+  "seed_data_creation": "Temporary only, all removed: mer-1 set to law_office via PUT /api/admin/merchants/mer-1/settings; stops TSMRUIDEL (delivered + pod_signature, matter OLD-11) and TSMRUIPEN (pending) cloned from a drv-1 stop; 1 flagged import row (TEST_MR Flag, phone '12', matter FLAG-1). mer-1 doc restored from backup with business_type 'store' and signature_required false.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "To reproduce the HIGH bug: log in as bakery@dashlocal.app, put mer-1 into law_office and seed a stop for it (see /tmp/seed52.py if it still exists, or the seeding pattern in clone_stop in tests/test_matter_reference.py), open /merchant/mer-1, click matter-edit-{id}, then click matter-input-{id}. The bug shows if the URL changes to /customer/{code}. Also click the gaps: x = input.right+2 and the midpoint between save.right and cancel.left, both at the vertical centre of the editor. Restore mer-1 to {business_type:'store', signature_required:false} afterwards.",
+  "rca_of_issue": "react-native-web PressResponder fires onPress from the DOM onClick handler, and that handler stops propagation only at the first PressResponder ancestor. A plain View with onStartShouldSetResponder is not a PressResponder, so clicks on the TextInput or on the View's own blank area bubble up to the order-row Pressable. Mitigation: wrap the editor in a Pressable with a no-op onPress, or move MatterTag out of the row Pressable."
+}

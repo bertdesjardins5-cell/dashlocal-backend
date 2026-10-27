@@ -141,7 +141,7 @@ class TestReceiptList:
         assert ids == list(reversed(law["signed"])), ids
         assert law["unsigned"] not in ids
         x = d["receipts"][0]
-        assert set(x) == {"id", "tracking_code", "customer_name", "delivered_at"}
+        assert set(x) == {"id", "tracking_code", "customer_name", "delivered_at", "matter_ref"}  # iter51: matter_ref added
         assert x["tracking_code"].startswith("TSRA") and x["delivered_at"]
 
     def test_admin_can_list(self, toks, law):

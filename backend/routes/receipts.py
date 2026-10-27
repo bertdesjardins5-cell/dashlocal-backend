@@ -55,7 +55,7 @@ def receipt_pdf(st: Stop, store: dict, biz: dict, driver: str) -> bytes:
     head = Table([[Paragraph('<font name="Helvetica-Bold" size="18" color="#333335">DASH</font><font name="Helvetica-Bold" size="18" color="#D7262E">LOCAL</font>', body),
                    Paragraph('<para alignment="right"><font name="Helvetica-Bold" size="16">SIGNED DELIVERY RECEIPT</font></para>', body)]],
                  colWidths=[3.2 * inch, 3.7 * inch])
-    rows = [("Sender", store["name"]), ("Tracking code", st.tracking_code), ("Delivered to", st.customer_name), ("Address", st.address),
+    rows = [("Sender", store["name"])] + ([("Matter / file no.", st.matter_ref)] if st.matter_ref else []) + [("Tracking code", st.tracking_code), ("Delivered to", st.customer_name), ("Address", st.address),
             ("Delivered at", f"{merchant_routes.local_fmt(st.delivered_at)} (Eastern)"), ("Driver", driver), ("Receipt ID", st.id)]
     t = Table([[Paragraph(f"<b>{e(k)}</b>", body), Paragraph(e(v), body)] for k, v in rows], colWidths=[1.6 * inch, 5.3 * inch])
     t.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, -1), 0.5, rl.HexColor("#E5E5E5")), ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -92,13 +92,13 @@ async def send_signed_receipt(stop_id: str):
         link = f"{base}/api/stops/{stop_id}/receipt.pdf?token={tok}"
         html = onboarding.brand_email(
             f"Signed receipt · {st.tracking_code}",
-            f"<p>Your delivery <b>{escape(st.tracking_code)}</b> to <b>{escape(st.customer_name)}</b> was signed for at "
+            f"<p>Your delivery <b>{escape(st.tracking_code)}</b>{f' (matter {escape(st.matter_ref)})' if st.matter_ref else ''} to <b>{escape(st.customer_name)}</b> was signed for at "
             f"{escape(merchant_routes.local_fmt(st.delivered_at))}.</p><p>Download the signed PDF receipt for your file. "
             f"The link works for {RECEIPT_LINK_DAYS} days.</p>", ("Download signed receipt", link))
         sent = 0
         for u in users:
             try:
-                await emails.send_email(to=onboarding.demo_inbox(u["email"]), subject=f"Signed delivery receipt · {st.tracking_code}", html=html)
+                await emails.send_email(to=onboarding.demo_inbox(u["email"]), subject=f"Signed delivery receipt · {st.tracking_code}" + (f" · {st.matter_ref}" if st.matter_ref else ""), html=html)
                 sent += 1
             except Exception as ex:
                 logger.warning(f"Receipt email failed for {stop_id}: {ex}")
@@ -143,7 +143,7 @@ async def list_receipts(merchant_id: str, u: dict = Depends(merchant_access)):
     if m.get("business_type") != "law_office":
         return {"law_office": False, "receipts": []}
     return {"law_office": True, "receipts": [{"id": s.id, "tracking_code": s.tracking_code, "customer_name": s.customer_name,
-                                              "delivered_at": s.delivered_at} for s in await _signed_stops(merchant_id, 500)]}
+                                              "delivered_at": s.delivered_at, "matter_ref": s.matter_ref} for s in await _signed_stops(merchant_id, 500)]}
 
 
 class ReceiptLinkIn(BaseModel):
@@ -180,6 +180,7 @@ async def download_receipts_zip(merchant_id: str, token: str = ""):
     buf = BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for st in stops:
-            z.writestr(f"DashLocal-receipt-{st.tracking_code}-{(st.delivered_at or '')[:10]}.pdf", await _pdf_for(st, store, biz))
+            ref = re.sub(r"[^\w-]+", "_", st.matter_ref or "").strip("_")
+            z.writestr(f"DashLocal-receipt-{(ref + '-') if ref else ''}{st.tracking_code}-{(st.delivered_at or '')[:10]}.pdf", await _pdf_for(st, store, biz))
     return Response(content=buf.getvalue(), media_type="application/zip",
                     headers={"Content-Disposition": f'attachment; filename="DashLocal-signed-receipts-{datetime.now(TZ).date()}.zip"', "Cache-Control": "no-store"})

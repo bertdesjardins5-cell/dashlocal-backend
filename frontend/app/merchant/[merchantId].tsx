@@ -15,6 +15,8 @@ import ProblemAlertsCard from "@/src/components/ProblemAlertsCard";
 import { money } from "@/src/components/BillCard";
 import InvoicesCard from "@/src/components/InvoicesCard";
 import ReceiptArchive from "@/src/components/ReceiptArchive";
+import MatterTag from "@/src/components/MatterTag";
+import { queryClient } from "@/src/query-client";
 import BatchRateTracker from "@/src/components/BatchRateTracker";
 import PharmacySummaryCard from "@/src/components/PharmacySummaryCard";
 import { api, API, dayLabel, Stop, windowLabel } from "@/src/api";
@@ -27,7 +29,7 @@ type Job = { id: string; filename: string; total: number; processed: number; cre
 type Run = { key: "afternoon" | "evening"; label: string; today: boolean; date: string; cutoff_label: string; pickup_label: string; window_label: string; drops_today: number;
   cutoff_at: string; pickup: { picked_up_at: string; parcel_count: number; expected: number; on_time: boolean } | null };
 type Detail = {
-  id: string; name: string; orders: Stop[]; flagged: ImportRow[]; jobs: Job[]; pharmacy_partner?: boolean; runs?: Run[];
+  id: string; name: string; orders: Stop[]; flagged: ImportRow[]; jobs: Job[]; pharmacy_partner?: boolean; runs?: Run[]; business_type?: string;
   pharmacy_terms?: { batch_rate: number; standard_rate: number; min_drops: number };
   counts: { orders: number; pending: number; delivered: number; failed: number; flagged: number };
 };
@@ -138,7 +140,7 @@ export default function MerchantHome() {
 
           <Mono style={s.section}>IMPORT ORDERS FROM CSV</Mono>
           <View style={s.block}>
-            <Mono style={s.meta}>Columns: customer_name, phone, address (required) · notes, window_date, window_start, window_end, priority (yes = priority delivery, surcharge applies), delivery_note or gate_code (sent to the driver and saved for that customer&apos;s next orders) (optional). Up to 200 rows per file. Addresses are looked up on the map automatically.{d.runs ? " Pharmacy runs set the delivery day and window, so window columns are ignored." : ""}</Mono>
+            <Mono style={s.meta}>Columns: customer_name, phone, address (required) · notes, window_date, window_start, window_end, priority (yes = priority delivery, surcharge applies), delivery_note or gate_code (sent to the driver and saved for that customer&apos;s next orders){d.business_type === "law_office" ? ", matter_ref or file_number (printed on the signed receipt)" : ""} (optional). Up to 200 rows per file. Addresses are looked up on the map automatically.{d.runs ? " Pharmacy runs set the delivery day and window, so window columns are ignored." : ""}</Mono>
             <View style={s.privacyWarn} testID="health-info-warning">
               <Ionicons name="shield-checkmark" size={18} color={colors.onWarning} />
               <Mono style={[s.meta, { flex: 1, color: colors.onWarning }]}>
@@ -228,29 +230,38 @@ export default function MerchantHome() {
           <Mono style={s.section}>ORDERS</Mono>
           {d.orders.length === 0 ? <Mono style={s.empty} testID="merchant-orders-empty">NO ORDERS YET · UPLOAD A CSV TO GET STARTED</Mono> : null}
           {d.orders.map((o) => (
-            <Pressable key={o.id} testID={`merchant-order-${o.tracking_code}`} onPress={() => router.push(`/customer/${o.tracking_code}`)} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
-              <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                <Display style={s.name} numberOfLines={1}>{o.customer_name}</Display>
-                <Mono style={s.meta} numberOfLines={1}>{o.tracking_code} · {o.address}</Mono>
-                <View style={{ flexDirection: "row", gap: spacing.xs, flexWrap: "wrap" }}>
-                  <Pill label={o.route_id ? o.status : "awaiting dispatch"} tone={o.route_id ? statusTone(o.status) : "light"} />
-                  <Pill label={o.zone} tone="light" />
-                  {windowLabel(o) ? <Pill label={`⏱ ${windowLabel(o)}`} tone="dark" /> : o.window_date ? <Pill label={dayLabel(o.window_date)} tone="dark" /> : null}
-                  {o.priority ? <Pill label="PRIORITY" tone="red" /> : null}
-                  {o.fee ? <Pill label={money(o.fee.total)} tone="light" /> : null}
+            <View key={o.id} style={s.orderWrap}>
+              <Pressable testID={`merchant-order-${o.tracking_code}`} onPress={() => router.push(`/customer/${o.tracking_code}`)} style={({ pressed }) => [s.orderRow, pressed && { backgroundColor: colors.surfaceTertiary }]}>
+                <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                  <Display style={s.name} numberOfLines={1}>{o.customer_name}</Display>
+                  <Mono style={s.meta} numberOfLines={1}>{o.tracking_code} · {o.address}</Mono>
+                  <View style={{ flexDirection: "row", gap: spacing.xs, flexWrap: "wrap" }}>
+                    <Pill label={o.route_id ? o.status : "awaiting dispatch"} tone={o.route_id ? statusTone(o.status) : "light"} />
+                    <Pill label={o.zone} tone="light" />
+                    {windowLabel(o) ? <Pill label={`⏱ ${windowLabel(o)}`} tone="dark" /> : o.window_date ? <Pill label={dayLabel(o.window_date)} tone="dark" /> : null}
+                    {o.priority ? <Pill label="PRIORITY" tone="red" /> : null}
+                    {o.fee ? <Pill label={money(o.fee.total)} tone="light" /> : null}
+                  </View>
                 </View>
-                {!o.route_id && o.status === "pending" ? (
-                  <Pressable testID={`order-priority-${o.tracking_code}`} onPress={() => togglePriority(o)} disabled={busyOrder === o.id} style={s.priBtn}>
-                    <Mono style={s.priText}>{busyOrder === o.id ? "…" : o.priority ? "REMOVE PRIORITY" : "MAKE PRIORITY"}</Mono>
-                  </Pressable>
-                ) : null}
-              </View>
-              <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />
-            </Pressable>
+                <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />
+              </Pressable>
+              {/* actions sit outside the row's tap area so tapping them never opens the tracking page */}
+              {!o.route_id && o.status === "pending" ? (
+                <Pressable testID={`order-priority-${o.tracking_code}`} onPress={() => togglePriority(o)} disabled={busyOrder === o.id} style={[s.priBtn, s.orderAction]}>
+                  <Mono style={s.priText}>{busyOrder === o.id ? "…" : o.priority ? "REMOVE PRIORITY" : "MAKE PRIORITY"}</Mono>
+                </Pressable>
+              ) : null}
+              {d.business_type === "law_office" ? (
+                <View style={{ marginHorizontal: spacing.lg }}>
+                  <MatterTag merchantId={merchantId} stopId={o.id} value={o.matter_ref} notify={toast.show}
+                    onSaved={() => { q.refetch(); queryClient.invalidateQueries({ queryKey: ["receipts", merchantId] }); }} />
+                </View>
+              ) : null}
+            </View>
           ))}
         </ScrollView>
       )}
-      {fix ? <FixRowSheet row={fix} onClose={() => setFix(null)} onDone={() => { setFix(null); q.refetch(); }} notify={toast.show} /> : null}
+      {fix ? <FixRowSheet row={fix} lawOffice={q.data?.business_type === "law_office"} onClose={() => setFix(null)} onDone={() => { setFix(null); q.refetch(); }} notify={toast.show} /> : null}
       {toast.node}
     </View>
   );
@@ -270,6 +281,9 @@ const useStyles = makeStyles((c) => ({
   bar: { height: 8, backgroundColor: c.brandPrimary },
   attrib: { fontSize: 10, color: c.muted },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.lg, borderBottomWidth: 2, borderColor: c.border, minHeight: 72 },
+  orderWrap: { borderBottomWidth: 2, borderColor: c.border, paddingBottom: spacing.sm },
+  orderRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.sm, minHeight: 72 },
+  orderAction: { marginHorizontal: spacing.lg, alignSelf: "flex-start" },
   line: { fontSize: 20, width: 32, color: c.brandPrimary },
   name: { fontSize: 16 },
   meta: { fontSize: 11, color: c.muted },
