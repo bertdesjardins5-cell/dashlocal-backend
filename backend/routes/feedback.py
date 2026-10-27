@@ -11,7 +11,7 @@ from twilio.rest import Client as TwilioClient
 from pydantic import BaseModel
 from typing import List, Optional, Dict
 from datetime import datetime, timezone, timedelta
-from core import ADMIN_ONLY, DRIVER_SELF, ORDER_ACCESS, TZ, db, logger, now_iso, require_order_access
+from core import ADMIN_ONLY, DRIVER_SELF, ORDER_ACCESS, TZ, current_user, db, logger, now_iso, require_order_access
 from models import Stop, get_driver_or_404
 from routes import dispatch
 from routes import stops as stop_routes
@@ -253,7 +253,10 @@ async def list_coaching(driver_id: str, unread: bool = False):
 
 
 @router.post("/coaching/{note_id}/read")
-async def read_coaching(note_id: str):
+async def read_coaching(note_id: str, u: dict = Depends(current_user)):
+    note = await db.coaching_notes.find_one({"id": note_id}, {"_id": 0, "driver_id": 1})
+    if note and u["role"] != "admin" and note.get("driver_id") != u.get("driver_id"):
+        raise HTTPException(403, "This note is for another driver")
     res = await db.coaching_notes.update_one({"id": note_id, "read_at": None}, {"$set": {"read_at": now_iso()}})
     if not res.matched_count and not await db.coaching_notes.find_one({"id": note_id}):
         raise HTTPException(404, "Note not found")

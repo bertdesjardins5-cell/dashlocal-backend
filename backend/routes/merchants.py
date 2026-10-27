@@ -229,11 +229,13 @@ def report_window(rng: Optional[str]):
 
 
 async def remember_public_base(request: Request):
-    """Scheduled emails have no request to read the app's public URL from, so keep the latest one."""
-    host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
-    if host and not host.startswith(("localhost", "127.", "0.0.0.0")):
-        proto = request.headers.get("x-forwarded-proto") or "https"
-        await db.settings.update_one({"key": "public_base"}, {"$set": {"key": "public_base", "value": f"{proto}://{host}"}}, upsert=True)
+    """Scheduled emails have no request to read the app's public URL from, so keep the latest one.
+    Only the app's own addresses (CORS_ORIGINS) are accepted, so a forged Host header can't redirect emailed links."""
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host", "")).split(",")[0].strip().lower()
+    base = f"https://{host}"
+    trusted = {o.strip().rstrip("/").lower() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()}
+    if host and base in trusted:
+        await db.settings.update_one({"key": "public_base"}, {"$set": {"key": "public_base", "value": base}}, upsert=True)
 
 
 def csv_safe(v) -> str:

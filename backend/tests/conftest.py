@@ -23,7 +23,7 @@ def _admin_token(base: str) -> str:
 ADMIN_PATHS = re.compile(r"/api/(admin/reset|analytics|routes|zones|scorecards|routes/batch|routes/[^/]+/(sequence|optimize|labels-link|start|update-seen)"
                          r"|routes/[^/?]+|drivers|drivers/[^/]+/(route|location|simulate-step|summary|scorecard|badges/new|badges/seen|phone|coaching)"
                          r"|stops/[^/?]+|stops/[^/]+/(verify-qr|arrive|deliver|fail|contact|phone|window|rating|share)|upload|files/.+"
-                         r"|alerts/(trends|low-ratings)|stops/[^/]+/follow-up|codes/(apology|redeem)|digest)(\?.*)?$")
+                         r"|coaching/[^/?]+/read|alerts/(trends|low-ratings)|stops/[^/]+/follow-up|codes/(apology|redeem)|digest)(\?.*)?$")
 
 
 def _request(self, method, url, *args, **kwargs):

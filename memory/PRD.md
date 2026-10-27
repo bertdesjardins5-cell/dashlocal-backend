@@ -139,3 +139,10 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - Privacy Officer editable in Admin › Privacy (GET /api/privacy/officer, PUT /api/admin/privacy/officer); policy page reads it.
 - Driver feedback card on driver summary (GET /api/drivers/{id}/feedback). Pharmacy batch savings badge on invoices card (batch_savings in invoices response).
 - Compliment shout-outs: 5★ + positive tag → db.driver_shoutouts; driver manifest banner (GET /shoutouts/new, POST /shoutouts/seen {ids}).
+
+## Security audit fixes (June 2026)
+- Demo merchant passwords / driver PINs rejected unless the request Host is a preview host (*.preview.emergentagent.com / *.preview.emergentcf.cloud); changed secrets work everywhere.
+- public_base (used in emailed links, Stripe return URLs) only accepts hosts listed in CORS_ORIGINS, forced https.
+- /api/files: session access limited to admin, uploader, the stop's route driver, or the stop's merchant. Upload records uploaded_by.
+- Deliver: drivers may only attach photos they uploaded that aren't used on another stop (admin exempt).
+- /api/coaching/{id}/read requires the note's driver or admin; order tokens now last 30 days.

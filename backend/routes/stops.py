@@ -13,7 +13,7 @@ from twilio.base.exceptions import TwilioRestException
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
-from core import ADMIN_ONLY, ANY_DRIVER, APP_NAME, DRIVER_SELF, JWT_ALG, JWT_SECRET, ORDER_ACCESS, STOP_DRIVER, TZ, check_order_token, db, dec_bytes, decode_token, enc_bytes, get_object, issue_token, logger, now_iso, put_object, require_order_access, require_stop_driver, today_str
+from core import ADMIN_ONLY, ANY_DRIVER, APP_NAME, DRIVER_SELF, JWT_ALG, JWT_SECRET, ORDER_ACCESS, STOP_DRIVER, TZ, check_order_token, current_user, db, dec_bytes, decode_token, enc_bytes, get_object, issue_token, logger, now_iso, put_object, require_order_access, require_stop_driver, today_str
 from models import ContactIn, DeliverIn, FailIn, Stop, apply_sequence, get_driver_or_404, get_stops, pickup_run_labels
 from routes import alerts
 from routes import auth
@@ -189,6 +189,10 @@ async def deliver(stop_id: str, body: DeliverIn, u: dict = Depends(require_stop_
             raise HTTPException(400, "Prescription hand-off needs a real uploaded photo and a drawn signature")
     elif not body.photo_path and not body.signature and not stop.pod_qr_verified:
         raise HTTPException(400, "Proof of delivery requires a photo, signature or parcel QR scan")
+    if body.photo_path and u["role"] != "admin" and (
+            not await db.files.find_one({"storage_path": body.photo_path, "uploaded_by": u["id"]}, {"_id": 1})
+            or await db.stops.find_one({"pod_photo_path": body.photo_path, "id": {"$ne": stop_id}}, {"_id": 1})):
+        raise HTTPException(400, "Use a photo you just took for this delivery")
     upd = {"status": "delivered", "delivered_at": now_iso(), "pod_photo_path": body.photo_path, "pod_signature": body.signature}
     if not stop.arrived_at:
         upd.update({"arrived_at": now_iso(), "arrival_method": "manual"})
@@ -309,7 +313,7 @@ async def set_driver_phone(driver_id: str, body: PhoneIn):
 
 
 @router.post("/upload", dependencies=ANY_DRIVER)
-async def upload(file: UploadFile = File(...)):
+async def upload(file: UploadFile = File(...), u: dict = Depends(current_user)):
     data = await file.read()
     if len(data) > 10 * 1024 * 1024:
         raise HTTPException(413, "File too large (10MB max)")
@@ -321,12 +325,13 @@ async def upload(file: UploadFile = File(...)):
         code = e.response.status_code if e.response is not None else 500
         raise HTTPException(402 if code == 402 else 502, "Storage out of credits" if code == 402 else "Upload failed")
     await db.files.insert_one({"id": str(uuid.uuid4()), "storage_path": res["path"], "original_filename": file.filename,
-                               "content_type": file.content_type, "size": res.get("size"), "created_at": now_iso()})
+                               "content_type": file.content_type, "size": res.get("size"), "uploaded_by": u["id"], "created_at": now_iso()})
     return {"path": res["path"]}
 
 
 async def file_allowed(path: str, request: Request, t: str) -> bool:
-    """A signed link for this exact file, or any signed-in staff session (header or ?t=)."""
+    """A signed link for this exact file, or a signed-in session (header or ?t=) that owns it:
+    admin, the uploader, the driver of the stop's route, or the stop's store."""
     h = request.headers.get("authorization", "")
     bearer = h[7:].strip() if h.lower().startswith("bearer ") else ""
     for tok in (t, bearer):
@@ -338,8 +343,23 @@ async def file_allowed(path: str, request: Request, t: str) -> bool:
             continue
         if p["purpose"] == "file" and p["sub"] == path:
             return True
-        if p["purpose"] == "session" and await db.users.find_one({"id": p["sub"], "role": p["role"], "disabled": {"$ne": True}}, {"_id": 1}):
-            return True
+        if p["purpose"] == "session":
+            u = await db.users.find_one({"id": p["sub"], "role": p["role"], "disabled": {"$ne": True}}, {"_id": 0, "id": 1, "role": 1, "driver_id": 1, "merchant_id": 1})
+            if u and await owns_file(u, path):
+                return True
+    return False
+
+
+async def owns_file(u: dict, path: str) -> bool:
+    if u["role"] == "admin" or await db.files.find_one({"storage_path": path, "uploaded_by": u["id"]}, {"_id": 1}):
+        return True
+    s = await db.stops.find_one({"pod_photo_path": path}, {"_id": 0, "route_id": 1, "merchant_id": 1})
+    if not s:
+        return False
+    if u["role"] == "merchant":
+        return bool(u.get("merchant_id")) and s.get("merchant_id") == u["merchant_id"]
+    if u["role"] == "driver" and s.get("route_id"):
+        return bool(await db.routes.find_one({"id": s["route_id"], "driver_id": u.get("driver_id")}, {"_id": 1}))
     return False
 
 
@@ -366,7 +386,7 @@ class Last4In(BaseModel):
     last4: str
 
 
-ORDER_TOKEN_MIN = 60 * 24 * 60  # remembered on the phone; also ends 7 days after delivery (check_order_token)
+ORDER_TOKEN_MIN = 30 * 24 * 60  # remembered on the phone; also ends 7 days after delivery (check_order_token)
 
 
 @router.post("/track/{code}/verify")

@@ -1,0 +1,18 @@
+{
+  "summary": "Backend only. Retested the photo-path hijack fix in POST /api/stops/{id}/deliver and the localhost is_preview change. New tests/test_photo_hijack_iter40.py: 7/7 passed. A driver gets 400 'Use a photo you just took for this delivery' when using another driver's upload, an admin upload, a path that does not exist, or a path already used on another stop. In each of those cases the stop stays pending. The driver's own fresh upload delivers and pod_photo_path is saved. Signature-only delivery still works. Admin is exempt from both checks. Ad-hoc probe on a pharmacy-partner stop (mer-2): a foreign photo plus signature gets 400, and the driver's own photo plus signature gets 200. Through plain localhost:8001, demo merchant and driver logins get 401 and admin gets 200. Through the preview URL, demo logins get 200. Regression run serially (-n 0) after POST /api/admin/reset, covering test_security_audit_fixes, test_rx_handoff_batch_alerts, test_tiers_pharmacy_kw, test_order_privacy_security and test_codes_coaching_expiry: 67/67 passed. Full suite collection is clean (533 tests). DB was reset again after testing.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []},
+  "test_report_links": ["/app/backend/tests/test_photo_hijack_iter40.py", "/app/test_reports/pytest/pytest_iter40.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Info only: a direct request to localhost:8001 with a forged preview Host header still counts as preview, so demo secrets work there. This is acceptable as long as nothing outside the container can reach port 8001 without going through the Host-routed ingress. The is_preview docstring says the same.",
+    "Low (theoretical): the reuse check in deliver is check-then-write. Two deliver requests sent at the same moment with one photo_path could both pass. A unique sparse index on stops.pod_photo_path, or an atomic conditional update, would close this. Not exploitable in any meaningful way.",
+    "test_order_privacy_security.py has a class-scoped fixture defined as an instance method, which triggers a PytestRemovedIn10 deprecation warning. Cosmetic only."
+  ],
+  "updated_files": ["/app/backend/tests/test_photo_hijack_iter40.py"],
+  "success_rate": {"backend": "100% (74/74)", "frontend": "not tested"},
+  "seed_data_creation": "None persistent. Tests delivered drv-1 demo stops. POST /api/admin/reset was run before and after the regression.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "test_photo_hijack_iter40.py needs 4 pending non-merchant stops on drv-1's active route, so run POST /api/admin/reset first. Run the suites serially (-n 0). Demo logins must go through the EXPO_PUBLIC_BACKEND_URL preview URL; plain localhost now rejects them with 401."
+}

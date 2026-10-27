@@ -22,6 +22,17 @@ for _p in ("uploads/TEST_rx_photo.jpg", "uploads/TEST_tier.jpg"):  # pharmacy ha
 TZ = ZoneInfo("America/Toronto")
 SIG = "M10 10 L60 40 L80 20"  # drawn signature path (pharmacy hand-off checks the format)
 PHOTO = "uploads/TEST_rx_photo.jpg"
+
+
+def fresh_photo() -> str:
+    """Delivery only accepts a photo uploaded by the delivering driver and not used on another stop."""
+    import uuid
+    path = f"uploads/TEST_rx_{uuid.uuid4().hex}.jpg"
+    u = db.users.find_one({"role": "driver", "driver_id": "drv-3"}, {"_id": 0, "id": 1})
+    db.files.insert_one({"storage_path": path, "content_type": "image/jpeg", "uploaded_by": u["id"]})
+    return path
+
+
 RX_MSG = "Prescription hand-off needs both a doorstep photo and the recipient's signature"
 CREATED = {"stops": [], "manifests": []}
 
@@ -122,10 +133,11 @@ class TestRxHandoff:
     def test_pharmacy_both_ok_invoice_rate(self, driver, route):
         man = f"mer-2:{today()}:TESTRX{uuid.uuid4().hex[:4]}"
         sid = _mk_stop("mer-2", route, manifest=man, run="evening")
-        r = requests.post(f"{API}/stops/{sid}/deliver", json={"photo_path": PHOTO, "signature": SIG}, headers=driver)
+        photo = fresh_photo()
+        r = requests.post(f"{API}/stops/{sid}/deliver", json={"photo_path": photo, "signature": SIG}, headers=driver)
         assert r.status_code == 200, r.text
         d = r.json()
-        assert d["status"] == "delivered" and d["pod_photo_path"] == PHOTO and d["pod_signature"] == SIG
+        assert d["status"] == "delivered" and d["pod_photo_path"] == photo and d["pod_signature"] == SIG
         assert "customer_phone" not in d and "fee" not in d
         inv = db.invoices.find_one({"stop_id": sid}, {"_id": 0})
         assert inv, "no invoice"
@@ -139,7 +151,7 @@ class TestRxHandoff:
 
     def test_non_pharmacy_photo_only_and_qr_only_ok(self, admin, route):
         s1, s2 = _mk_stop("mer-1", route), _mk_stop("mer-1", route, qr=True)
-        assert requests.post(f"{API}/stops/{s1}/deliver", json={"photo_path": PHOTO}, headers=admin).status_code == 200
+        assert requests.post(f"{API}/stops/{s1}/deliver", json={"photo_path": fresh_photo()}, headers=admin).status_code == 200
         assert requests.post(f"{API}/stops/{s2}/deliver", json={}, headers=admin).status_code == 200
 
     def test_non_pharmacy_no_proof_rejected(self, admin, route):

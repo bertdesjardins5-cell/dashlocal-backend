@@ -19,6 +19,19 @@ DEMO_MERCHANT_USERS = [("mer-1", "bakery@dashlocal.app", "Bakery2026"), ("mer-2"
 DEMO_DRIVER_PINS = {"drv-1": "482913", "drv-2": "730516", "drv-3": "264871"}
 
 
+def is_preview(request: Request) -> bool:
+    """Preview/dev host (the ingress routes by Host, so the live app never receives a preview Host)."""
+    host = request.headers.get("host", "").split(":")[0].lower()
+    return host.endswith((".preview.emergentagent.com", ".preview.emergentcf.cloud"))
+
+
+def demo_secret_blocked(request: Request, key: str, secret: str) -> bool:
+    """The seeded demo passwords/PINs are public (in the code), so they never work on the live app.
+    Once changed to a real secret the account works everywhere."""
+    demo = {em: p for _, em, p in DEMO_MERCHANT_USERS} | DEMO_DRIVER_PINS
+    return key in demo and secret == demo[key] and not is_preview(request)
+
+
 async def seed_users():
     info = await db.users.index_information()
     if "email_1" in info and "partialFilterExpression" not in info["email_1"]:
@@ -101,7 +114,7 @@ async def driver_login(body: DriverLoginIn, request: Request):
     d = await db.drivers.find_one({"phone": phone}, {"_id": 0})
     u = await db.users.find_one({"role": "driver", "driver_id": d["id"]}, {"_id": 0}) if d else None
     ok = check_pw(body.pin.strip(), (u or {}).get("pin_hash") or DUMMY_HASH) and bool(PIN_RE.match(body.pin.strip()))
-    if not (d and u and ok) or u.get("disabled"):
+    if not (d and u and ok) or u.get("disabled") or demo_secret_blocked(request, d["id"], body.pin.strip()):
         await record_failure(limits, atts)
         raise HTTPException(401, "Wrong phone number or PIN")
     await clear_lockout(limits)
@@ -199,7 +212,7 @@ async def login(body: LoginIn, request: Request):
     atts = await check_lockout(limits)
     u = await db.users.find_one({"email": email}, {"_id": 0})
     ok = check_pw(body.password, u["password_hash"] if u else DUMMY_HASH)
-    if not u or not ok or u.get("disabled"):
+    if not u or not ok or u.get("disabled") or demo_secret_blocked(request, email, body.password):
         await record_failure(limits, atts)
         raise HTTPException(401, "Wrong email or password")
     await clear_lockout(limits)
