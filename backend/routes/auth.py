@@ -32,14 +32,14 @@ def demo_secret_blocked(request: Request, key: str, secret: str) -> bool:
     return key in demo and secret == demo[key] and not is_preview(request)
 
 
-async def seed_users():
+async def seed_users(demo: bool = True):
     info = await db.users.index_information()
     if "email_1" in info and "partialFilterExpression" not in info["email_1"]:
         await db.users.drop_index("email_1")  # drivers have no email: uniqueness only applies to real emails
     await db.users.create_index("email", unique=True, partialFilterExpression={"email": {"$type": "string"}})
     await db.users.create_index("driver_id", unique=True, partialFilterExpression={"driver_id": {"$type": "string"}})
     for did, pin in DEMO_DRIVER_PINS.items():
-        if not await db.users.find_one({"role": "driver", "driver_id": did}):
+        if demo and not await db.users.find_one({"role": "driver", "driver_id": did}):
             await db.users.insert_one({"id": str(uuid.uuid4()), "role": "driver", "driver_id": did, "pin_hash": hash_pw(pin),
                                        "disabled": False, "created_at": now_iso()})
     email, pw = os.environ["ADMIN_EMAIL"].strip().lower(), os.environ["ADMIN_PASSWORD"]
@@ -50,7 +50,7 @@ async def seed_users():
     elif not check_pw(pw, admin["password_hash"]):
         await db.users.update_one({"email": email}, {"$set": {"password_hash": hash_pw(pw)}})  # .env is the source of truth
     for mid, em, p in DEMO_MERCHANT_USERS:
-        if not await db.users.find_one({"email": em}):
+        if demo and not await db.users.find_one({"email": em}):
             await db.users.insert_one({"id": str(uuid.uuid4()), "email": em, "password_hash": hash_pw(p), "role": "merchant",
                                        "name": None, "merchant_id": mid, "disabled": False, "created_at": now_iso()})
 

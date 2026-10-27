@@ -21,6 +21,8 @@ async def root():
 @router.post("/admin/reset")
 async def reset(request: Request):
     await admin_user(await current_user(request))  # wipes all data incl. merchant orders: admin only
+    if await db.settings.find_one({"key": "demo_removed"}, {"_id": 1}):
+        raise HTTPException(400, "Demo data was removed for launch — the demo reset is turned off")
     await seed.seed(force=True)
     return {"ok": True}
 

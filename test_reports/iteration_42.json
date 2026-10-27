@@ -1,0 +1,41 @@
+{
+  "summary": "Tested the Launch Cleanup feature from end to end. Backend: 11 of 11 non-destructive tests passed. These cover status shape and values, auth 401 and 403 for no login, merchant and driver, the preview 403 block, the live-host 400 for a wrong confirm word, 422 for a missing body, and a check that no data was touched. The destructive simulation on the live host (localhost:8001 with Host: dashlocal.app) passed. Only the admin user was left, the business collections were emptied, audit_log, consent_log, settings and geocodes were kept, every file had is_deleted=true, and the demo_removed flag was set. After that, /admin/reset returned 400. After a backend restart nothing was re-seeded: the demo merchant login gave 401, the admin login worked and done_at was set. Demo data was restored afterwards: the flag was removed, the backend restarted, and the bakery merchant and drv-1 driver logins work again through the preview URL. Frontend: the admin row, counts, LIVE APP ONLY note, disabled button and back button all work. Live mode was checked with mocked network responses: the DELETE input enables the button, the POST body is correct, and the DONE card shows after the cleanup. Found and fixed: launch.tsx never rendered {toast.node}, so success and error toasts were invisible. Found 1 HIGH backend issue: photo shredding does not survive a restart.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/admin/launch-cleanup", "issue": "Stored proof photos are not reliably shredded. update_many sets is_deleted=true on every file but does not set shred_pending=true. The real overwrite then runs as an in-process background task. When the backend restarted during the shred, 72 of 168 files were left unshredded (size != 0, shred_pending missing). The retention watcher only retries shred_pending=true, so those photos stay in object storage forever, which is a PHIPA/PIPEDA problem. Fix: add 'shred_pending': True to the update_many $set in routes/launch.py:46. privacy.shred_files already clears it on success. Reference: /app/backend/routes/launch.py:45-47", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/admin/launch-cleanup", "issue": "It can be run again after it is done: the second POST returned 200 and overwrote the demo_removed timestamp, so done_at changes. GET reports available=false, but POST does not check this. Suggest returning 409 when the demo_removed flag already exists."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "LaunchCleanupScreen toast", "issue": "useToast().node was never rendered, so the 'ALL DATA REMOVED' success toast and the error toasts (for example the 403 or 400 message) never showed. FIXED by adding {toast.node} in app/admin/launch.tsx.", "testID": "toast", "priority": "MEDIUM (fixed)"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "admin/launch", "issues": [
+        "On web, autoCapitalize='characters' does not change typed text, so typing 'delete' in lowercase leaves the button disabled with no hint. Suggest comparing case-insensitively or upper-casing in onChangeText.",
+        "The DONE card text shows 'a.m..' with a double period, because the toLocaleString en-CA output already ends in 'a.m.' and the sentence adds another '.'."
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_launch_cleanup.py", "/app/backend/tests/test_launch_cleanup_live.py", "/app/test_reports/pytest/pytest_launch_cleanup.xml"],
+  "action_items": [
+    "HIGH: routes/launch.py:46: add 'shred_pending': True to the files update_many so that unshredded photos are retried after a restart. Possibly also run a one-off fix that marks is_deleted files with size != 0 as shred_pending.",
+    "Minor: reject POST /admin/launch-cleanup with 409 once demo_removed exists.",
+    "Minor: make the confirm input case-insensitive or upper-case it on web, and fix the 'a.m..' double period in the DONE text."
+  ],
+  "critical_code_review_comments": [
+    "Running shred_files in a background task with no persistent queue means it is lost on restart. Persist intent first (shred_pending) and then do the work.",
+    "audit_log and consent_log keep actor_id, IP and driver ids of deleted users. This is intended (kept for privacy law), but the main agent should confirm it is acceptable."
+  ],
+  "updated_files": ["/app/frontend/app/admin/launch.tsx (added {toast.node})", "/app/backend/tests/test_launch_cleanup.py (new)", "/app/backend/tests/test_launch_cleanup_live.py (new, destructive, opt-in via LAUNCH_CLEANUP_DESTRUCTIVE=1)"],
+  "success_rate": {"backend": "100% of functional checks (13 of 13); 1 HIGH data-safety issue with shredding on restart", "frontend": "100% after the toast fix"},
+  "seed_data_creation": "The demo data was wiped and then re-seeded at startup (3 drivers, 2 merchants, 120 stops, 16 routes, 6 users). mer-2 pharmacy_partner and its pickup address (385 Fairway Rd S) were restored by hand from the backup, because the seed does not set them. Earlier TEST_ merchants and users were not restored. A full pre-test mongodump is at /tmp/dbbak/test_database.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "pytest.ini forces xdist, so use '-n 0' for the live test file. To run the live wipe: LAUNCH_CLEANUP_DESTRUCTIVE=1 pytest tests/test_launch_cleanup_live.py -n 0. Then restart the backend and run again with LAUNCH_CLEANUP_PHASE=after_restart. ALWAYS restore afterwards: db.settings.deleteOne({key:'demo_removed'}), restart the backend, and set mer-2 pharmacy_partner again. Old file records are left is_deleted=true after the restore.",
+  "rca_of_issue": "Shredding gap: launch.py marks all files deleted first (no shred_pending) and then spawns shred_files in memory. Reproduced by running the cleanup and then 'supervisorctl restart backend' about 10 seconds later: 96 files had size 0, 72 had size != 0 and shred_pending was not set, and the count did not change after waiting."
+}

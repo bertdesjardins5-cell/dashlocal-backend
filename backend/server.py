@@ -6,7 +6,7 @@ import time
 import uuid
 import re
 from core import ENC_FIELDS, HTML_CSP, client, db, enc_str, init_storage, logger, now_iso
-from routes import alerts, auth, billing, dispatch, emails, feedback, invoices, merchants as merchant_routes, onboarding, payments, pickups as pickup_routes, privacy, scorecards, stops as stop_routes
+from routes import alerts, auth, billing, dispatch, emails, feedback, invoices, launch, merchants as merchant_routes, onboarding, payments, pickups as pickup_routes, privacy, scorecards, stops as stop_routes
 from services import realtime
 from services import seed
 
@@ -25,7 +25,9 @@ async def startup():
     await db.code_redemptions.create_index("code", unique=True)  # a code can only ever be redeemed once
     await db.geocodes.create_index("key", unique=True)
     await db.stops.update_many({"nearby_sms_status": "sending"}, {"$set": {"nearby_sms_status": None}})  # interrupted by a restart: retry
-    await seed.seed()
+    demo = not await launch.demo_removed()  # after the launch cleanup no sample data is ever re-created
+    if demo:
+        await seed.seed()
     # rename DashLocal -> DashLocal: move demo/admin logins to the new domain (passwords unchanged except admin, from .env)
     for u in await db.users.find({"email": {"$regex": r"@multidrop\.app$"}}, {"_id": 0, "id": 1, "email": 1}).to_list(100):
         new = u["email"].replace("@dashlocal.app", "@dashlocal.app")
@@ -33,12 +35,12 @@ async def startup():
             await db.users.update_one({"id": u["id"]}, {"$set": {"email": new}})
         else:
             await db.users.delete_one({"id": u["id"]})
-    for m in merchant_routes.MERCHANTS:
+    for m in merchant_routes.MERCHANTS if demo else []:
         await db.merchants.update_one({"id": m["id"]}, {"$setOnInsert": m}, upsert=True)
-    await auth.seed_users()
+    await auth.seed_users(demo)
     for d in await db.stops.find({"merchant_id": {"$ne": None}, "fee": None}, {"_id": 0}).to_list(5000):
         await db.stops.update_one({"id": d["id"]}, {"$set": {"fee": billing.compute_fee(d, await billing.get_pricing(d["merchant_id"]))}})  # orders from before pricing existed
-    for did, z in (("drv-1", "North"), ("drv-2", "South"), ("drv-3", "East")):  # demo coverage for auto dispatch
+    for did, z in (("drv-1", "North"), ("drv-2", "South"), ("drv-3", "East")) if demo else ():  # demo coverage for auto dispatch
         await db.drivers.update_one({"id": did, "compass_zone": {"$exists": False}}, {"$set": {"compass_zone": z}})
     realtime.spawn(emails.weekly_scheduler())
     realtime.spawn(alerts.late_alert_watcher())
@@ -90,7 +92,7 @@ async def audit_and_security_headers(request: Request, call_next):
     return resp
 
 
-for module in (pickup_routes, dispatch, stop_routes, feedback, scorecards, auth, merchant_routes, emails, alerts, billing, invoices, payments, onboarding, privacy):
+for module in (pickup_routes, dispatch, stop_routes, feedback, scorecards, auth, merchant_routes, emails, alerts, billing, invoices, payments, onboarding, privacy, launch):
     app.include_router(module.router)
 
 # Only the app's own web addresses may call the API from a browser (phone apps send no Origin and are unaffected).

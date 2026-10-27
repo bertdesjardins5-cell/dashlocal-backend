@@ -148,6 +148,14 @@ export default function AdminDashboard() {
             </View>
             <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />
           </Pressable>
+          <Pressable testID="admin-launch-cleanup-link" onPress={() => router.push("/admin/launch")} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
+            <Ionicons name="rocket" size={24} color={colors.onSurface} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Display style={s.rowTitle}>LAUNCH CLEANUP</Display>
+              <Mono style={s.meta}>Remove all sample data before going live</Mono>
+            </View>
+            <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />
+          </Pressable>
           <Mono style={s.section}>DAILY OPS DIGEST</Mono>
           <DailyDigest />
           <LowRatingAlerts notify={toast.show} />
