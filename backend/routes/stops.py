@@ -20,6 +20,7 @@ from routes import auth
 from routes import dispatch
 from routes import invoices
 from routes import onboarding
+from routes import receipts
 from routes import scorecards
 from services import realtime
 from services import seed
@@ -213,6 +214,8 @@ async def deliver(stop_id: str, body: DeliverIn, u: dict = Depends(require_stop_
         realtime.spawn(onboarding.send_first_delivery_email(stop.merchant_id))
     if stop.merchant_id:
         await invoices.create_invoice(stop_id)
+        if body.signature:
+            realtime.spawn(receipts.send_signed_receipt(stop_id))  # law offices get the signed PDF receipt by email
     if stop.route_id:
         await realtime.maybe_complete_route(stop.route_id)
         await realtime.broadcast_route(stop.route_id)

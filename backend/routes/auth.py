@@ -4,6 +4,7 @@ import os
 import math
 import uuid
 import re
+import secrets
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
@@ -224,9 +225,11 @@ async def create_driver(body: NewDriverIn, request: Request):
     return {"id": d.id, "name": d.name, "phone": d.phone, "vehicle": d.vehicle, "has_pin": True, "last_login_at": None, "invite": invite}
 
 
-async def send_driver_invite(d: Driver, pin: str, base: str) -> str:
+async def send_driver_invite(d: Driver, pin: str, base: str, reset: bool = False) -> str:
     """Welcome text with the sign-in link, phone and PIN (owner's choice). Never blocks creating the driver."""
-    body = (f"Welcome to DashLocal, {d.name.split()[0]}! Sign in to the driver app at {base}/sign-in/staff "
+    body = (f"DashLocal: {d.name.split()[0]}, your driver PIN was reset. New PIN {pin}. Sign in at {base}/sign-in/staff "
+            f"(Driver tab) with this phone number. Keep your PIN private.") if reset else (
+            f"Welcome to DashLocal, {d.name.split()[0]}! Sign in to the driver app at {base}/sign-in/staff "
             f"(Driver tab) with this phone number and PIN {pin}. Keep your PIN private.")
     try:
         tw = stop_routes.twilio_client()
@@ -281,6 +284,26 @@ async def set_driver_pin(driver_id: str, body: PinIn):
                               upsert=True)
     await db.login_attempts.delete_many({"key": {"$regex": f"^drv:{re.escape(d['phone'])}:"}})
     return {"ok": True}
+
+
+@router.post("/admin/drivers/{driver_id}/pin/text", dependencies=ADMIN_ONLY)
+async def reset_and_text_pin(driver_id: str, request: Request):
+    """One tap: pick a fresh random PIN, save it, and text it to the driver with the sign-in link."""
+    d = await db.drivers.find_one({"id": driver_id}, {"_id": 0})
+    if not d:
+        raise HTTPException(404, "Driver not found")
+    last = d.get("pin_texted_at")
+    if last and datetime.now(timezone.utc) - datetime.fromisoformat(last) < timedelta(seconds=60):
+        raise HTTPException(429, "A new PIN was just texted — wait a minute before sending another")
+    await db.drivers.update_one({"id": driver_id}, {"$set": {"pin_texted_at": now_iso()}})
+    base = await onboarding.app_base(request)
+    while True:
+        pin = f"{secrets.randbelow(10 ** 6):06d}"
+        if pin not in WEAK_PINS and len(set(pin)) > 2:
+            break
+    await set_driver_pin(driver_id, PinIn(pin=pin))
+    status = await send_driver_invite(Driver(**d), pin, base, reset=True)
+    return {"ok": True, "invite": status, "pin": None if status == "sent" else pin}  # show the PIN only if the text failed
 
 
 @router.post("/auth/login")

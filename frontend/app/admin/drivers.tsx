@@ -18,6 +18,7 @@ export default function DriverPins() {
   const q = useQuery({ queryKey: ["driver-accounts"], queryFn: () => api<DriverAccount[]>("/admin/driver-accounts") });
   const [open, setOpen] = useState<string | null>(null);
   const [pin, setPin] = useState("");
+  const [texting, setTexting] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(false);
   const [nd, setNd] = useState({ name: "", phone: "", vehicle: "", pin: "" });
@@ -50,6 +51,19 @@ export default function DriverPins() {
       toast.show(e.message, "red");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const textPin = async (d: DriverAccount) => {
+    setTexting(d.id);
+    try {
+      const r = await api<{ invite: string; pin: string | null }>(`/admin/drivers/${d.id}/pin/text`, { method: "POST" });
+      toast.show(r.invite === "sent" ? `NEW PIN TEXTED TO ${d.name.toUpperCase()}` : `TEXT NOT SENT — NEW PIN IS ${r.pin}, SHARE IT IN PERSON`, r.invite === "sent" ? "green" : "dark");
+      q.refetch();
+    } catch (e: any) {
+      toast.show(e.message, "red");
+    } finally {
+      setTexting(null);
     }
   };
 
@@ -99,9 +113,14 @@ export default function DriverPins() {
                   <Btn testID={`driver-pin-save-${d.id}`} label="SAVE" loading={busy} disabled={pin.length !== 6} onPress={() => save(d)} />
                 </View>
               ) : null}
-              <Pressable testID={`driver-pin-toggle-${d.id}`} onPress={() => { setPin(""); setOpen(open === d.id ? null : d.id); }} style={s.smallBtn}>
-                <Mono style={s.smallBtnText}>{open === d.id ? "CANCEL" : d.has_pin ? "RESET PIN" : "SET PIN"}</Mono>
-              </Pressable>
+              <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
+                <Pressable testID={`driver-pin-toggle-${d.id}`} onPress={() => { setPin(""); setOpen(open === d.id ? null : d.id); }} style={s.smallBtn}>
+                  <Mono style={s.smallBtnText}>{open === d.id ? "CANCEL" : d.has_pin ? "RESET PIN" : "SET PIN"}</Mono>
+                </Pressable>
+                <Pressable testID={`driver-pin-text-${d.id}`} disabled={texting === d.id} onPress={() => textPin(d)} style={[s.smallBtn, texting === d.id && { opacity: 0.5 }]}>
+                  <Mono style={s.smallBtnText}>{texting === d.id ? "SENDING…" : "NEW PIN BY TEXT"}</Mono>
+                </Pressable>
+              </View>
             </View>
           ))}
         </KeyboardAwareScrollView>
