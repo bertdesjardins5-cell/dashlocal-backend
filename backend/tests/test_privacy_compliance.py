@@ -238,7 +238,7 @@ def test_signup_requires_consent():
     body = {"store_name": "TEST_Privacy Shop", "contact_name": "TEST Person", "email": email}
     assert requests.post(f"{BASE_URL}/api/signup-requests", json=body).status_code == 400
     ts = datetime.now(timezone.utc).isoformat()
-    r = requests.post(f"{BASE_URL}/api/signup-requests", json={**body, "privacy_consent": True, "consent_timestamp": ts})
+    r = requests.post(f"{BASE_URL}/api/signup-requests", json={**body, "privacy_consent": True, "business_type": "pharmacy", "consent_timestamp": ts})
     try:
         assert r.status_code in (200, 201), r.text
         doc = db.signup_requests.find_one({"email": email}, {"_id": 0})

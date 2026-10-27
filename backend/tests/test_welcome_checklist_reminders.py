@@ -69,7 +69,7 @@ def cleanup():
 def shop(admin):
     """Signup -> approve -> set password -> merchant session."""
     email = f"test+wc{uuid.uuid4().hex[:8]}@resend.dev"
-    r = requests.post(f"{BASE_URL}/api/signup-requests", json={"store_name": "TEST_Welcome " + uuid.uuid4().hex[:4], "contact_name": "TEST Owner", "email": email, "privacy_consent": True, "consent_timestamp": "2026-01-01T00:00:00Z"}, headers=NOAUTH)
+    r = requests.post(f"{BASE_URL}/api/signup-requests", json={"store_name": "TEST_Welcome " + uuid.uuid4().hex[:4], "contact_name": "TEST Owner", "email": email, "privacy_consent": True, "business_type": "pharmacy", "consent_timestamp": "2026-01-01T00:00:00Z"}, headers=NOAUTH)
     assert r.status_code == 200, r.text
     sr = db.signup_requests.find_one({"email": email})
     time.sleep(2)

@@ -6,7 +6,8 @@ import { api } from "@/src/api";
 import { Btn, ErrorBlock, Header, Loading, Mono, Pill, useToast } from "@/src/ui";
 import { makeStyles, spacing } from "@/src/theme";
 
-type Signup = { id: string; store_name: string; contact_name: string; email: string; phone: string | null; address: string | null; message: string | null; status: "pending" | "approved" | "declined"; created_at: string; email_status?: string };
+type Signup = { id: string; store_name: string; contact_name: string; email: string; phone: string | null; address: string | null; message: string | null; status: "pending" | "approved" | "declined"; created_at: string; email_status?: string; business_type?: string };
+const TYPE_LABEL: Record<string, string> = { store: "STORE", law_office: "LAW OFFICE", flower_shop: "FLOWER SHOP", pharmacy: "PHARMACY", other: "OTHER" };
 
 // Admin: approve (creates the store + emails a set-password link) or decline shop sign-up requests.
 export default function SignupsScreen() {
@@ -36,6 +37,7 @@ export default function SignupsScreen() {
         <Mono style={s.name}>{r.store_name}</Mono>
         <Pill label={r.status} tone={r.status === "pending" ? "yellow" : r.status === "approved" ? "green" : "light"} />
       </View>
+      <Mono style={s.meta}>{TYPE_LABEL[r.business_type ?? "store"] ?? "STORE"} · {r.business_type === "pharmacy" ? "ACCEPTED PIPEDA/PHIPA TERMS" : "ACCEPTED TERMS OF SERVICE"}</Mono>
       <Mono style={s.meta}>{r.contact_name} · {r.email}{r.phone ? ` · ${r.phone}` : ""}</Mono>
       {r.address ? <Mono style={s.meta}>{r.address}</Mono> : null}
       {r.message ? <Mono style={s.msg}>“{r.message}”</Mono> : null}

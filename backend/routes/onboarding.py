@@ -252,8 +252,14 @@ class SignupIn(BaseModel):
     phone: Optional[str] = None
     address: Optional[str] = None
     message: Optional[str] = None
-    privacy_consent: bool = False
+    business_type: str = "store"  # store | law_office | flower_shop | pharmacy | other
+    privacy_consent: bool = False  # pharmacies: PIPEDA / PHIPA privacy terms
+    terms_consent: bool = False  # everyone else: Terms of Service
     consent_timestamp: Optional[str] = None  # when the person tapped Accept in the consent modal (device clock)
+
+
+BUSINESS_TYPES = {"store": "Store", "law_office": "Law office", "flower_shop": "Flower shop", "pharmacy": "Pharmacy", "other": "Other"}
+TERMS_VERSION = "2026-06"
 
 
 @router.post("/signup-requests")
@@ -266,10 +272,19 @@ async def request_signup(body: SignupIn, request: Request):
         raise HTTPException(400, "Store name and your name are required")
     if not auth.EMAIL_RE.match(doc["email"]):
         raise HTTPException(400, "Enter a valid email")
-    if not body.privacy_consent:
-        raise HTTPException(400, "Please agree to the Privacy Policy to continue")
-    doc.update(privacy_consent=True, privacy_consent_at=now_iso(), phipa_consent_given=True,
-               consent_timestamp=(body.consent_timestamp or "")[:40] or None, consent_version=CONSENT_VERSION)
+    if body.business_type not in BUSINESS_TYPES:
+        raise HTTPException(400, "Choose a type of business")
+    doc["business_type"] = body.business_type
+    ts = (body.consent_timestamp or "")[:40] or None
+    if body.business_type == "pharmacy":
+        if not body.privacy_consent:
+            raise HTTPException(400, "Pharmacies must accept the PIPEDA / PHIPA privacy terms to continue")
+        doc.update(privacy_consent=True, privacy_consent_at=now_iso(), phipa_consent_given=True,
+                   consent_timestamp=ts, consent_version=CONSENT_VERSION)
+    else:
+        if not body.terms_consent:
+            raise HTTPException(400, "Please accept the Terms of Service to continue")
+        doc.update(terms_consent=True, terms_consent_at=now_iso(), terms_version=TERMS_VERSION, consent_timestamp=ts)
     ip = auth.client_ip(request)
     hour_ago = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
     if await db.signup_requests.count_documents({"ip": ip, "created_at": {"$gte": hour_ago}}) >= 5:
@@ -305,13 +320,17 @@ async def approve_signup(sid: str, request: Request):
         raise HTTPException(409, "An account with this email already exists")
     base = await app_base(request)
     m = {"id": f"mer-{uuid.uuid4().hex[:8]}", "name": sr["store_name"], "contact": sr["email"], "onboarding": True,
-         "approved_via_signup": True, "first_delivery_email_at": None, "address": sr.get("address")}
+         "approved_via_signup": True, "first_delivery_email_at": None, "address": sr.get("address"),
+         "business_type": sr.get("business_type", "store")}  # pharmacy partner pricing is still switched on by the admin
     nonce = secrets.token_urlsafe(12)
     user = {"id": str(uuid.uuid4()), "email": sr["email"], "role": "merchant", "name": sr["contact_name"], "merchant_id": m["id"],
             "disabled": False, "created_at": now_iso(), "pw_nonce": nonce, "password_hash": hash_pw(secrets.token_urlsafe(24))}
     if sr.get("phipa_consent_given"):  # consent given in the sign-up modal carries over to the new login
         user.update(phipa_consent_given=True, consent_timestamp=sr.get("consent_timestamp"),
                     consent_recorded_at=sr.get("privacy_consent_at"), consent_version=sr.get("consent_version"))
+    if sr.get("terms_consent"):  # Terms of Service accepted at sign-up carries over too
+        user.update(terms_consent=True, terms_consent_at=sr.get("terms_consent_at"), terms_version=sr.get("terms_version"),
+                    consent_timestamp=sr.get("consent_timestamp"))
     await db.merchants.insert_one(dict(m))
     try:
         await db.users.insert_one(user)

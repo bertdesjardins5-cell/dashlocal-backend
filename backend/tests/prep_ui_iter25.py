@@ -24,7 +24,7 @@ def mint(sub, purpose, **ex):
 H = {"Authorization": "Bearer " + requests.post(f"{BASE}/api/auth/login", json={"email": os.environ["ADMIN_EMAIL"], "password": os.environ["ADMIN_PASSWORD"]}).json()["token"]}
 email = f"test+ui{uuid.uuid4().hex[:6]}@resend.dev"
 name = "TEST_UI Shop " + uuid.uuid4().hex[:4]
-print(requests.post(f"{BASE}/api/signup-requests", json={"store_name": name, "contact_name": "TEST Owner", "email": email, "privacy_consent": True, "consent_timestamp": "2026-01-01T00:00:00Z"}).json())
+print(requests.post(f"{BASE}/api/signup-requests", json={"store_name": name, "contact_name": "TEST Owner", "email": email, "privacy_consent": True, "business_type": "pharmacy", "consent_timestamp": "2026-01-01T00:00:00Z"}).json())
 sr = db.signup_requests.find_one({"email": email})
 time.sleep(2)
 ap = requests.post(f"{BASE}/api/admin/signup-requests/{sr['id']}/approve", headers=H).json()

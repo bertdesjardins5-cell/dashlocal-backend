@@ -1,0 +1,39 @@
+{
+  "summary": "Tested sign-up 'Type of business' and the Terms of Service vs PIPEDA/PHIPA routing. Backend: new test_signup_business_type.py passes 11/11. It covers: invalid or empty business_type returns 400; pharmacy without privacy_consent returns 400; law_office without terms_consent returns 400; store with privacy_consent only returns 400. Nothing is stored on those 400s. store, law_office, flower_shop and other store terms_consent, terms_version 2026-06 and terms_consent_at, with no phipa fields. Pharmacy stores phipa_consent_given, privacy_consent and consent_version. The admin list includes business_type and leaves out _id. In test_signup_review_requests.py, 18 pass and 13 fail. Every failure comes from the Resend 429 email rate limit (approve returns email_status 'failed: Email provider error 429', and review-request returns 424) or from tests that depend on those. These failures are external and pre-existing. Frontend at 390x844, no page errors: the 5 chips are 44px tall. signup-submit stays disabled until a type, business name, your name and email are all filled; clearing the email disables it again. Law office: label 'Review terms & send', hint text and signup-terms-link are shown, and submit opens terms-modal (not consent-modal). The checkbox is disabled until terms-scroll reaches the bottom, and terms-accept is enabled only after scrolling and ticking. This works by tapping either the row or the inner checkbox, with no double toggle. Success shows signup-done, and the DB doc is correct. Pharmacy: label 'Review privacy terms & send' and signup-privacy-link are shown; consent-modal mentions PIPEDA and PHIPA, both checkboxes are needed after scrolling, and it ends at signup-done. /terms shows all 11 sections, and Back returns to /sign-up with the form state kept. terms-full-link opens /terms. Admin /admin/signups shows 'PHARMACY · ACCEPTED PIPEDA/PHIPA TERMS' and 'LAW OFFICE · ACCEPTED TERMS OF SERVICE'. No deprecated Expo packages found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/signup-requests", "issue": "SignupIn.business_type defaults to 'store'. If business_type is missing, the request does not get the 400 'Choose a type of business'. It is treated as a store and fails with 'Please accept the Terms of Service' instead. Older native builds that send only privacy_consent now get this Terms error."},
+      {"endpoint": "POST /api/admin/signup-requests/{id}/approve", "issue": "Approval carries only pharmacy consent over to the new user. For non-pharmacy shops, terms_consent and terms_version are not copied to the user or merchant, so that record lives only on the signup_request. business_type is not copied to the merchant either, and pharmacy sign-ups do not get pharmacy_partner set."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "TermsModal", "issue": "The read and agree state persists after Cancel. When the modal is reopened, Accept & Send is already enabled with the box ticked, so the user is not asked to accept again.", "testID": "terms-accept", "priority": "low"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "ConsentModal (pharmacy)", "issues": ["The 'Accept & Continue' label wraps to 2 lines at 390px width (pre-existing)."]},
+      {"screen": "TermsModal / ConsentModal", "issues": ["The Pressable checkbox rows do not expose aria-checked on web: accessibilityState.checked is not mapped. Consider accessibilityRole='checkbox' together with aria-checked."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_signup_business_type.py", "/app/test_reports/pytest/pytest_iter45_business_type.xml"],
+  "action_items": [
+    "Optional: make business_type required in SignupIn (no default), or return a clearer error when it is missing.",
+    "Optional: on approve, copy terms_version, terms_consent_at and business_type to the merchant or user. Consider setting pharmacy_partner for pharmacy sign-ups.",
+    "Optional: reset TermsModal read and agree state when the modal closes.",
+    "Optional: admin/signups.tsx works out the 'ACCEPTED ...' label from business_type, not from the stored consent flags (phipa_consent_given / terms_consent). Use the flags so the label shows what was actually accepted."
+  ],
+  "critical_code_review_comments": [
+    "TermsModal imports TERMS from '@/app/terms', a route file. Move the content to src/ (e.g. src/content/terms.ts) and import it from there in both places, so the component does not depend on a route module.",
+    "TERMS_VERSION '2026-06' is hardcoded in the backend, and TERMS_UPDATED 'June 2026' in the frontend. Keep them in one place, or check that they match."
+  ],
+  "updated_files": ["/app/backend/tests/test_signup_business_type.py"],
+  "success_rate": {"backend": "100% of feature tests (11/11); the legacy signup suite has 13 failures, all from Resend 429 (external)", "frontend": "100%"},
+  "seed_data_creation": "Created TEST_ signup_requests (API and UI). All deleted afterwards.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Rate limit is 5 inserted signups per IP per hour. Delete db.signup_requests store_name ^TEST_ before running. Validation 400s happen before the rate-limit check. The frontend env var is EXPO_PUBLIC_BACKEND_URL. Resend 429 breaks the approve and review email tests.",
+  "rca_of_issue": ""
+}

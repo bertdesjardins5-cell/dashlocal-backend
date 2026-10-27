@@ -47,7 +47,7 @@ def _email():
 
 
 def _signup(email=None, **kw):
-    body = {"store_name": "TEST_Shop " + uuid.uuid4().hex[:5], "contact_name": "TEST Contact", "email": email or _email(), "privacy_consent": True, "consent_timestamp": "2026-01-01T00:00:00Z", **kw}
+    body = {"store_name": "TEST_Shop " + uuid.uuid4().hex[:5], "contact_name": "TEST Contact", "email": email or _email(), "privacy_consent": True, "business_type": "pharmacy", "consent_timestamp": "2026-01-01T00:00:00Z", **kw}
     return body, requests.post(f"{BASE_URL}/api/signup-requests", json=body, headers=NOAUTH)
 
 
