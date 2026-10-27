@@ -16,7 +16,7 @@ API = f"{BASE_URL}/api"
 NO = {"X-No-Auto-Auth": "1"}
 db = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
 TZ = ZoneInfo("America/Toronto")
-DEFAULT = {"officer_name": "Privacy Officer", "officer_email": "privacy@dashlocal.app"}
+DEFAULT = {"officer_name": "Albert Desjardins", "officer_email": "bertdesjardins@hotmail.com"}
 
 
 def login(email, pw):

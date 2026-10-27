@@ -59,7 +59,7 @@ export default function PrivacyPolicy() {
         <Kicker>Privacy</Kicker>
         <Text style={s.title}>Privacy Policy</Text>
         <Text style={s.updated}>Last updated {UPDATED} · PIPEDA &amp; PHIPA (Ontario)</Text>
-        {sections(officer.data?.officer_name === "Privacy Officer" ? "DashLocal" : officer.data?.officer_name ?? "DashLocal", officer.data?.officer_email ?? "privacy@dashlocal.app").map((sec) => (
+        {sections(officer.data?.officer_name ?? "Albert Desjardins", officer.data?.officer_email ?? "bertdesjardins@hotmail.com").map((sec) => (
           <View key={sec.h} style={s.section}>
             <Text style={s.h}>{sec.h}</Text>
             {sec.p.map((t, i) => <Text key={i} style={s.p}>{t}</Text>)}

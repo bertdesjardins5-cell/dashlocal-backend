@@ -249,7 +249,7 @@ async def consent_text():
     return {"text": CONSENT_TEXT, "version": CONSENT_VERSION}
 
 
-PRIVACY_OFFICER_DEFAULT = {"officer_name": "Privacy Officer", "officer_email": "privacy@dashlocal.app"}
+PRIVACY_OFFICER_DEFAULT = {"officer_name": "Albert Desjardins", "officer_email": "bertdesjardins@hotmail.com"}
 
 
 @router.get("/privacy/officer")
