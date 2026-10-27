@@ -228,13 +228,16 @@ def report_window(rng: Optional[str]):
     return ((today - timedelta(days=back)).isoformat() if back is not None else None), None
 
 
+def trusted_bases() -> set:
+    return {o.strip().rstrip("/").lower() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()}
+
+
 async def remember_public_base(request: Request):
     """Scheduled emails have no request to read the app's public URL from, so keep the latest one.
     Only the app's own addresses (CORS_ORIGINS) are accepted, so a forged Host header can't redirect emailed links."""
     host = (request.headers.get("x-forwarded-host") or request.headers.get("host", "")).split(",")[0].strip().lower()
     base = f"https://{host}"
-    trusted = {o.strip().rstrip("/").lower() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()}
-    if host and base in trusted:
+    if host and base in trusted_bases():
         await db.settings.update_one({"key": "public_base"}, {"$set": {"key": "public_base", "value": base}}, upsert=True)
 
 
@@ -254,6 +257,8 @@ async def report_csv(merchant_id: str, token: str, request: Request):
     host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
     proto = request.headers.get("x-forwarded-proto") or ("http" if host.startswith(("localhost", "127.")) else "https")
     base = f"{proto}://{host}"
+    if base.lower() not in trusted_bases():  # forged host header: fall back to the app's known address
+        base = (await db.settings.find_one({"key": "public_base"}, {"_id": 0}) or {}).get("value") or ""
     routes = {r["id"]: r for r in await db.routes.find({}, {"_id": 0, "id": 1, "driver_id": 1, "service_date": 1}).to_list(2000)}
     drivers = {d["id"]: d["name"] for d in await db.drivers.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(100)}
     buf = io.StringIO()

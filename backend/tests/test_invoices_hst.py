@@ -17,7 +17,7 @@ BASE_URL = (os.environ.get("EXPO_PUBLIC_BACKEND_URL") or os.environ.get("EXPO_BA
 NOAUTH = {"X-No-Auto-Auth": "1"}
 db = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
 S = {}
-SIG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+SIG = "M10 10 L20 20 L30 15"
 API = f"{BASE_URL}/api"
 
 

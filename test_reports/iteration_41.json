@@ -1,0 +1,38 @@
+{
+  "summary": "Security audit #2 fixes verified (backend only). New suite tests/test_signature_xss_csp_iter41.py: 22/23 pass. Signature SIG_RE validation now applies to every stop (non-pharmacy, pharmacy, admin too). Payloads like 'M0 0\" onmouseover=\"alert(1)', '<script>', 'hello', 'L10 10' and 'M0 0 e5' return 400 'The signature must be drawn on the signature pad' and the stop stays pending. Valid 'M10.5 20 L30 40.2 M5 5 L6 6' and SignaturePad-style 'M12.0 34.0 L...' (including negative coordinates) deliver with 200. On the proof page, a legacy malicious signature written straight into the DB (plaintext and Fernet-encrypted) stays inside the d attribute (&quot; &#x27; &lt; escaped). The CSP header has default-src 'none' and no script-src, and the expired 410 page has it too. Labels autoprint: the CSP script-src sha256 matches the inline window.onload script. Without autoprint there is no app script and the CSP is still present. A forged route name is escaped. Report CSV with a forged X-Forwarded-Host or Host of evil.com (public URL, and directly on :8001): proof_link always uses https://arrivewise.preview.emergentagent.com and public_base is unchanged. Regression (serial, reset before each batch): security_audit_fixes + photo_hijack_iter40 + rx_handoff (41/41), badges_share_trends_apology + codes_coaching_expiry (34/34), auth_merchant_report 16/16 after fixing outdated test data. One spec mismatch: the signature length cap is 50000, not 200000.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/stops/{id}/deliver", "issue": "Signature length cap is 50000 chars (routes/stops.py:193), but the review spec says <=200000. A valid 100004-char drawn path is rejected with 400. At about 12 chars per point, 50000 is roughly 4100 points (about 70 s of continuous drawing), so real users are unlikely to hit it. Align the code or the spec."},
+      {"endpoint": "GET /docs (internal :8001 only)", "issue": "The global HTML CSP middleware also applies to the FastAPI Swagger UI, which loads CDN JS and so would be blocked. It is not publicly routed (only /api goes to the backend), so impact is internal only."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_signature_xss_csp_iter41.py",
+    "/app/test_reports/pytest/iter41_sig_xss_csp.xml",
+    "/app/test_reports/pytest/iter41_regression_a.xml",
+    "/app/test_reports/pytest/iter41_regression_b.xml",
+    "/app/test_reports/pytest/iter41_regression_c.xml"
+  ],
+  "action_items": [
+    "Decide on the signature max length: either raise the cap in routes/stops.py:193 to 200000 to match the spec, or keep 50000 and update the spec. tests/test_signature_xss_csp_iter41.py::test_long_valid_under_200k_accepted_spec encodes the 200000 spec.",
+    "Optional: skip the HTML_CSP middleware for /docs and /redoc, or disable them in production."
+  ],
+  "critical_code_review_comments": [
+    "The escaping (xml_escape with the &quot; and &#x27; entities) is correct for attribute context in feedback.py:292 and scorecards.py:192.",
+    "The proof page photo uses a same-origin /api/files/... URL that returns bytes, so img-src 'self' does not break photos.",
+    "The Cloudflare edge injects a challenge <script> into HTML responses. The strict CSP blocks it, which is harmless, but tests must ignore it (strip_cf helper).",
+    "Legacy tests used arbitrary signature strings (data:image/png..., TEST_sig). These are now rejected by design, so the test data was updated to valid SVG paths."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_signature_xss_csp_iter41.py (new)",
+    "Test data only (signature literals changed to 'M10 10 L20 20 L30 15'): tests/test_auth_merchant_report.py, backend_test.py, test_digest_reorder_nearby_merchant.py, test_driver_login_merchant_alerts.py, test_first_delivery_email.py, test_future_days_summary_labels.py, test_invoices_hst.py, test_pickup_run_geofence.py, test_pricing_billing.py, test_privacy_compliance.py, seed_ui_iter27.py"
+  ],
+  "success_rate": {"backend": "99% (1 spec-mismatch failure; all regression suites green apart from known/email-429 items)", "frontend": "not tested"},
+  "seed_data_creation": "Tests mutate seed stops (merchant_id set on drv-1 stops, direct pod_signature writes). POST /api/admin/reset was run at the end.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run serially (-n 0) after POST /api/admin/reset and export EXPO_PUBLIC_BACKEND_URL (pytest does not load frontend/.env). test_signature_xss_csp_iter41 needs 3 pending drv-1 stops and sets merchant_id mer-2/mer-1 on two of them, so reset afterwards. Run separately, test_driver_login_merchant_alerts showed only the known TestDriverAuthz::test_own_route_and_stops failure plus 3 Resend email 429 failures.",
+  "rca_of_issue": "Regression errors in test_auth_merchant_report (delivered fixture: 400 'The signature must be drawn on the signature pad') came from outdated test data sending 'data:image/png;base64,...' signatures, not from an app bug. They now pass with valid SVG path data."
+}

@@ -25,6 +25,7 @@ from services import realtime
 from services import seed
 
 router = APIRouter(prefix="/api")
+SIG_RE = re.compile(r"^\s*M[\d\s.,MLQCZmlqcz-]+$")  # drawn signature = SVG path data only
 
 
 @router.get("/stops/{stop_id}")
@@ -185,10 +186,12 @@ async def deliver(stop_id: str, body: DeliverIn, u: dict = Depends(require_stop_
     if await dispatch.is_pharmacy_drop(stop):
         if not (body.photo_path and body.signature):
             raise HTTPException(400, "Prescription hand-off needs both a doorstep photo and the recipient's signature")
-        if not await db.files.find_one({"storage_path": body.photo_path}, {"_id": 1}) or not re.match(r"^\s*M[\d\s.,MLQCZmlqcz-]+$", body.signature):
+        if not await db.files.find_one({"storage_path": body.photo_path}, {"_id": 1}) or not SIG_RE.match(body.signature):
             raise HTTPException(400, "Prescription hand-off needs a real uploaded photo and a drawn signature")
     elif not body.photo_path and not body.signature and not stop.pod_qr_verified:
         raise HTTPException(400, "Proof of delivery requires a photo, signature or parcel QR scan")
+    if body.signature and (len(body.signature) > 200000 or not SIG_RE.match(body.signature)):
+        raise HTTPException(400, "The signature must be drawn on the signature pad")
     if body.photo_path and u["role"] != "admin" and (
             not await db.files.find_one({"storage_path": body.photo_path, "uploaded_by": u["id"]}, {"_id": 1})
             or await db.stops.find_one({"pod_photo_path": body.photo_path, "id": {"$ne": stop_id}}, {"_id": 1})):

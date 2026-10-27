@@ -132,7 +132,7 @@ class TestGeofence:
         st = requests.get(f"{BASE_URL}/api/stops/{nxt['id']}", headers=h).json()
         assert st["status"] == "arrived" and st["arrival_method"] == "geofence"
         # regression: deliver with signature
-        d = requests.post(f"{BASE_URL}/api/stops/{nxt['id']}/deliver", headers=h, json={"signature": "TEST_sig"})
+        d = requests.post(f"{BASE_URL}/api/stops/{nxt['id']}/deliver", headers=h, json={"signature": "M10 10 L20 20 L30 15"})
         assert d.status_code == 200, d.text
         assert requests.get(f"{BASE_URL}/api/stops/{nxt['id']}", headers=h).json()["status"] == "delivered"
 

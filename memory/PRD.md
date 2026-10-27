@@ -146,3 +146,4 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - /api/files: session access limited to admin, uploader, the stop's route driver, or the stop's merchant. Upload records uploaded_by.
 - Deliver: drivers may only attach photos they uploaded that aren't used on another stop (admin exempt).
 - /api/coaching/{id}/read requires the note's driver or admin; order tokens now last 30 days.
+- Audit #2 (June 2026): delivery signatures must be SVG path data (SIG_RE, ≤200k chars) for every drop; proof/labels pages escape quotes; strict Content-Security-Policy on server-rendered /api HTML (labels print script allowed by sha256 hash); report CSV proof links use trusted base only.

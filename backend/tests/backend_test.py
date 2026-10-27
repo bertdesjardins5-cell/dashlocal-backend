@@ -135,7 +135,7 @@ def test_arrive_deliver_fail_flow(api):
     assert r.status_code == 200 and r.json()["status"] == "arrived"
     assert r.json()["arrival_method"] == "manual"
     # Deliver with signature
-    r = api.post(f"{API}/stops/{s0['id']}/deliver", json={"signature": "data:image/png;base64,xxx"})
+    r = api.post(f"{API}/stops/{s0['id']}/deliver", json={"signature": "M10 10 L20 20 L30 15"})
     assert r.status_code == 200 and r.json()["status"] == "delivered"
     # Fail next
     s1 = stops[1]

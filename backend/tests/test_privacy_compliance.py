@@ -162,7 +162,7 @@ def test_driver_write_responses_hide_phone(driver, drv2_stop):
 def test_driver_deliver_signature_encrypted(driver, drv2_stop):
     if drv2_stop["route_status"] != "active":
         pytest.skip("drv-2 route not active")
-    r = requests.post(f"{BASE_URL}/api/stops/{drv2_stop['id']}/deliver", headers=driver, json={"signature": "TEST_SIGNATURE_DATA"})
+    r = requests.post(f"{BASE_URL}/api/stops/{drv2_stop['id']}/deliver", headers=driver, json={"signature": "M10 10 L20 20 L30 15"})
     if r.status_code != 200:
         pytest.skip(f"deliver not possible: {r.status_code} {r.text[:120]}")
     raw = db.stops.find_one({"id": drv2_stop["id"]}, {"_id": 0, "pod_signature": 1})

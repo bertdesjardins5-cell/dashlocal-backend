@@ -289,7 +289,7 @@ async def proof_page(token: str):
 <meta name="robots" content="noindex"><title>Link expired</title></head><body style="font-family:'Courier New',monospace;padding:24px">
 <h1 style="font-family:Arial,sans-serif">LINK EXPIRED</h1><p>Proof-of-delivery links last {PROOF_LINK_DAYS} days to protect your privacy.
 Open your order in the DashLocal app to share a fresh link.</p></body></html>""", status_code=410)
-    esc = xml_escape
+    esc = lambda v: xml_escape(str(v), {'"': "&quot;", "'": "&#x27;"})  # noqa: E731 — attribute-safe
     when = datetime.fromisoformat(st.delivered_at).astimezone(TZ).strftime("%a %d %b %Y, %H:%M") if st.delivered_at else ""
     photo = f'<img src="{esc(realtime.file_url(st.pod_photo_path))}" alt="Delivery photo">' if st.pod_photo_path else ""
     sig = (f'<svg viewBox="0 0 360 200" preserveAspectRatio="xMidYMid meet"><path d="{esc(st.pod_signature)}" stroke="#0A0A0A" stroke-width="4" '

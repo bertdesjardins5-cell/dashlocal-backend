@@ -5,7 +5,7 @@ import os
 import time
 import uuid
 import re
-from core import ENC_FIELDS, client, db, enc_str, init_storage, logger, now_iso
+from core import ENC_FIELDS, HTML_CSP, client, db, enc_str, init_storage, logger, now_iso
 from routes import alerts, auth, billing, dispatch, emails, feedback, invoices, merchants as merchant_routes, onboarding, payments, pickups as pickup_routes, privacy, scorecards, stops as stop_routes
 from services import realtime
 from services import seed
@@ -73,6 +73,8 @@ async def audit_and_security_headers(request: Request, call_next):
     resp = await call_next(request)
     resp.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"  # browsers must always use HTTPS
     path = request.url.path
+    if path.startswith("/api/") and resp.headers.get("content-type", "").startswith("text/html") and "content-security-policy" not in resp.headers:
+        resp.headers["Content-Security-Policy"] = HTML_CSP  # server-rendered pages (proof of delivery): no scripts at all
     if path.startswith("/api/") and request.method != "OPTIONS" and not privacy.AUDIT_SKIP.match(path):
         actor = privacy.audit_actor(request) or ({"id": None, "role": "public"} if request.method != "GET" else None)
         if actor:

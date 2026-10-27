@@ -9,7 +9,7 @@ load_dotenv(Path(__file__).resolve().parents[2] / "frontend" / ".env")
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 API = (os.environ.get("EXPO_PUBLIC_BACKEND_URL") or os.environ["EXPO_BACKEND_URL"]).rstrip("/") + "/api"
 db = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
-SIG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+SIG = "M10 10 L20 20 L30 15"
 tok = lambda e, p: {"Authorization": "Bearer " + requests.post(f"{API}/auth/login", json={"email": e, "password": p}).json()["token"]}
 admin, bakery = tok("admin@dashlocal.app", "DashLocalAdmin2026"), tok("bakery@dashlocal.app", "Bakery2026")
 r101 = db.routes.find_one({"status": "active", "driver_id": "drv-1"}, {"_id": 0})

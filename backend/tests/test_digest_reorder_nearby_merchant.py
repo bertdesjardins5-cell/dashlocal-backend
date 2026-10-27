@@ -111,7 +111,7 @@ class TestResequence:
         done = [s["id"] for s in stops if s["status"] in ("delivered", "failed")]
         if not done:
             first = next(s for s in stops if s["status"] in ("pending", "arrived"))
-            assert api.post(f"{API}/stops/{first['id']}/deliver", json={"signature": "TEST_sig"}).status_code == 200
+            assert api.post(f"{API}/stops/{first['id']}/deliver", json={"signature": "M10 10 L20 20 L30 15"}).status_code == 200
             stops = api.get(f"{API}/routes/{rid}").json()["stops"]
             done = [s["id"] for s in stops if s["status"] in ("delivered", "failed")]
         opn = [s["id"] for s in stops if s["id"] not in done]

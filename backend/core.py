@@ -157,6 +157,8 @@ async def require_admin(request: Request):
 
 
 ADMIN_ONLY = [Depends(require_admin)]
+# server-rendered HTML pages: inline styles and own images only, never scripts unless a page adds a hash
+HTML_CSP = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
 
 
 def driver_consented(u: dict) -> dict:

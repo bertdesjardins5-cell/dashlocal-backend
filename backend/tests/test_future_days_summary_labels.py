@@ -161,7 +161,7 @@ def test_summary_structure(api):
 def test_summary_after_deliver_and_drive(api, r101):
     before = pytest.sum0
     s = pending_stop(api, r101["id"])[0]
-    r = api.post(f"{API}/stops/{s['id']}/deliver", json={"signature": "data:image/png;base64,iVBORw0KGgo="})
+    r = api.post(f"{API}/stops/{s['id']}/deliver", json={"signature": "M10 10 L20 20 L30 15"})
     assert r.status_code == 200, r.text
     for _ in range(3):
         assert api.post(f"{API}/drivers/drv-1/simulate-step", json={"meters": 300}).status_code == 200

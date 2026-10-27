@@ -1,12 +1,14 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse
+import base64
+import hashlib
 import qrcode
 import qrcode.image.svg
 from xml.sax.saxutils import escape as xml_escape
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta, date as date_cls, time as time_cls
-from core import ADMIN_ONLY, DEPOT, DRIVER_SELF, MIN_PACE_HOURS, TZ, db, decode_token, issue_token, path_length_m, today_str
+from core import ADMIN_ONLY, DEPOT, HTML_CSP, DRIVER_SELF, MIN_PACE_HOURS, TZ, db, decode_token, issue_token, path_length_m, today_str
 from models import Driver, Route, Stop, get_driver_or_404, get_route_or_404, get_stops
 
 router = APIRouter(prefix="/api")
@@ -187,7 +189,7 @@ async def route_labels(route_id: str, token: str = "", autoprint: int = 0):
         raise HTTPException(403, "This print link is for a different route")
     route = await get_route_or_404(route_id)
     stops = [x for x in await get_stops(route_id) if x.status not in ("delivered", "failed")][::-1]
-    esc = xml_escape
+    esc = lambda v: xml_escape(str(v), {'"': "&quot;", "'": "&#x27;"})  # noqa: E731 — attribute-safe
     cards = []
     for load_no, x in enumerate(stops, 1):
         win = f"{x.window_date or ''} {x.window_start}-{x.window_end}".strip() if x.window_end else "ANY TIME"
@@ -196,7 +198,8 @@ async def route_labels(route_id: str, token: str = "", autoprint: int = 0):
 <div class="info"><div class="tags"><span class="load">LOAD {load_no:02d}</span><span class="seq">DROP #{x.seq:02d}</span></div><div class="code">{esc(x.tracking_code)}</div>
 <div class="name">{esc(x.customer_name)}</div><div class="addr">{esc(x.address)}</div>
 <div class="meta">{esc(x.postal_code)} &middot; {esc(x.zone.upper())}</div><div class="win">WINDOW {esc(win)}</div>{note}</div></div>""")
-    script = '<script>window.onload = function () { setTimeout(function () { window.print(); }, 300); };</script>' if autoprint else ''
+    script_js = 'window.onload = function () { setTimeout(function () { window.print(); }, 300); };'
+    script = f'<script>{script_js}</script>' if autoprint else ''
     html = f"""<!doctype html><html><head><meta charset="utf-8"><title>{esc(route.name)} labels</title>
 <style>
 @page {{ size: A4; margin: 8mm; }}
@@ -222,7 +225,8 @@ h1 {{ font-family: Arial, sans-serif; font-size: 16px; margin: 0 0 6px; }}
 <div class="grid">{''.join(cards) or '<p>No open parcels on this route.</p>'}</div>
 {script}
 </body></html>"""
-    return HTMLResponse(html)
+    sha = base64.b64encode(hashlib.sha256(script_js.encode()).digest()).decode()
+    return HTMLResponse(html, headers={"Content-Security-Policy": f"{HTML_CSP}; script-src 'sha256-{sha}'"})
 
 
 @router.get("/analytics", dependencies=ADMIN_ONLY)

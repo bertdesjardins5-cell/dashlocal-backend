@@ -180,7 +180,7 @@ class TestBills:
         assert requests.put(f"{API}/merchants/mer-1/alerts", json={"enabled": False}, headers=H(toks["m1"])).status_code == 200
         assert requests.post(f"{API}/routes/{route['id']}/start", headers=dh).status_code == 200
         a, b = orders["TEST_PriA"], orders["TEST_PriB"]
-        r = requests.post(f"{API}/stops/{a['id']}/deliver", json={"signature": "data:image/png;base64,iVBORw0KGgo="}, headers=dh)
+        r = requests.post(f"{API}/stops/{a['id']}/deliver", json={"signature": "M10 10 L20 20 L30 15"}, headers=dh)
         assert r.status_code == 200, r.text
         r = requests.post(f"{API}/stops/{b['id']}/fail", json={"reason": "No one home"}, headers=dh)
         assert r.status_code == 200, r.text

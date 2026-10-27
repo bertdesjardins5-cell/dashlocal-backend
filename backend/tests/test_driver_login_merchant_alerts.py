@@ -16,7 +16,7 @@ TZ = ZoneInfo("America/Toronto")
 _raw = requests.Session.request  # bypass conftest auto-admin injection
 mdb = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
 PINS = {"drv-1": ("+15195550101", "482913"), "drv-2": ("+15195550102", "730516"), "drv-3": ("+15195550103", "264871")}
-SIG = "data:image/png;base64,iVBORw0KGgo="
+SIG = "M10 10 L20 20 L30 15"
 
 
 def raw(method, url, **kw):

@@ -165,7 +165,7 @@ def delivered(toks):
     assert b.status_code == 200, b.text
     route = b.json()
     assert requests.post(f"{API}/routes/{route['id']}/start").status_code == 200
-    dv = requests.post(f"{API}/stops/{order['id']}/deliver", json={"signature": "data:image/png;base64,iVBORw0KGgo="})
+    dv = requests.post(f"{API}/stops/{order['id']}/deliver", json={"signature": "M10 10 L20 20 L30 15"})
     assert dv.status_code == 200, dv.text
     rt = requests.post(f"{API}/stops/{order['id']}/rating", json={"stars": 4, "comment": "TEST nice"})
     assert rt.status_code == 200, rt.text
