@@ -1,9 +1,19 @@
 import { Platform } from "react-native";
 import Constants, { ExecutionEnvironment } from "expo-constants";
+import { requireOptionalNativeModule } from "expo-modules-core";
 
-// Phone alerts only exist in real (published/dev) builds. Expo Go no longer ships the push module,
-// so importing expo-notifications there crashes the app — load it lazily and only where it works.
-const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+// Phone alerts only exist in real (published/dev) builds. Expo Go no longer ships the push modules,
+// so importing expo-notifications there crashes the app. Load it lazily and only when its native
+// modules are actually present (works regardless of how the app was launched).
+function loadNotifications(): typeof import("expo-notifications") | null {
+  if (Platform.OS === "web" || Constants.executionEnvironment === ExecutionEnvironment.StoreClient) return null;
+  const native = ["ExpoPushTokenManager", "ExpoNotificationsHandlerModule", ...(Platform.OS === "android" ? ["ExpoTopicSubscriptionModule"] : [])];
+  if (native.some((name) => !requireOptionalNativeModule(name))) return null;
+  try {
+    return require("expo-notifications"); // eslint-disable-line @typescript-eslint/no-require-imports
+  } catch {
+    return null;
+  }
+}
 
-export const Notifications: typeof import("expo-notifications") | null =
-  Platform.OS === "web" || isExpoGo ? null : require("expo-notifications");
+export const Notifications = loadNotifications();

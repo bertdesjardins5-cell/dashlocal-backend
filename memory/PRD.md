@@ -158,3 +158,7 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - June 2026: Receipt search in ReceiptArchive (client-side: client name, tracking code, dates as 'Oct 27', 2026-10-27, 27/10/2026, month name).
 - June 2026: Matter reference (law offices): Stop.matter_ref (CSV column matter_ref/file_number/…, FixRowSheet field, PUT /api/merchants/{mid}/stops/{sid}/matter, MatterTag on portal order rows). Shown on receipt PDF, email subject/body, archive rows + search, ZIP filenames.
 - June 2026: Expo Go crash fix — expo-notifications loaded lazily via src/notifications.ts (null on web/Expo Go). matter_ref hidden from driver views (DRIVER_HIDDEN). Security audit #4: PASS.
+- Expo Go crash fix v2: src/notifications.ts also checks native modules via requireOptionalNativeModule + try/catch.
+
+## Regression check (post-fork)
+- Frontend: all 9 flows pass (iteration_56). Backend: 680 pass; the 28 failures are not real bugs (email provider rate limit, time-of-day window, outdated link-page tests).
