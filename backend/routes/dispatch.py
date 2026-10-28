@@ -57,7 +57,7 @@ async def driver_route(driver_id: str, u: dict = Depends(require_driver_self)):
 # Driver screens only get what the drop needs (PHIPA minimum necessary): recipient name, street address and
 # delivery notes. No phone numbers (calls go through the masked line), prices, invoice items or consent records.
 DRIVER_HIDDEN = ("customer_phone", "fee", "consent_given", "consent_at", "consent_by", "consent_text", "rating_comment",
-                 "follow_up_note", "apology_code", "merchant_late_alert_at", "merchant_fail_alert_at")
+                 "follow_up_note", "apology_code", "merchant_late_alert_at", "merchant_fail_alert_at", "matter_ref")
 
 
 def driver_stop_view(d: dict) -> dict:

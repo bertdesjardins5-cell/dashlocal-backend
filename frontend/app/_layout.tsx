@@ -4,7 +4,7 @@ import { useFonts } from "expo-font";
 import { useEffect } from "react";
 import { Alert, LogBox, Platform, StyleSheet, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
-import * as Notifications from "expo-notifications";
+import type { NotificationResponse } from "expo-notifications";
 import * as Linking from "expo-linking";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -14,36 +14,38 @@ import { ErrorBoundary } from "@/src/components/error-boundary";
 import { queryClient } from "@/src/query-client";
 import { useTheme } from "@/src/theme";
 import "@/src/driverTracking"; // registers the background location task at startup
+import { Notifications } from "@/src/notifications";
 
 // Disable logbox errors etc so that users can see the app
 // and agent works as expected.
 LogBox.ignoreAllLogs(true);
 
 // Phone alerts: show while the app is open, and the Android channel must exist before any push arrives.
-if (Platform.OS !== "web") {
+if (Notifications) {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({ shouldShowAlert: true, shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
   });
 }
-if (Platform.OS === "android") {
+if (Notifications && Platform.OS === "android") {
   Notifications.setNotificationChannelAsync("default", { name: "Default", importance: Notifications.AndroidImportance.MAX, sound: "default" });
 }
 
 function usePushTaps(ready: boolean) {
   const router = useRouter();
   useEffect(() => {
-    if (Platform.OS === "web" || !ready) return; // wait until the screens are mounted (cold-start taps)
-    const open = (response: Notifications.NotificationResponse | null) => {
+    const N = Notifications; // null on web and in Expo Go (no push module there)
+    if (!N || !ready) return; // wait until the screens are mounted (cold-start taps)
+    const open = (response: NotificationResponse | null) => {
       const data: any = response?.notification.request.content.data || {};
       const url = String(data.deeplink || data.action_url || "");
       // only in-app screens we send alerts for; anything else (e.g. external links) is ignored
       if (/^\/(driver|merchant|admin)(\/[\w-]+)*$/.test(url)) router.push(url as any);
     };
-    const tapSub = Notifications.addNotificationResponseReceivedListener(open); // tapped while the app is open
-    Notifications.getLastNotificationResponseAsync().then(open); // tapped while the app was closed
+    const tapSub = N.addNotificationResponseReceivedListener(open); // tapped while the app is open
+    N.getLastNotificationResponseAsync().then(open); // tapped while the app was closed
     (async () => {
       // alerts turned off and the phone won't ask again: remind once a week how to turn them back on
-      const { status, canAskAgain } = await Notifications.getPermissionsAsync();
+      const { status, canAskAgain } = await N.getPermissionsAsync();
       if (status !== "denied" || canAskAgain) return;
       const last = await AsyncStorage.getItem("pushNudgeAt");
       if (last && Date.now() - Number(last) <= 7 * 24 * 60 * 60 * 1000) return;
