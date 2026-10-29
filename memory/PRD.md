@@ -177,3 +177,5 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - Terms section 3 rewritten: customers pay per order by card; stores' card on file is charged monthly fee + weekly deliveries (CAD incl. 13% HST).
 - TERMS_VERSION = "2026-10" (routes/onboarding.py). GET /api/auth/terms-status, POST /api/auth/accept-terms (merchant only; stores version, time, IP, user agent in users.terms_history).
 - Merchant portal shows TermsGate modal until accepted; "Sign out" declines. Bump TERMS_VERSION to ask everyone again after future changes.
+- Admin › Terms Acceptance (/admin/terms): GET /api/admin/terms-report (stores + drivers), POST /api/admin/terms-report/{merchant_id}/remind (email, 1 per 20h).
+- Drivers: DRIVER_TERMS_VERSION "2026-10" (routes/auth.py); TermsGate kind="driver" in app/driver/_layout.tsx blocks the app until accepted (users.driver_terms_*).

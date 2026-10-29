@@ -469,21 +469,84 @@ async def reset_merchant_password(user_id: str, body: PasswordIn, _: dict = Depe
     return {"ok": True}
 
 
-# ---- Terms re-acceptance: store users accept the current Terms of Service version on their next sign-in
+# ---- Terms acceptance: store users accept the current Terms of Service (and drivers the independent-contractor terms)
+#      on their next sign-in. Admin › Terms shows who accepted and sends reminder emails.
+DRIVER_TERMS_VERSION = "2026-10"
+REMIND_COOLDOWN_H = 20
+
+
+def terms_fields(role: str):
+    if role == "merchant":
+        return "terms_version", "terms_consent_at", "terms_history", onboarding.TERMS_VERSION
+    if role == "driver":
+        return "driver_terms_version", "driver_terms_at", "driver_terms_history", DRIVER_TERMS_VERSION
+    return None
+
+
 @router.get("/auth/terms-status")
 async def terms_status(u: dict = Depends(current_user)):
-    if u.get("role") != "merchant":
+    f = terms_fields(u.get("role"))
+    if not f:
         return {"required": False, "version": onboarding.TERMS_VERSION}
-    doc = await db.users.find_one({"id": u["id"]}, {"_id": 0, "terms_version": 1, "terms_consent_at": 1})
-    return {"required": (doc or {}).get("terms_version") != onboarding.TERMS_VERSION, "version": onboarding.TERMS_VERSION,
-            "accepted_version": (doc or {}).get("terms_version"), "accepted_at": (doc or {}).get("terms_consent_at")}
+    doc = await db.users.find_one({"id": u["id"]}, {"_id": 0}) or {}
+    return {"required": doc.get(f[0]) != f[3], "version": f[3], "kind": u["role"], "accepted_version": doc.get(f[0]), "accepted_at": doc.get(f[1])}
 
 
 @router.post("/auth/accept-terms")
 async def accept_terms(request: Request, u: dict = Depends(current_user)):
-    if u.get("role") != "merchant":
-        raise HTTPException(403, "Only store accounts accept the Terms of Service here")
-    rec = {"version": onboarding.TERMS_VERSION, "at": now_iso(), "ip": client_ip(request), "user_agent": (request.headers.get("user-agent") or "")[:200]}
-    await db.users.update_one({"id": u["id"]}, {"$set": {"terms_consent": True, "terms_version": rec["version"], "terms_consent_at": rec["at"]},
-                                                 "$push": {"terms_history": rec}})
+    f = terms_fields(u.get("role"))
+    if not f:
+        raise HTTPException(403, "Only store and driver accounts accept terms here")
+    rec = {"version": f[3], "at": now_iso(), "ip": client_ip(request), "user_agent": (request.headers.get("user-agent") or "")[:200]}
+    upd = {f[0]: rec["version"], f[1]: rec["at"]}
+    if u["role"] == "merchant":
+        upd["terms_consent"] = True
+    await db.users.update_one({"id": u["id"]}, {"$set": upd, "$push": {f[2]: rec}})
     return {"ok": True, "version": rec["version"], "accepted_at": rec["at"]}
+
+
+@router.get("/admin/terms-report", dependencies=ADMIN_ONLY)
+async def terms_report():
+    users = await db.users.find({"role": {"$in": ["merchant", "driver"]}, "disabled": {"$ne": True}}, {"_id": 0, "password_hash": 0}).to_list(5000)
+    stores = []
+    for m in await db.merchants.find({"disabled": {"$ne": True}}, {"_id": 0, "id": 1, "name": 1, "business_type": 1, "terms_reminded_at": 1}).sort("name", 1).to_list(1000):
+        us = [{"email": x.get("email") or "(no email)", "accepted": x.get("terms_version") == onboarding.TERMS_VERSION, "version": x.get("terms_version"),
+               "accepted_at": x.get("terms_consent_at"), "last_login_at": x.get("last_login_at")} for x in users if x["role"] == "merchant" and x.get("merchant_id") == m["id"]]
+        stores.append({"id": m["id"], "name": m["name"], "business_type": m.get("business_type"), "users": us,
+                       "accepted": bool(us) and all(x["accepted"] for x in us), "reminded_at": m.get("terms_reminded_at")})
+    drivers = {d["id"]: d for d in await db.drivers.find({}, {"_id": 0, "id": 1, "name": 1, "phone": 1}).to_list(1000)}
+    drv = [{"id": x["driver_id"], "name": drivers[x["driver_id"]]["name"], "phone": drivers[x["driver_id"]]["phone"],
+            "accepted": x.get("driver_terms_version") == DRIVER_TERMS_VERSION, "accepted_at": x.get("driver_terms_at"), "last_login_at": x.get("last_login_at")}
+           for x in users if x["role"] == "driver" and x.get("driver_id") in drivers]
+    return {"version": onboarding.TERMS_VERSION, "driver_version": DRIVER_TERMS_VERSION, "stores": stores, "drivers": sorted(drv, key=lambda d: d["name"])}
+
+
+@router.post("/admin/terms-report/{merchant_id}/remind", dependencies=ADMIN_ONLY)
+async def terms_remind(merchant_id: str, request: Request):
+    m = await merchant_routes.get_merchant_or_404(merchant_id)
+    last = m.get("terms_reminded_at")
+    if last and datetime.now(timezone.utc) - datetime.fromisoformat(last) < timedelta(hours=REMIND_COOLDOWN_H):
+        raise HTTPException(429, "A reminder was already sent today")
+    pending = await db.users.find({"merchant_id": merchant_id, "role": "merchant", "disabled": {"$ne": True}, "terms_version": {"$ne": onboarding.TERMS_VERSION}},
+                                  {"_id": 0, "email": 1}).to_list(50)
+    if not pending:
+        raise HTTPException(409, "Everyone at this store already accepted the latest terms")
+    from routes import emails  # lazy: keeps auth imports light
+    base = await onboarding.app_base(request)
+    demo = {em for _, em, _ in DEMO_MERCHANT_USERS}
+    html = onboarding.brand_email("Please review our updated Terms of Service",
+                                  f"<p>Hi {escape(m['name'])}, we updated the DashLocal Terms of Service ({escape(onboarding.TERMS_VERSION)}), including how payments work. "
+                                  "Please sign in to your Merchant Portal and accept them to keep sending deliveries.</p>",
+                                  ("Review & accept", f"{base}/merchant"))
+    sent = []
+    for to in dict.fromkeys(emails.TEST_INBOX if x["email"] in demo else x["email"] for x in pending):
+        try:
+            await emails.send_email(to=to, subject="Action needed: accept DashLocal's updated Terms of Service", html=html)
+            sent.append(to)
+        except Exception as e:
+            logger.warning(f"Terms reminder to {to}: {e}")
+    if not sent:
+        raise HTTPException(502, "The reminder email couldn't be sent — try again in a minute")
+    at = now_iso()
+    await db.merchants.update_one({"id": merchant_id}, {"$set": {"terms_reminded_at": at}})
+    return {"ok": True, "sent": len(sent), "reminded_at": at}

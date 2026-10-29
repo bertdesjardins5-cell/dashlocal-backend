@@ -273,7 +273,7 @@ export default function MerchantHome() {
       )}
       {fix ? <FixRowSheet row={fix} lawOffice={q.data?.business_type === "law_office"} onClose={() => setFix(null)} onDone={() => { setFix(null); q.refetch(); }} notify={toast.show} /> : null}
       {toast.node}
-      {user?.role === "merchant" ? <TermsGate onNotify={toast.show} /> : null}
+      {user?.role === "merchant" ? <TermsGate kind="merchant" onNotify={toast.show} /> : null}
     </View>
   );
 }

@@ -4,6 +4,7 @@ import { Redirect, Stack, usePathname } from "expo-router";
 import { useSession } from "@/src/session";
 import { registerForPush } from "@/src/push";
 import DriverSignInForm from "@/src/components/DriverSignInForm";
+import TermsGate from "@/src/components/TermsGate";
 import { Header, Loading } from "@/src/ui";
 import { makeStyles } from "@/src/theme";
 
@@ -27,7 +28,12 @@ export default function DriverLayout() {
     const other = path.match(/^\/driver\/(?:summary\/)?(drv-[^/]+)/);
     if (path === "/driver" || (other && other[1] !== user.driver_id)) return <Redirect href={`/driver/${user.driver_id}`} />;
   }
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <>
+      <Stack screenOptions={{ headerShown: false }} />
+      {user.role === "driver" ? <TermsGate kind="driver" onSignedOut={() => {}} /> : null}
+    </>
+  );
 }
 
 const useStyles = makeStyles((c) => ({

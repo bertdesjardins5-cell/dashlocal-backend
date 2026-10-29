@@ -6,11 +6,16 @@ import { clearSession } from "@/src/session";
 import ConsentModal from "@/src/components/ConsentModal";
 
 // Drivers (created by dispatch, no self sign-up) accept the privacy & compliance terms before their first route.
-export default function DriverConsentGate() {
-  const q = useQuery({ queryKey: ["my-consent"], queryFn: () => api<{ phipa_consent_given: boolean; role: string }>("/me/consent") });
+// Shown only after the courier terms are accepted (one legal pop-up at a time).
+export function useDriverConsent() {
+  return useQuery({ queryKey: ["my-consent"], queryFn: () => api<{ phipa_consent_given: boolean; role: string }>("/me/consent") });
+}
+
+export default function DriverConsentGate({ enabled = true }: { enabled?: boolean }) {
+  const q = useDriverConsent();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const need = q.data?.role === "driver" && !q.data.phipa_consent_given;
+  const need = enabled && q.data?.role === "driver" && !q.data.phipa_consent_given;
   const agree = async (consent_timestamp: string) => {
     setBusy(true);
     setErr(null);

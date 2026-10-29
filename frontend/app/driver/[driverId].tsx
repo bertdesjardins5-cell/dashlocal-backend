@@ -12,7 +12,8 @@ import { api, dayLabel, depotToday, fmtDepotTime, pickupRunText, RouteDetail, wi
 import { clearSession, getToken } from "@/src/session";
 import * as Haptics from "expo-haptics";
 import RouteMap from "@/src/components/RouteMap";
-import DriverConsentGate from "@/src/components/DriverConsentGate";
+import DriverConsentGate, { useDriverConsent } from "@/src/components/DriverConsentGate";
+import { useTermsStatus } from "@/src/components/TermsGate";
 import PickupCheckIn from "@/src/components/PickupCheckIn";
 import ShoutoutBanner from "@/src/components/ShoutoutBanner";
 import { startBackgroundTracking, stopBackgroundTracking } from "@/src/driverTracking";
@@ -42,6 +43,10 @@ export default function Manifest() {
   });
   const [dismissed, setDismissed] = useState<string[]>([]);
   const celebrate = (badgesQ.data?.badges ?? []).filter((b) => !dismissed.includes(b.key));
+  // Legal pop-ups come first: courier terms, then privacy consent, then any badge celebration.
+  const termsQ = useTermsStatus("driver");
+  const consentQ = useDriverConsent();
+  const legalDone = termsQ.data?.required === false && (consentQ.data?.role !== "driver" || !!consentQ.data?.phipa_consent_given);
   const refetchBadges = badgesQ.refetch;
   useFocusEffect(useCallback(() => { refetchBadges(); }, [refetchBadges]));
   const dismissCelebration = async () => {
@@ -429,8 +434,8 @@ export default function Manifest() {
         </ScrollView>
       )}
       {toast.node}
-      {celebrate.length ? <BadgeCelebration badges={celebrate} onDone={dismissCelebration} /> : null}
-      <DriverConsentGate />
+      {celebrate.length && legalDone ? <BadgeCelebration badges={celebrate} onDone={dismissCelebration} /> : null}
+      <DriverConsentGate enabled={termsQ.data?.required === false} />
     </View>
   );
 }

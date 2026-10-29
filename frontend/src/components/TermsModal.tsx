@@ -6,11 +6,12 @@ import { TERMS } from "@/app/terms";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 type Props = { visible: boolean; onAgree: (timestamp: string) => void; onClose: () => void; busy?: boolean; onOpenTerms?: () => void;
-  sub?: string; cancelLabel?: string; acceptLabel?: string };
+  sub?: string; cancelLabel?: string; acceptLabel?: string; title?: string; agreeLabel?: string };
 
 // Non-pharmacy sign-up (and re-acceptance after an update): scroll to the end of the Terms of Service, tick the box, then accept.
 export default function TermsModal({ visible, onAgree, onClose, busy, onOpenTerms, sub = "Please review and accept our terms to send your request.",
-  cancelLabel = "Cancel", acceptLabel = "Accept & Send" }: Props) {
+  cancelLabel = "Cancel", acceptLabel = "Accept & Send", title = "DashLocal Terms of Service",
+  agreeLabel = "I have read and agree to the DashLocal Terms of Service on behalf of my business." }: Props) {
   const s = useStyles();
   const { colors } = useTheme();
   const [read, setRead] = useState(false);
@@ -26,7 +27,7 @@ export default function TermsModal({ visible, onAgree, onClose, busy, onOpenTerm
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={s.overlay}>
         <View style={s.card} testID="terms-modal">
-          <Text style={s.title}>DashLocal Terms of Service</Text>
+          <Text style={s.title}>{title}</Text>
           <Text style={s.sub}>{sub}</Text>
           <ScrollView style={s.scroll} contentContainerStyle={{ padding: 12 }} onScroll={onScroll} scrollEventThrottle={100}
             onContentSizeChange={(_, h) => h < 200 && setRead(true)} testID="terms-scroll">
@@ -42,7 +43,7 @@ export default function TermsModal({ visible, onAgree, onClose, busy, onOpenTerm
           <Pressable testID="terms-agree-checkbox" disabled={!read} onPress={() => setAgree(!agree)} style={s.row}
             accessibilityRole="checkbox" accessibilityState={{ checked: agree, disabled: !read }}>
             <Checkbox value={agree} onValueChange={setAgree} disabled={!read} color={read ? colors.brandForest : colors.brandLine} />
-            <Text style={[s.boxLabel, !read && { color: colors.brandMuted }]}>I have read and agree to the DashLocal Terms of Service on behalf of my business.</Text>
+            <Text style={[s.boxLabel, !read && { color: colors.brandMuted }]}>{agreeLabel}</Text>
           </Pressable>
           <View style={s.actions}>
             <BrandButton testID="terms-cancel" label={cancelLabel} variant="outline" onPress={onClose} style={{ flex: 1 }} />
