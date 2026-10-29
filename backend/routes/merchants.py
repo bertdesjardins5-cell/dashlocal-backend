@@ -356,7 +356,7 @@ class SavedNoteIn(BaseModel):
 
 @router.get("/merchants/{merchant_id}/saved-notes")
 async def list_saved_notes(merchant_id: str, _: dict = Depends(merchant_access)):
-    return await db.saved_notes.find({"merchant_id": merchant_id}, {"_id": 0}).sort("updated_at", -1).to_list(1000)
+    return await db.saved_notes.find({"merchant_id": merchant_id, "erased_at": {"$exists": False}}, {"_id": 0}).sort("updated_at", -1).to_list(1000)
 
 
 @router.put("/merchants/{merchant_id}/saved-notes")

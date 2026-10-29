@@ -23,8 +23,19 @@ NAMES = ["Ava Chen", "Liam Patel", "Noah Garcia", "Mia Johnson", "Ethan Kim", "Z
 
 
 async def seed(force: bool = False):
+    """Demo data. On startup it only fills an empty database (inserts, never deletes). Wiping old demo data
+    happens only with force=True, from the explicit admin "Reset demo" action."""
     if not force and await db.drivers.count_documents({}) > 0:
         return
+    if force:
+        await wipe_demo()
+    await insert_demo()
+    from routes import merchants as merchant_routes  # lazy: routes.merchants imports this module
+    for m in merchant_routes.MERCHANTS:
+        await db.merchants.update_one({"id": m["id"]}, {"$setOnInsert": m}, upsert=True)
+
+
+async def wipe_demo():
     await db.drivers.delete_many({})
     await db.code_redemptions.delete_many({})
     await db.coaching_notes.delete_many({})
@@ -38,6 +49,9 @@ async def seed(force: bool = False):
     await db.report_emails.delete_many({})
     await db.stops.delete_many({})
     await db.routes.delete_many({})
+
+
+async def insert_demo():
     rnd = random.Random(42)
     drivers = [
         Driver(id="drv-1", name="Marcus Reid", phone="+15195550101", vehicle="VAN-07", lat=DEPOT["lat"], lng=DEPOT["lng"], updated_at=now_iso(), compass_zone="North"),

@@ -1,6 +1,6 @@
 import { Platform } from "react-native";
 import Constants, { ExecutionEnvironment } from "expo-constants";
-import { requireOptionalNativeModule } from "expo-modules-core";
+import { requireOptionalNativeModule } from "expo";
 
 // Phone alerts only exist in real (published/dev) builds. Expo Go no longer ships the push modules,
 // so importing expo-notifications there crashes the app. Load it lazily and only when its native

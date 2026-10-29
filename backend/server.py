@@ -21,6 +21,16 @@ async def health():
     return {"status": "ok"}
 
 
+async def backfill_fees():
+    """Orders from before pricing existed get a fee (background, so startup isn't delayed). Pricing cached per store."""
+    cache = {}
+    for d in await db.stops.find({"merchant_id": {"$ne": None}, "fee": None}, {"_id": 0}).to_list(5000):
+        mid = d["merchant_id"]
+        if mid not in cache:
+            cache[mid] = await billing.get_pricing(mid)
+        await db.stops.update_one({"id": d["id"]}, {"$set": {"fee": billing.compute_fee(d, cache[mid])}})
+
+
 @app.on_event("startup")
 async def startup():
     await db.code_redemptions.create_index("code", unique=True)  # a code can only ever be redeemed once
@@ -29,18 +39,10 @@ async def startup():
     demo = not await launch.demo_removed()  # after the launch cleanup no sample data is ever re-created
     if demo:
         await seed.seed()
-    # rename DashLocal -> DashLocal: move demo/admin logins to the new domain (passwords unchanged except admin, from .env)
-    for u in await db.users.find({"email": {"$regex": r"@multidrop\.app$"}}, {"_id": 0, "id": 1, "email": 1}).to_list(100):
-        new = u["email"].replace("@dashlocal.app", "@dashlocal.app")
-        if not await db.users.find_one({"email": new}):
-            await db.users.update_one({"id": u["id"]}, {"$set": {"email": new}})
-        else:
-            await db.users.delete_one({"id": u["id"]})
-    for m in merchant_routes.MERCHANTS if demo else []:
+    for m in merchant_routes.MERCHANTS if demo else []:  # insert-only: never overwrites or deletes
         await db.merchants.update_one({"id": m["id"]}, {"$setOnInsert": m}, upsert=True)
     await auth.seed_users(demo)
-    for d in await db.stops.find({"merchant_id": {"$ne": None}, "fee": None}, {"_id": 0}).to_list(5000):
-        await db.stops.update_one({"id": d["id"]}, {"$set": {"fee": billing.compute_fee(d, await billing.get_pricing(d["merchant_id"]))}})  # orders from before pricing existed
+    realtime.spawn(backfill_fees())
     for did, z in (("drv-1", "North"), ("drv-2", "South"), ("drv-3", "East")) if demo else ():  # demo coverage for auto dispatch
         await db.drivers.update_one({"id": did, "compass_zone": {"$exists": False}}, {"$set": {"compass_zone": z}})
     realtime.spawn(emails.weekly_scheduler())

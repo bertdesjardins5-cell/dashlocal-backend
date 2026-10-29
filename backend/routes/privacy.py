@@ -117,7 +117,17 @@ async def erase_stops(ids: list, label: str = ERASED):
         "pod_signature": None, "pod_photo_path": None, "rating_comment": None, "follow_up_note": None,
         "lat": DEPOT["lat"], "lng": DEPOT["lng"], "share_token": None, "erased_at": now_iso()}})
     await db.invoices.update_many({"stop_id": {"$in": ids}}, {"$set": {"delivery.customer_name": label, "delivery.address": label}})
-    await db.contact_logs.delete_many({"stop_id": {"$in": ids}})
+    await db.contact_logs.update_many({"stop_id": {"$in": ids}, "erased_at": {"$exists": False}},  # anonymised, not deleted
+                                      {"$set": {"message": None, "erased_at": now_iso()}})
+
+
+async def erase_saved_notes(query: dict) -> int:
+    """Blank saved delivery notes in place (soft erase): the phone is replaced so they never match a customer again."""
+    n = 0
+    for d in await db.saved_notes.find({**query, "erased_at": {"$exists": False}}, {"_id": 0, "id": 1}).to_list(5000):
+        await db.saved_notes.update_one({"id": d["id"]}, {"$set": {"phone": f"erased:{d['id']}", "note": "", "erased_at": now_iso()}})
+        n += 1
+    return n
 
 
 CUSTOMER_EXPORT_FIELDS = ("tracking_code", "customer_name", "customer_phone", "address", "postal_code", "status", "created_at",
@@ -188,22 +198,22 @@ async def customer_erase(body: EraseIn, request: Request):
         raise HTTPException(409, f"{open_} order{'s are' if open_ > 1 else ' is'} still out for delivery — erase after they are closed")
     ids = [s["id"] for s in await db.stops.find({"customer_phone": p}, {"_id": 0, "id": 1}).to_list(5000)]
     await erase_stops(ids, "Erased (customer request)")
-    notes = await db.saved_notes.delete_many({"phone": p})
+    deleted_notes = await erase_saved_notes({"phone": p})
     await db.data_requests.insert_one({"id": str(uuid.uuid4()), "kind": "erase", "phone": p, "by": u.get("email") or u["id"], "at": now_iso(),
-                                       "orders": len(ids), "saved_notes": notes.deleted_count, "ip": auth.client_ip(request)})
-    return {"erased_orders": len(ids), "deleted_saved_notes": notes.deleted_count}
+                                       "orders": len(ids), "saved_notes": deleted_notes, "ip": auth.client_ip(request)})
+    return {"erased_orders": len(ids), "deleted_saved_notes": deleted_notes}
 
 
 async def run_retention() -> dict:
+    """Anonymise (never delete) personal details older than the retention period. The audit log is kept."""
     p = await get_privacy()
     cutoff = retention_cutoff(p["retention_days"])
     ids = [d["id"] for d in await db.stops.find(old_stop_query(cutoff), {"_id": 0, "id": 1}).to_list(5000)]
     await erase_stops(ids)
-    notes = await db.saved_notes.delete_many({"$or": [{"updated_at": {"$lt": cutoff}}, {"updated_at": None, "created_at": {"$lt": cutoff}}]})
+    notes = await erase_saved_notes({"$or": [{"updated_at": {"$lt": cutoff}}, {"updated_at": None, "created_at": {"$lt": cutoff}}]})
     await shred_files([f["storage_path"] for f in await db.files.find({"shred_pending": True}, {"_id": 0, "storage_path": 1}).to_list(500)])
-    await db.audit_log.delete_many({"at": {"$lt": cutoff}})
     await db.settings.update_one({"key": "privacy"}, {"$set": {"last_run_at": now_iso(), "last_run_erased": len(ids)}}, upsert=True)
-    return {"erased_orders": len(ids), "deleted_saved_notes": notes.deleted_count, "cutoff": cutoff}
+    return {"erased_orders": len(ids), "deleted_saved_notes": notes, "cutoff": cutoff}
 
 
 async def retention_watcher():

@@ -232,7 +232,7 @@ async def merchant_checklist(merchant_id: str, _: dict = Depends(merchant_access
     steps = [
         {"key": "password", "label": "Choose your password", "done": True},
         {"key": "upload", "label": "Upload your first orders (CSV)", "done": bool(await db.import_jobs.find_one({"merchant_id": merchant_id}, {"_id": 1}))},
-        {"key": "note", "label": "Save a delivery note for a regular customer", "done": bool(await db.saved_notes.find_one({"merchant_id": merchant_id}, {"_id": 1}))},
+        {"key": "note", "label": "Save a delivery note for a regular customer", "done": bool(await db.saved_notes.find_one({"merchant_id": merchant_id, "erased_at": {"$exists": False}}, {"_id": 1}))},
         {"key": "delivered", "label": "Get your first delivery completed", "done": bool(await db.stops.find_one({"merchant_id": merchant_id, "status": "delivered"}, {"_id": 1}))},
     ]
     return {"show": bool(m.get("onboarding")), "steps": steps, "done": sum(s["done"] for s in steps), "total": len(steps)}

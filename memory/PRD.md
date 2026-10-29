@@ -180,3 +180,7 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - Admin › Terms Acceptance (/admin/terms): GET /api/admin/terms-report (stores + drivers), POST /api/admin/terms-report/{merchant_id}/remind (email, 1 per 20h).
 - Drivers: DRIVER_TERMS_VERSION "2026-10" (routes/auth.py); TermsGate kind="driver" in app/driver/_layout.tsx blocks the app until accepted (users.driver_terms_*).
 - Server-side terms enforcement (core.py): TERMS_VERSION / DRIVER_TERMS_VERSION live in core. driver_consented() (all driver manifest/route/stop/upload deps) 403s until courier terms accepted. merchant_access()/import-row edits 403 non-GET store requests until store terms accepted (exempt: /invoices, /square, /statements, /receipts). tests/conftest.py accepts terms for the suite and restores after; tests/test_terms_enforcement.py.
+
+## Deployment health check (Oct 2026) — PASS (warnings only)
+- Fixed blockers: removed startup user rename/delete; seed() inserts only (wipe_demo only via admin reset force=True); retention anonymises saved_notes/contact_logs, keeps audit_log; fee backfill moved to background.
+- Remaining store-review advice: in-app account deletion (Apple 5.1.1(v)), reviewer demo account, background-location disclosure/declarations.
