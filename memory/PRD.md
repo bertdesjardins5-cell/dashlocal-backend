@@ -209,3 +209,4 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - NOTE: preview Square keys are mismatched (live token + sandbox app/location IDs), so real Square calls fail until user saves Production App ID + Kwik Delivery location ID.
 - 2026-10-29: Square LIVE keys verified (Production App ID sq0idp-, location "Kwik Delivery" ACTIVE CAD). Preview + production both charge real cards now.
 - Added card_usable(): cards saved in test mode (no "live" flag) are skipped by autopay in live mode; merchant UI shows "add your card again" (card_needs_update).
+- Card re-add emails: GET/POST /api/admin/square/card-reminders (stores without a usable card, excl. mer-review; 7-day one-tap card link; 20h cooldown per store). UI: CardReminderCard on /admin/payments.

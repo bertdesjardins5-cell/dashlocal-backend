@@ -6,6 +6,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { api, fmtDepotTime } from "@/src/api";
 import { money } from "@/src/components/BillCard";
+import CardReminderCard from "@/src/components/CardReminderCard";
 import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
@@ -27,6 +28,7 @@ export default function CustomerPaymentsScreen() {
   const head = d ? (
     <View style={{ gap: spacing.md }}>
       {d.sandbox ? <Pill label="SQUARE TEST MODE · REFUNDS ARE NOT REAL" tone="yellow" /> : null}
+      <CardReminderCard notify={toast.show} />
       <View style={s.card} testID="tips-by-driver">
         <Display style={s.title}>TIPS BY DRIVER</Display>
         {d.tips_by_driver.length === 0 ? <Mono style={s.meta}>No tips yet.</Mono> : d.tips_by_driver.map((t) => (

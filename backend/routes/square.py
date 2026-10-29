@@ -826,3 +826,66 @@ async def email_refund(s: dict, p: dict, rec: dict):
         await emails.send_email(to=p["email"], subject=f"ArriveWise refund — order {s['tracking_code']} ({money(rec['amount'])})", html=html)
     except Exception as e:
         logger.warning(f"Refund email: {e}")
+
+
+# ---------------------------------------------------------------- card re-add reminders (after going live)
+CARD_LINK_DAYS = 7
+CARD_REMIND_COOLDOWN_H = 20
+
+
+async def card_reminder_targets() -> list:
+    out = []
+    for m in await db.merchants.find({"disabled": {"$ne": True}, "id": {"$ne": "mer-review"}},  # the Play reviewer store has no real inbox
+                                     {"_id": 0, "id": 1, "name": 1, "square": 1, "card_reminded_at": 1}).sort("name", 1).to_list(1000):
+        sqd = m.get("square") or {}
+        if card_usable(sqd):
+            continue
+        out.append({"id": m["id"], "name": m["name"], "reason": "re-add" if sqd.get("card_id") else "no-card", "reminded_at": m.get("card_reminded_at")})
+    return out
+
+
+@router.get("/admin/square/card-reminders", dependencies=ADMIN_ONLY)
+async def card_reminders_status():
+    t = await card_reminder_targets()
+    return {"configured": configured(), "sandbox": sandbox(), "stores": t,
+            "re_add": sum(1 for x in t if x["reason"] == "re-add"), "no_card": sum(1 for x in t if x["reason"] == "no-card")}
+
+
+@router.post("/admin/square/card-reminders", dependencies=ADMIN_ONLY)
+async def send_card_reminders(request: Request):
+    """Email every store without a working card a one-tap link (valid 7 days) to Square's secure card page."""
+    if not configured():
+        raise HTTPException(503, "Card payments aren't set up yet")
+    now = datetime.now(timezone.utc)
+    results = []
+    for m in await card_reminder_targets():
+        if m["reminded_at"] and now - datetime.fromisoformat(m["reminded_at"]) < timedelta(hours=CARD_REMIND_COOLDOWN_H):
+            results.append({"id": m["id"], "name": m["name"], "status": "skipped_recent"})
+            continue
+        to_list = await merchant_recipients(m["id"])
+        if not to_list:
+            results.append({"id": m["id"], "name": m["name"], "status": "no_email"})
+            continue
+        link = await page_url(request, page_token("card", m["id"], minutes=CARD_LINK_DAYS * 24 * 60, by="email-link"))
+        p = await billing.get_pricing(m["id"])
+        hst = (await invoices.get_business())["hst_pct"]
+        intro = ("Card payments on ArriveWise are now live. The card you saved earlier was a test card, so autopay is paused until you add your card again."
+                 if m["reason"] == "re-add" else "Card payments on ArriveWise are now live. Add a card once and we'll pay your invoices automatically.")
+        html = onboarding.brand_email("Add your card to keep autopay on",
+                                      f"<p>Hi {escape(m['name'])}, {intro}</p>"
+                                      f"<p>We charge your monthly platform fee ({money(p.get('monthly_fee', 0))} + {hst:g}% HST) and, every Monday, the deliveries "
+                                      "completed the week before. You get a receipt after every charge and can remove the card anytime in your Merchant Portal.</p>"
+                                      f"<p style='color:#5C5C5E;font-size:12px'>The button opens Square's secure card page and works for {CARD_LINK_DAYS} days. "
+                                      "Your card number goes straight to Square — we never ask for card details by email.</p>",
+                                      ("Add my card", link))
+        sent = 0
+        for to in to_list:
+            try:
+                await emails.send_email(to=to, subject=f"Action needed: add your card for ArriveWise autopay — {m['name']}", html=html)
+                sent += 1
+            except Exception as e:
+                logger.warning(f"Card reminder to {to}: {e}")
+        if sent:
+            await db.merchants.update_one({"id": m["id"]}, {"$set": {"card_reminded_at": now_iso()}})
+        results.append({"id": m["id"], "name": m["name"], "status": "sent" if sent else "failed", "emails": sent})
+    return {"sent": sum(1 for r in results if r["status"] == "sent"), "results": results}
