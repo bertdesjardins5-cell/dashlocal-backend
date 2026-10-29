@@ -40,9 +40,7 @@ Upload it to YouTube (unlisted) and paste the link.
 
 ## 4. Reviewer access (App access section)
 Choose "All or some functionality is restricted" and give:
-- **Store account:** create a store for the reviewer in Admin → Merchants (e.g. `review-store@arrivewise.app`), already approved and with the latest terms accepted.
-- **Driver account:** create a reviewer driver in Admin → Drivers, set a 6-digit PIN, and assign a small route with 2–3 stops.
-- **Customer:** no login. Give one tracking code (e.g. from that reviewer route) and the last 4 digits of its phone number.
+- **One tap:** Admin → PLAY STORE REVIEWER → "Create reviewer accounts" (reset it on submission day). It shows the store login, driver phone + PIN and 3 customer tracking codes to paste here.
 - Note for the reviewer: "Card payments are live. Please don't complete a real payment; all other screens can be tested freely."
 
 Don't give the reviewer the main admin password.

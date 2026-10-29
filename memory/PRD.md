@@ -202,3 +202,10 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 ## 2026-06 (fork)
 - Created /app/memory/PLAY_STORE_SUBMISSION.md (Data Safety answers, background-location justification, reviewer access, console sections).
 - Square live switch: no code change needed; square.py auto-detects sandbox by "sandbox-" APPLICATION_ID prefix. Requested live keys via secrets card (keys are shared preview+prod, so preview will also charge real cards).
+- Added Play Store reviewer kit (routes/launch.py /api/admin/reviewer-kit, app/admin/reviewer.tsx, link in admin index).
+- Added store email when a customer pays an order by card (square.email_store_order_paid). Customer receipts + store charge receipts already existed.
+- Driver tips: $2/$3/$5/custom (no HST, max $100) on the Square order page + separate "Tip your driver" after delivery (POST /api/track/{code}/tip-link, kind "tip"). Stored in customer_payment.tip and stops.tips[].
+- Refunds: admin /admin/payments screen; GET /api/admin/customer-payments (incl. tips_by_driver), POST /api/admin/stops/{id}/refund {payment_id, amount, reason} full/partial via Square /v2/refunds; customer refund email.
+- NOTE: preview Square keys are mismatched (live token + sandbox app/location IDs), so real Square calls fail until user saves Production App ID + Kwik Delivery location ID.
+- 2026-10-29: Square LIVE keys verified (Production App ID sq0idp-, location "Kwik Delivery" ACTIVE CAD). Preview + production both charge real cards now.
+- Added card_usable(): cards saved in test mode (no "live" flag) are skipped by autopay in live mode; merchant UI shows "add your card again" (card_needs_update).

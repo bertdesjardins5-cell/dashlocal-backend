@@ -11,7 +11,7 @@ import { makeStyles, spacing, useTheme } from "@/src/theme";
 type Charge = { id: string; kind: string; label: string; status: "paid" | "processing" | "failed" | "gave_up" | "superseded"; total: number | null; attempts: number;
   last_error: string | null; next_try_at: string | null; paid_at: string | null; created_at: string; receipt_url: string | null };
 type Resp = { configured: boolean; sandbox: boolean; monthly_fee: number; hst_pct: number;
-  card: { brand: string; last4: string; exp_month: number; exp_year: number; saved_at: string } | null; charges: Charge[] };
+  card: { brand: string; last4: string; exp_month: number; exp_year: number; saved_at: string } | null; card_needs_update?: boolean; charges: Charge[] };
 type Notify = (m: string, tone?: "dark" | "red" | "green") => void;
 
 const TONE = { paid: "green", processing: "dark", failed: "red", gave_up: "red", superseded: "light" } as const;
@@ -69,6 +69,8 @@ export default function CardOnFileCard({ merchantId, notify }: { merchantId: str
           </View>
           <Pill label="autopay on" tone="green" />
         </View>
+      ) : d.card_needs_update ? (
+        <Mono style={s.meta} testID="card-on-file-readd">PAYMENTS ARE NOW LIVE · PLEASE ADD YOUR CARD AGAIN TO KEEP AUTOPAY ON</Mono>
       ) : (
         <Mono style={s.meta} testID="card-on-file-empty">NO CARD SAVED · ADD ONE TO PAY AUTOMATICALLY</Mono>
       )}

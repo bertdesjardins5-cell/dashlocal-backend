@@ -6,7 +6,7 @@ import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { Display, Loading, Mono } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
 
-export type SquareResult = Record<string, any> & { kind: "card" | "invoices" | "order"; status: string };
+export type SquareResult = Record<string, any> & { kind: "card" | "invoices" | "order" | "tip"; status: string };
 
 // Square's secure card form (hosted by our backend with the Square Web Payments SDK). Card numbers go straight to Square;
 // the page tells us when the charge / saved card succeeded.

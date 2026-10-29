@@ -73,7 +73,8 @@ class Stop(BaseModel):
     erased_at: Optional[str] = None  # personal details removed by the retention job
     rating_tags: List[str] = []  # quick feedback chips picked with the star rating
     amount_due: Optional[float] = None  # set by the store: what the customer pays in the app (CAD, before HST)
-    customer_payment: Optional[dict] = None  # Square payment by the customer (amount, hst, total, card, receipt)
+    customer_payment: Optional[dict] = None  # Square payment by the customer (amount, hst, total, tip, card, receipt, refunds)
+    tips: Optional[list] = None  # separate driver tips paid after delivery (Square payments, no HST)
 
 
 class Route(BaseModel):

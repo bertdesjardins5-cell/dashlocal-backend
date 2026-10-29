@@ -13,6 +13,8 @@ import DeliveryProof from "@/src/components/DeliveryProof";
 import VerifyOrder from "@/src/components/VerifyOrder";
 import CustomerNote from "@/src/components/CustomerNote";
 import OrderPayment from "@/src/components/OrderPayment";
+import TipDriver from "@/src/components/TipDriver";
+import { money } from "@/src/components/BillCard";
 import { loadUnlock, saveUnlock, Verified } from "@/src/orderUnlock";
 import RouteMap from "@/src/components/RouteMap";
 import { Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
@@ -199,6 +201,14 @@ export default function TrackOrder() {
                     }}
                     onError={(m) => toast.show(m, "red")}
                   />
+                ) : null}
+                {delivered ? (
+                  <TipDriver code={code} driver={t.driver?.name} tipsTotal={order.tips_total ?? 0} orderToken={order.token}
+                    onError={(m) => toast.show(m, "red")}
+                    onTipped={(amt) => {
+                      toast.show(`THANK YOU · ${money(amt)} TIP SENT`, "green");
+                      api<OrderPrivate>(`/track/${code}/private`, { headers: { "X-Order-Token": order.token } }).then((p) => setOrder({ ...p, token: order.token })).catch(() => {});
+                    }} />
                 ) : null}
               </>
             )}

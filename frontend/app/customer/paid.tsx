@@ -49,6 +49,8 @@ export default function PaymentConfirmed() {
               ["ORDER", code],
               ["ORDER AMOUNT", money(p.amount)],
               [`HST ${p.hst_pct}%`, money(p.hst)],
+              ...(p.tip ? [["DRIVER TIP", money(p.tip)]] : []),
+              ...(p.refunded ? [["REFUNDED", `−${money(p.refunded)}`]] : []),
               ["CARD", p.card],
               ["PAID", p.paid_at ? fmtDepotTime(p.paid_at) : "—"],
               ["RECEIPT SENT TO", p.email],
