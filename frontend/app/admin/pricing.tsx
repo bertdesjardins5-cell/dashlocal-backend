@@ -10,7 +10,7 @@ import { money } from "@/src/components/BillCard";
 import StoreRatesSheet from "@/src/components/StoreRatesSheet";
 import PaymentConfirmSheet, { PayTarget } from "@/src/components/PaymentConfirmSheet";
 
-type Pricing = { currency: string; base_fee: number; included_km: number; per_km: number; priority_fee: number; charge_failed: boolean; tax_pct: number };
+type Pricing = { currency: string; base_fee: number; included_km: number; per_km: number; priority_fee: number; charge_failed: boolean; tax_pct: number; monthly_fee: number };
 type Billing = {
   week_start: string; week_end: string; currency: string; total: number; drops: number; weeks: string[]; outstanding: number;
   stores: {
@@ -25,6 +25,7 @@ const FIELDS: { k: keyof Omit<Pricing, "currency" | "charge_failed">; label: str
   { k: "per_km", label: "EXTRA PER KM", unit: "CAD per km beyond included" },
   { k: "priority_fee", label: "PRIORITY SURCHARGE", unit: "CAD per priority drop" },
   { k: "tax_pct", label: "SALES TAX (GST/HST)", unit: "% added to bills" },
+  { k: "monthly_fee", label: "MONTHLY PLATFORM FEE", unit: "CAD per store, before HST · charged to cards on file" },
 ];
 
 // Admin: edit pricing and see what each store owes this week.

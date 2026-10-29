@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { ActivityIndicator, Linking, Platform, Pressable, TextInput, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
 import { api, BACKEND_URL, dayLabel } from "@/src/api";
 import { money } from "@/src/components/BillCard";
+import SquarePaySheet, { SquareResult } from "@/src/components/SquarePaySheet";
+import { queryClient } from "@/src/query-client";
 import { Btn, Display, Mono, Pill } from "@/src/ui";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
@@ -18,10 +19,10 @@ type Filter = "all" | "unpaid" | "paid";
 const LIMIT = 10;
 
 // Merchant: one invoice per completed delivery (fee + 13% HST), balances, PDF download, billing address.
-export default function InvoicesCard({ merchantId, notify, paidSession }: { merchantId: string; notify: (m: string, tone?: "dark" | "red" | "green") => void; paidSession?: string }) {
+export default function InvoicesCard({ merchantId, notify }: { merchantId: string; notify: (m: string, tone?: "dark" | "red" | "green") => void }) {
   const s = useStyles();
-  const router = useRouter();
   const { colors } = useTheme();
+  const [payUrl, setPayUrl] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [open, setOpen] = useState<string | null>(null);
   const [all, setAll] = useState(false);
@@ -67,48 +68,20 @@ export default function InvoicesCard({ merchantId, notify, paidSession }: { merc
   const payCard = async () => {
     setBusy("card");
     try {
-      const r = await api<{ url: string }>(`/merchants/${merchantId}/invoices/checkout`, { method: "POST", body: { ids: Array.from(sel) } });
-      await openUrl(r.url); // Stripe's secure card page; we come back to the portal with ?paid=<session>
+      setPayUrl((await api<{ url: string }>(`/merchants/${merchantId}/invoices/square-pay`, { method: "POST", body: { ids: Array.from(sel) } })).url);
     } catch (e: any) {
       notify(e.message, "red");
+    } finally {
       setBusy(null);
     }
   };
-  // Back from Stripe: check the payment with the server (it asks Stripe) until it is settled.
-  useEffect(() => {
-    if (!paidSession || paidSession === "cancel") {
-      if (paidSession === "cancel") {
-        notify("CARD PAYMENT CANCELLED · NOTHING WAS CHARGED", "dark");
-        router.setParams({ paid: undefined });
-      }
-      return;
-    }
-    let stop = false;
-    (async () => {
-      for (let i = 0; i < 10 && !stop; i++) {
-        try {
-          const r = await api<{ status: string; amount: number; count: number; credit: number }>(`/merchants/${merchantId}/payments/${paidSession}`);
-          if (r.status === "paid") {
-            if (r.credit > 0) notify(`PAYMENT RECEIVED · ${money(r.credit)} WAS ALREADY PAID · DASHLOCAL WILL REFUND IT`, "dark");
-            else notify(`PAYMENT RECEIVED · ${money(r.amount)} · ${r.count} INVOICE${r.count === 1 ? "" : "S"} PAID`, "green");
-            q.refetch();
-            router.setParams({ paid: undefined });
-            return;
-          }
-          if (r.status === "expired") {
-            router.setParams({ paid: undefined });
-            return notify("CARD PAYMENT EXPIRED · NOTHING WAS CHARGED", "red");
-          }
-        } catch {}
-        await new Promise((res) => setTimeout(res, 2000));
-      }
-      if (!stop) notify("STILL CONFIRMING YOUR PAYMENT · CHECK BACK IN A MINUTE", "dark");
-    })();
-    return () => {
-      stop = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paidSession]);
+  const onPaid = (r: SquareResult) => {
+    setPayUrl(null);
+    setSel(new Set());
+    notify(`PAYMENT RECEIVED · ${money(r.total)} · ${r.count} INVOICE${r.count === 1 ? "" : "S"} PAID · RECEIPT EMAILED`, "green");
+    q.refetch();
+    queryClient.invalidateQueries({ queryKey: ["square", merchantId] });
+  };
   const report = async () => {
     setBusy("report");
     try {
@@ -251,8 +224,9 @@ export default function InvoicesCard({ merchantId, notify, paidSession }: { merc
             </View>
           </View>
         )}
-        <Mono style={s.meta}>Prices in CAD plus {d.invoices[0]?.hst_pct ?? 13}% HST (Ontario). Payment is arranged directly with dispatch; invoices show as paid once received.</Mono>
+        <Mono style={s.meta}>Prices in CAD plus {d.invoices[0]?.hst_pct ?? 13}% HST (Ontario). With a card on file, invoices are charged automatically; otherwise pay them by card here.</Mono>
       </View>
+      <SquarePaySheet url={payUrl} title="PAY INVOICES" onClose={() => setPayUrl(null)} onDone={onPaid} />
     </View>
   );
 }

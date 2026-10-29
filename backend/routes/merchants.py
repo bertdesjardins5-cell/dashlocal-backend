@@ -45,7 +45,19 @@ COLUMNS = {
     "priority": {"priority", "priority_delivery", "rush", "express"},
     "delivery_note": {"delivery_note", "gate_code", "customer_note", "dropoff_note", "door_note"},
     "matter_ref": {"matter_ref", "matter", "matter_number", "matter_no", "file_number", "file_no", "file", "client_matter", "reference"},
+    "amount_due": {"amount_due", "amount", "customer_pays", "balance_due", "order_total", "cod"},
 }
+
+
+def parse_amount(v) -> Optional[float]:
+    """Customer pays this in the app (before HST); '' = nothing to pay. Raises ValueError when not a sensible amount."""
+    t = str(v or "").replace("$", "").replace(",", "").strip()
+    if not t:
+        return None
+    a = round(float(t), 2)
+    if not 1 <= a <= 10000:
+        raise ValueError
+    return a
 TRUTHY = {"yes", "y", "true", "1", "x", "priority", "rush", "express"}
 TEMPLATE_CSV = ("customer_name,phone,address,notes,window_date,window_start,window_end,priority,delivery_note,matter_ref\n"
                 "Jane Doe,519 555 0123,200 King St W Kitchener,Leave at reception,,,,,,\n"
@@ -117,6 +129,10 @@ def validate_row(d: dict) -> Optional[str]:
             return "window_date must be YYYY-MM-DD"
         if wd < today_str():
             return "window_date is in the past"
+    try:
+        parse_amount(d.get("amount_due"))
+    except ValueError:
+        return "amount_due must be a dollar amount between 1.00 and 10000.00"
     return None
 
 
@@ -149,7 +165,8 @@ async def process_row(row: dict) -> dict:
                         tracking_code=await new_tracking_code(), notes=d.get("notes") or "",
                         window_start=d.get("window_start") or None, window_end=d.get("window_end") or None,
                         window_date=d.get("window_date") or None, merchant_id=row["merchant_id"], created_at=now_iso(),
-                        priority=(d.get("priority") or "").strip().lower() in TRUTHY, matter_ref=clean_matter(d.get("matter_ref")))
+                        priority=(d.get("priority") or "").strip().lower() in TRUTHY, matter_ref=clean_matter(d.get("matter_ref")),
+                        amount_due=parse_amount(d.get("amount_due")))
             if row.get("run") in RUNS:  # pharmacy batch: the run sets the day and the patient delivery window
                 r = RUNS[row["run"]]
                 stop.window_start, stop.window_end, stop.window_date = r["window"][0], r["window"][1], row["manifest_id"].split(":")[1]
@@ -449,6 +466,7 @@ class RowFixIn(BaseModel):
     window_end: Optional[str] = None
     priority: Optional[str] = None
     matter_ref: Optional[str] = None
+    amount_due: Optional[str] = None
 
 
 class MatterIn(BaseModel):

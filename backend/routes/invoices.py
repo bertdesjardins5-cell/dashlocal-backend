@@ -73,8 +73,9 @@ async def create_invoice(stop_id: str) -> Optional[dict]:
 
 
 async def open_session_invoice_ids(merchant_id: str) -> set:
-    return {i for ps in await db.payment_sessions.find({"merchant_id": merchant_id, "status": "open"}, {"_id": 0, "invoice_ids": 1}).to_list(100)
-            for i in ps.get("invoice_ids", [])}
+    """Invoices inside a Square card charge being processed right now keep their price."""
+    return {i for c in await db.square_charges.find({"merchant_id": merchant_id, "status": "processing"}, {"_id": 0, "invoice_ids": 1}).to_list(100)
+            for i in c.get("invoice_ids", [])}
 
 
 async def rerate_invoice(inv: dict, rate: float, desc: str, extra: dict):
@@ -106,14 +107,16 @@ async def apply_manifest_rate(merchant_id: str, manifest_id: Optional[str]):
 
 
 async def ensure_platform_invoices():
-    """$25/month platform fee for each pharmacy partner, once per calendar month (idempotent via the unique stop_id key)."""
+    """Monthly platform fee (same for every store, set in Admin › Pricing), once per calendar month (idempotent via the unique stop_id key)."""
     month = datetime.now(TZ).strftime("%Y-%m")
     biz = await get_business()
-    for m in await db.merchants.find({"pharmacy_partner": True}, {"_id": 0}).to_list(500):
+    sub = round((await billing.get_pricing())["monthly_fee"], 2)
+    if sub <= 0:
+        return
+    for m in await db.merchants.find({"disabled": {"$ne": True}}, {"_id": 0}).to_list(1000):
         key = f"platform:{m['id']}:{month}"
         if await db.invoices.find_one({"stop_id": key}, {"_id": 1}):
             continue
-        sub = billing.PHARMACY["monthly_fee"]
         hst = round(sub * biz["hst_pct"] / 100, 2)
         label = datetime.strptime(month, "%Y-%m").strftime("%B %Y")
         inv = {"id": str(uuid.uuid4()), "number": None, "kind": "platform", "merchant_id": m["id"], "stop_id": key,
@@ -318,7 +321,8 @@ def invoice_pdf(inv: dict) -> bytes:
         ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
     ]))
     doc.build([head, Spacer(1, 14), meta, Spacer(1, 18), bill_to, Spacer(1, 12), deliv, Spacer(1, 16), t, Spacer(1, 24),
-               Paragraph("Thank you for delivering with DashLocal. Payment is arranged directly with dispatch; please quote the invoice number.", small)])
+               Paragraph("Thank you for delivering with DashLocal. Stores with a card on file are charged automatically (monthly fee at the start of each month, "
+                         "deliveries every Monday for the week before). Otherwise pay by card in the Merchant Portal, quoting the invoice number.", small)])
     return buf.getvalue()
 
 

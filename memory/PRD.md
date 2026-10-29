@@ -162,3 +162,9 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 
 ## Regression check (post-fork)
 - Frontend: all 9 flows pass (iteration_56). Backend: 680 pass; the 28 failures are not real bugs (email provider rate limit, time-of-day window, outdated link-page tests).
+
+## Square payments (Oct 2026) — replaces Stripe
+- routes/square.py: hosted card page (/api/square/pay, Web Payments SDK) + /api/square/complete; sandbox/live picked from SQUARE_APPLICATION_ID prefix.
+- Merchant autopay: card on file (Square Customers+Cards). Monthly platform fee (Admin › Pricing, same for every store, default $25 + 13% HST) and every Monday all unpaid delivery invoices from before this week, one charge. Retries daily up to 3x; receipt + failure emails.
+- Manual invoice pay by card (PAY BY CARD) and customer order pay (store sets amount_due per order or CSV column amount_due; customer pays + HST after the 4-digit unlock; /customer/paid confirmation + email receipt).
+- All money goes to DashLocal's single Square account. Before launch: put live keys in the live slot and publish.

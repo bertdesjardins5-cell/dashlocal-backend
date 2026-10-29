@@ -6,7 +6,7 @@ import time
 import uuid
 import re
 from core import ENC_FIELDS, HTML_CSP, client, db, enc_str, init_storage, logger, now_iso
-from routes import alerts, auth, billing, dispatch, emails, feedback, invoices, launch, merchants as merchant_routes, onboarding, payments, pickups as pickup_routes, privacy, push, receipts, setup, linkpages, scorecards, stops as stop_routes
+from routes import alerts, auth, billing, dispatch, emails, feedback, invoices, launch, merchants as merchant_routes, onboarding, payments, pickups as pickup_routes, privacy, push, receipts, setup, linkpages, scorecards, square, stops as stop_routes
 from services import realtime
 from services import seed
 
@@ -50,6 +50,7 @@ async def startup():
     realtime.spawn(invoices.platform_fee_watcher())
     realtime.spawn(privacy.retention_watcher())
     realtime.spawn(invoices.batch_progress_watcher())
+    realtime.spawn(square.billing_watcher())
     await db.batch_alerts.create_index("id", unique=True)
     await db.missed_pickup_alerts.create_index("id", unique=True)
     await db.driver_shoutouts.create_index("stop_id", unique=True)
@@ -93,7 +94,7 @@ async def audit_and_security_headers(request: Request, call_next):
     return resp
 
 
-for module in (pickup_routes, dispatch, stop_routes, feedback, scorecards, auth, merchant_routes, emails, alerts, billing, invoices, payments, onboarding, privacy, launch, setup, push, receipts):
+for module in (pickup_routes, dispatch, stop_routes, feedback, scorecards, auth, merchant_routes, emails, alerts, billing, invoices, payments, onboarding, privacy, launch, setup, push, receipts, square):
     app.include_router(module.router)
 
 # Only the app's own web addresses may call the API from a browser (phone apps send no Origin and are unaffected).

@@ -58,7 +58,12 @@ def order_private(stop: "Stop") -> dict:
     return {"customer_name": stop.customer_name, "address": stop.address, "lat": stop.lat, "lng": stop.lng,
             "pod_photo_url": file_url(stop.pod_photo_path) if stop.pod_photo_path else None,
             "pod_signature": stop.pod_signature, "apology_code": stop.apology_code, "customer_note": stop.customer_note,
-            "customer_note_source": stop.customer_note_source}
+            "customer_note_source": stop.customer_note_source, "payment": order_payment(stop.model_dump())}
+
+
+def order_payment(s: dict):
+    from routes.square import order_payment as op  # lazy: routes.square imports this module
+    return op(s)
 
 
 async def tracking_payload(code: str) -> dict:

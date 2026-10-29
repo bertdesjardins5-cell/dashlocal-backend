@@ -35,6 +35,8 @@ export type Stop = {
   nearby_sms_status?: string | null;
   priority?: boolean;
   matter_ref?: string | null;
+  amount_due?: number | null;
+  customer_payment?: { total: number; payment_id: string } | null;
   fee?: { base: number; km: number; distance_fee: number; priority_fee: number; total: number; currency: string } | null;
   late_min?: number;
   fail_reason: string | null;
@@ -96,6 +98,12 @@ export type OrderPrivate = {
   apology_code: string | null;
   customer_note: string | null;
   customer_note_source?: string | null;
+  payment?: OrderPayment | null;
+};
+
+export type OrderPayment = {
+  amount: number; hst_pct: number; hst: number; total: number; paid: boolean; paid_at: string | null;
+  card: string | null; receipt_url: string | null; payment_id: string | null; email: string | null;
 };
 
 export type Tracking = {

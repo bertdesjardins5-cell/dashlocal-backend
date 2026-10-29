@@ -16,6 +16,8 @@ import { money } from "@/src/components/BillCard";
 import InvoicesCard from "@/src/components/InvoicesCard";
 import ReceiptArchive from "@/src/components/ReceiptArchive";
 import MatterTag from "@/src/components/MatterTag";
+import AmountDueTag from "@/src/components/AmountDueTag";
+import CardOnFileCard from "@/src/components/CardOnFileCard";
 import { queryClient } from "@/src/query-client";
 import BatchRateTracker from "@/src/components/BatchRateTracker";
 import PharmacySummaryCard from "@/src/components/PharmacySummaryCard";
@@ -35,7 +37,7 @@ type Detail = {
 };
 
 export default function MerchantHome() {
-  const { merchantId, paid } = useLocalSearchParams<{ merchantId: string; paid?: string }>();
+  const { merchantId } = useLocalSearchParams<{ merchantId: string }>();
   const s = useStyles();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -140,7 +142,7 @@ export default function MerchantHome() {
 
           <Mono style={s.section}>IMPORT ORDERS FROM CSV</Mono>
           <View style={s.block}>
-            <Mono style={s.meta}>Columns: customer_name, phone, address (required) · notes, window_date, window_start, window_end, priority (yes = priority delivery, surcharge applies), delivery_note or gate_code (sent to the driver and saved for that customer&apos;s next orders){d.business_type === "law_office" ? ", matter_ref or file_number (printed on the signed receipt)" : ""} (optional). Up to 200 rows per file. Addresses are looked up on the map automatically.{d.runs ? " Pharmacy runs set the delivery day and window, so window columns are ignored." : ""}</Mono>
+            <Mono style={s.meta}>Columns: customer_name, phone, address (required) · notes, window_date, window_start, window_end, priority (yes = priority delivery, surcharge applies), delivery_note or gate_code (sent to the driver and saved for that customer&apos;s next orders){d.business_type === "law_office" ? ", matter_ref or file_number (printed on the signed receipt)" : ""}, amount_due (what the customer pays in the app by card, before HST) (optional). Up to 200 rows per file. Addresses are looked up on the map automatically.{d.runs ? " Pharmacy runs set the delivery day and window, so window columns are ignored." : ""}</Mono>
             <View style={s.privacyWarn} testID="health-info-warning">
               <Ionicons name="shield-checkmark" size={18} color={colors.onWarning} />
               <Mono style={[s.meta, { flex: 1, color: colors.onWarning }]}>
@@ -217,7 +219,8 @@ export default function MerchantHome() {
 
           <Mono style={s.section}>INVOICES · CAD + HST</Mono>
           {d.runs ? <PharmacySummaryCard merchantId={merchantId} notify={toast.show} /> : null}
-          <InvoicesCard merchantId={merchantId} notify={toast.show} paidSession={paid} />
+          <InvoicesCard merchantId={merchantId} notify={toast.show} />
+          <CardOnFileCard merchantId={merchantId} notify={toast.show} />
           <ReceiptArchive merchantId={merchantId} notify={toast.show} />
 
           <Mono style={s.section}>DELIVERY REPORT</Mono>
@@ -255,6 +258,12 @@ export default function MerchantHome() {
                 <View style={{ marginHorizontal: spacing.lg }}>
                   <MatterTag merchantId={merchantId} stopId={o.id} value={o.matter_ref} notify={toast.show}
                     onSaved={() => { q.refetch(); queryClient.invalidateQueries({ queryKey: ["receipts", merchantId] }); }} />
+                </View>
+              ) : null}
+              {o.status !== "failed" || o.customer_payment ? (
+                <View style={{ marginHorizontal: spacing.lg }}>
+                  <AmountDueTag merchantId={merchantId} stopId={o.id} value={o.amount_due} paid={o.customer_payment?.payment_id ? o.customer_payment : null}
+                    notify={toast.show} onSaved={() => q.refetch()} />
                 </View>
               ) : null}
             </View>

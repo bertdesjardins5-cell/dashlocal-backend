@@ -1,0 +1,50 @@
+{
+  "summary": "I tested the Square sandbox integration on the backend (pytest, 17 tests, run with -n 0) and the frontend (390x844 Playwright, with real typing into Square's nested card iframe). Backend: 16 of 17 pass. Card on file, invoice pay (declined then ok), customer order pay, amount-due, hosted page, CSP, monthly-fee pricing and platform autopay all work. CRITICAL FRONTEND BUG: the hosted Square card page (/api/square/pay) calls card.tokenize() without verificationDetails.billingContact. Square's SDK rejects this with 'verificationDetails.billingContact is required and must be a(n) object.', so real card entry fails for all three flows: customer order pay, merchant ADD/REPLACE CARD and invoice PAY BY CARD. I confirmed the fix: calling tokenize with billingContact:{email} from the same page charged CA$48.03 (Visa ••1111). The app then went to /customer/paid?code=MD1001, which shows PAYMENT RECEIVED, and the tracking page showed PAID + VIEW PAYMENT CONFIRMATION. HIGH BACKEND BUG: save_card resets failed autopay charges to attempts=0, so the retry reuses the Square idempotency key '{key}:1' with a different card. Square answers 400 IDEMPOTENCY_KEY_REUSED (I saw this in the backend log), so overdue charges can't be collected after a merchant replaces a declined card. No deprecated Expo packages found.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "routes/square.py save_card() + auto_charge()", "issue": "save_card resets failed/gave_up square_charges to attempts=0, and auto_charge builds the Square idempotency key as f'{key}:{attempt}'. The retry after a card change reuses '{key}:1' with a different source (and maybe a different amount). Square rejects it with 400 IDEMPOTENCY_KEY_REUSED ('Different request parameters used for the same idempotency_key: week:mer-1:2026-10-26:1', seen in backend.err log). The charge fails again, the merchant gets a 'card payment failed' email right after updating their card, and a store that gave up after 3 tries can never be auto-charged for that period. Fix: put a unique part in the key (e.g. f'{key}:{card_id[-10:]}:{attempt}' or a uuid per attempt saved on the doc), or don't reset attempts and keep a separate retry budget.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "run_auto_billing weekly key week:{mid}:{monday}", "issue": "Only one weekly charge per Monday. An unpaid delivery invoice dated before this Monday that appears after this week's charge was already paid (late-created invoice, or a 'reported' payment reverted to unpaid) is skipped until next Monday. Repro: test_weekly_charge_idempotent inserts a last-week unpaid invoice -> run-billing returns [] and the invoice stays unpaid."},
+      {"endpoint": "settle_invoices / email_merchant_receipt / email_customer_receipt", "issue": "Receipt emails are sent once with no retry. Under Resend 429 bursts, receipt_emails / customer_payment.receipt_email stays 'failed: Email provider error 429' for good (seen in the auto-charge test). Consider a retry or queue."},
+      {"endpoint": "POST /square/complete (invoices) vs auto billing", "issue": "Race: a manual invoice card pay takes inv:{id} locks, but auto_charge doesn't check those locks (and the manual pay ignores 'processing' autopay docs). The same platform or last-week invoice could be charged twice if both run at the same moment. update_many only guards the status flip, not the Square charge."},
+      {"endpoint": "describe() kind=invoices", "issue": "No 'who' is set, so the hosted invoice page shows '· Secured by Square' with no merchant name."},
+      {"endpoint": "backend/requirements.txt", "issue": "Still lists stripe after the Stripe removal (leftover dependency)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Hosted Square card page (backend/routes/square.py ~line 346, $('go').onclick)", "issue": "card.tokenize(v) is called without billingContact, and Square Web Payments SDK 1.87.2 throws 'verificationDetails.billingContact is required and must be a(n) object.' Users can't pay by card or save a card (order pay, card on file, invoice pay). Verified fix: add billingContact:{email: em || undefined, countryCode:'CA'} (or at least {email}) to both the CHARGE and the STORE verificationDetails.", "testID": "square-pay-frame / #go", "priority": "CRITICAL"},
+      {"component": "Hosted page TEST MODE banner", "issue": "The banner says 'postal code K1A 0B1', but for test card 4111 1111 1111 1111 Square shows a US numeric ZIP field. Typing K1A0B1 gives '101' and 'Enter a valid zip code'. Change the banner to 'ZIP 12345' (or use a Canadian sandbox test card).", "testID": "square-pay-frame", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [
+      {"flow": "Customer pay -> confirmation", "issue": "Blocked as-is by the billingContact tokenize error. With the fix applied in-page, the whole flow works: charge succeeds, postMessage reaches the app, it navigates to /customer/paid?code=MD1001 (PAYMENT RECEIVED CA$48.03, Visa ••1111, receipt sent), and the tracking page shows PAID + VIEW PAYMENT CONFIRMATION.", "affected_testIDs": ["order-payment-pay", "square-pay-frame", "payment-confirmation-screen"]},
+      {"flow": "Merchant ADD/REPLACE CARD", "issue": "Same tokenize error after ticking consent ('Save card' fails).", "affected_testIDs": ["card-on-file-add", "square-pay-frame"]}
+    ],
+    "design_issues": [
+      {"screen": "Customer tracking OrderPayment box", "issues": ["When paid, the label 'PAID' and the pill 'PAID' repeat (PAID | PAID)."]},
+      {"screen": "Merchant CardOnFileCard", "issues": ["'SAVED 29 THU' date is hard to read (no month); the charges list uses the same '29 THU' format."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_square_payments.py", "/app/test_reports/pytest/square_results.xml"],
+  "action_items": [
+    "CRITICAL: in routes/square.py pay_page script, add billingContact to the verificationDetails passed to card.tokenize (CHARGE and STORE), e.g. {..., billingContact:{email: em || undefined, countryCode:'CA'}}. Then retest customer pay, card save and invoice pay through the real card form.",
+    "HIGH: make Square idempotency keys unique per retry generation (save_card resets attempts=0, which leads to IDEMPOTENCY_KEY_REUSED).",
+    "Fix the TEST MODE banner: 4111 card -> ZIP 12345, not K1A 0B1.",
+    "Optional: handle late invoices after the weekly charge, retry receipt emails on 429, guard against manual pay vs autopay double charge, set merchant name on the invoice hosted page, remove stripe from requirements.txt, remove the duplicate PAID label."
+  ],
+  "critical_code_review_comments": [
+    "square.py is 578 lines; the inline HTML/JS page could move to its own module/template.",
+    "pay_order keeps the order:{id} lock after success (fine because the order is paid), and releases it on failure. Verified: no stale lock after a 402.",
+    "Card numbers never touch the backend; CSP with nonce, frame-ancestors and no-store are set correctly. The postMessage origin check in SquarePaySheet is correct.",
+    "Tests must run with -n 0 (xdist is on by default): module-scoped cleanup plus a shared card/charge state break under parallel workers."
+  ],
+  "updated_files": ["/app/backend/tests/test_square_payments.py"],
+  "success_rate": {"backend": "94% (16/17; the failing test documents the late-weekly-invoice limitation)", "frontend": "80% (UI and navigation all work; real card entry fails in all Square flows because of the billingContact bug)"},
+  "seed_data_creation": "Test invoices (id prefix TEST_) and a TEST_ stop were created and deleted. One real sandbox payment was made on MD1001 through the UI. I then reset MD1001 to unpaid (customer_payment unset, lock removed) with amount_due 42.50. The mer-1 card was removed in tests and re-saved (Visa ••5858, new ccof id). The weekly charge doc week:mer-1:2026-10-26 was restored. Pricing monthly_fee was restored to 25.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests/test_square_payments.py -n 0 -v. Nested Square iframe typing works in Playwright: find the frame whose url contains 'single-card-element-iframe' and fill #cardNumber, #expirationDate, #cvv, #postalCode (use ZIP 12345). The host page frame url contains '/api/square/pay'. Merchant invoice select requires tapping invoice-{number} first, then invoice-select-{number}.",
+  "rca_of_issue": "Card form failure: Square Web Payments SDK (sandbox 1.87.2) requires verificationDetails.billingContact (an object) when tokenize() gets verification details for SCA/3DS. The page passes {amount,currencyCode,intent,customerInitiated,sellerKeyedIn} only. Repro: /customer/MD1001 -> unlock 0100 -> PAY -> fill email + card 4111.., 12/30, 111, 12345 -> Pay -> red error text. Mitigation verified: tokenize({...,billingContact:{email}}) returned OK, and /api/square/complete returned 200 paid."
+}

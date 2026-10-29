@@ -36,9 +36,9 @@ def volume_tier(count: int, base_fee: float) -> dict:
 
 
 PRICING_DEFAULT = {"currency": "CAD", "base_fee": 8.99, "included_km": 5.0, "per_km": 1.25, "priority_fee": 16.00,
-                   "charge_failed": True, "tax_pct": 0.0}
-PRICING_LIMITS = {"base_fee": 1000, "included_km": 500, "per_km": 100, "priority_fee": 1000, "tax_pct": 30}
-PRICING_NAMES = {"base_fee": "Per-delivery fee", "included_km": "Km included", "per_km": "Extra per km",
+                   "charge_failed": True, "tax_pct": 0.0, "monthly_fee": 25.00}
+PRICING_LIMITS = {"base_fee": 1000, "included_km": 500, "per_km": 100, "priority_fee": 1000, "tax_pct": 30, "monthly_fee": 5000}
+PRICING_NAMES = {"base_fee": "Per-delivery fee", "included_km": "Km included", "per_km": "Extra per km", "monthly_fee": "Monthly platform fee",
                  "priority_fee": "Priority surcharge", "tax_pct": "Sales tax %"}
 ROAD_FACTOR = 1.3  # straight-line depot→drop distance × this ≈ road distance
 
@@ -88,6 +88,7 @@ class PricingIn(BaseModel):
     priority_fee: float
     charge_failed: bool
     tax_pct: float
+    monthly_fee: Optional[float] = None  # same for every store; null keeps the current fee
 
 
 @router.get("/pricing")
@@ -101,6 +102,8 @@ async def read_pricing(u: dict = Depends(current_user)):
 async def update_pricing(body: PricingIn):
     """New prices apply to orders created (or re-priced) from now on; existing orders keep their price."""
     v = body.model_dump()
+    if v["monthly_fee"] is None:
+        v["monthly_fee"] = (await get_pricing())["monthly_fee"]
     for k, cap in PRICING_LIMITS.items():
         if not (0 <= v[k] <= cap) or v[k] != v[k]:
             raise HTTPException(400, f"{PRICING_NAMES[k]} must be between 0 and {cap}")
@@ -351,7 +354,7 @@ async def set_store_rates(merchant_id: str, body: StoreRatesIn):
     await merchant_routes.get_merchant_or_404(merchant_id)
     v = {k: x for k, x in body.model_dump().items() if x is not None}
     for k, cap in PRICING_LIMITS.items():
-        if k in v:
+        if k in v and k != "monthly_fee":
             if not (0 <= v[k] <= cap) or v[k] != v[k]:
                 raise HTTPException(400, f"{PRICING_NAMES[k]} must be between 0 and {cap}")
             v[k] = round(v[k], 2)

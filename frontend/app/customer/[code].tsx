@@ -12,6 +12,7 @@ import RatingPrompt from "@/src/components/RatingPrompt";
 import DeliveryProof from "@/src/components/DeliveryProof";
 import VerifyOrder from "@/src/components/VerifyOrder";
 import CustomerNote from "@/src/components/CustomerNote";
+import OrderPayment from "@/src/components/OrderPayment";
 import { loadUnlock, saveUnlock, Verified } from "@/src/orderUnlock";
 import RouteMap from "@/src/components/RouteMap";
 import { Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
@@ -150,6 +151,10 @@ export default function TrackOrder() {
             ) : (
               <>
                 <Mono style={s.meta} numberOfLines={1} testID="tracking-address">TO: {order.address}</Mono>
+                {order.payment ? (
+                  <OrderPayment code={code} payment={order.payment} orderToken={order.token} onError={(m) => toast.show(m, "red")}
+                    onPaid={() => api<OrderPrivate>(`/track/${code}/private`, { headers: { "X-Order-Token": order.token } }).then((p) => setOrder({ ...p, token: order.token })).catch(() => {})} />
+                ) : null}
                 {!delivered && t.stop.status !== "failed" ? (
                   <CustomerNote
                     key={order.customer_note ?? ""}

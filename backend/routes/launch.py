@@ -10,7 +10,7 @@ router = APIRouter(prefix="/api")
 # ---------------------------------------------------------------- launch cleanup
 # Everything a launch wipes. Kept on purpose: the admin login, settings, audit_log and consent_log (PIPEDA/PHIPA
 # records of who accessed what and who agreed to what), data_requests (privacy request history) and the geocode cache.
-WIPE = ["drivers", "stops", "routes", "invoices", "bill_payments", "payment_sessions", "merchants", "pickups",
+WIPE = ["drivers", "stops", "routes", "invoices", "bill_payments", "payment_sessions", "square_charges", "square_locks", "merchants", "pickups",
         "coaching_notes", "code_redemptions", "import_jobs", "import_rows", "merchant_alerts", "report_emails",
         "review_requests", "testimonials", "signup_requests", "driver_shoutouts", "batch_alerts", "missed_pickup_alerts",
         "contact_logs", "saved_notes", "last_customer_notes", "counters", "login_attempts"]
