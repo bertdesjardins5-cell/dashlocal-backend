@@ -71,12 +71,12 @@ class TestStoredDocs:
         body, r = _signup(business_type=bt, terms_consent=True)
         assert r.status_code == 200 and r.json() == {"ok": True}, r.text
         d = db.signup_requests.find_one({"email": body["email"]})
-        assert d["business_type"] == bt and d["terms_consent"] is True and d["terms_version"] == "2026-06"
+        assert d["business_type"] == bt and d["terms_consent"] is True and d["terms_version"] == "2026-10"
         assert d.get("terms_consent_at") and d["consent_timestamp"] == "2026-01-10T10:00:00Z"
         assert "phipa_consent_given" not in d and "privacy_consent" not in d
         lst = requests.get(f"{BASE_URL}/api/admin/signup-requests", headers=admin).json()
         mine = [x for x in lst if x["email"] == body["email"]]
-        assert len(mine) == 1 and mine[0]["business_type"] == bt and mine[0]["terms_version"] == "2026-06" and "_id" not in mine[0]
+        assert len(mine) == 1 and mine[0]["business_type"] == bt and mine[0]["terms_version"] == "2026-10" and "_id" not in mine[0]
 
     def test_pharmacy_privacy(self, admin):
         _clean()  # stay under 5/IP/hour

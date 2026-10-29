@@ -259,7 +259,7 @@ class SignupIn(BaseModel):
 
 
 BUSINESS_TYPES = {"store": "Store", "law_office": "Law office", "flower_shop": "Flower shop", "pharmacy": "Pharmacy", "other": "Other"}
-TERMS_VERSION = "2026-06"
+TERMS_VERSION = "2026-10"
 
 
 @router.post("/signup-requests")

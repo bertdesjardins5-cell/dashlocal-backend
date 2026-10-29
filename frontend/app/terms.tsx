@@ -6,49 +6,43 @@ import BrandHeader, { Kicker } from "@/src/components/brand/BrandHeader";
 import BrandButton from "@/src/components/brand/BrandButton";
 import { fonts, makeStyles } from "@/src/theme";
 
-// Public Terms of Service for stores, law offices, flower shops and other non-pharmacy businesses.
-// DRAFT — edit freely and have a lawyer review before launch.
-export const TERMS_UPDATED = "June 2026";
+// Public Terms of Service (customers, merchants, couriers). Shown on /terms and in the sign-up terms modal.
+export const TERMS_UPDATED = "October 2026";
 
 export const TERMS: { h: string; p: string[] }[] = [
-  { h: "1. About these terms", p: [
-    "These Terms of Service (\"Terms\") are an agreement between DashLocal Inc. (\"DashLocal\", \"we\") and the business that signs up for a DashLocal account (\"you\"). They apply to stores, law offices, flower shops and other businesses using DashLocal for same-day local delivery in Kitchener-Waterloo, Ontario. Pharmacies sign separate privacy and health-information terms.",
-    "By requesting an account and using DashLocal, you agree to these Terms.",
+  { h: "Agreement", p: [
+    "By accessing or using our mobile application, website, or local delivery platform, you agree to be bound by these terms.",
   ] },
-  { h: "2. The service", p: [
-    "DashLocal picks up parcels from your business and delivers them to your customers, usually the same day. You send orders through the merchant portal (one at a time or by CSV upload). Your customers can track their delivery with a link and tracking code.",
-    "Delivery times and ETAs are estimates. Weather, traffic and access problems at the address can cause delays.",
+  { h: "1. Platform Overview and Scope", p: [
+    "DashLocal is a technology and dispatch platform designed to facilitate local delivery services, including multi-stop batch runs, retail fulfillment, and specialized courier routing in Ontario, Canada.",
+    "Independent Network: DashLocal acts solely as an intermediary technology platform connecting Customers and Merchants with independent third-party Courier Contractors.",
+    "Not a Carrier: DashLocal does not directly operate delivery vehicles, provide retail goods, or function as a traditional common carrier.",
   ] },
-  { h: "3. Your account", p: [
-    "Accounts are approved by DashLocal. Keep your password private. You are responsible for orders placed from your account, and you should tell us right away if you think someone else has used it.",
+  { h: "2. User Accounts & Security", p: [
+    "Users must register an account to access core delivery or merchant management features.",
+    "Customer — Registration requirement: valid phone number & email. Responsibility: accurate delivery addresses and contact availability.",
+    "Merchant — Registration requirement: business verification & banking details. Responsibility: accurate product listing, inventory, and compliance with local retail laws.",
+    "Courier / Driver — Registration requirement: valid driver licence, insurance & PIN setup. Responsibility: maintaining equipment security, vehicle roadworthiness, and secure PIN access.",
   ] },
-  { h: "4. What you can send", p: [
-    "Parcels must be packed securely, clearly labelled and safe to carry in a car. You must not send anything illegal, dangerous or hazardous (for example weapons, explosives, flammable goods or controlled substances), live animals, cash, or items worth more than $500 unless we agree in writing first.",
-    "For legal documents, tell us if a signature is required at delivery. We can collect a signature or a doorstep photo as proof of delivery.",
-    "You must have your customer's permission to share their name, address and phone number with us for the delivery.",
+  { h: "3. Orders, Pricing, and Payment Terms", p: [
+    "All financial transactions are processed securely through integrated payment gateways (such as Square).",
+    "Fee Structures: Delivery fees are calculated based on distance tiers, delivery speed (standard vs. express), and multi-stop batch parameters.",
+    "Payment Authorization: Customers authorize weekly payment upon placing an order through in-app card tokenization.",
+    "Cancellations & Refunds: Orders cancelled after dispatch may incur a partial fee to compensate couriers for travel time and effort.",
   ] },
-  { h: "5. Fees and billing", p: [
-    "You pay the per-delivery fees shown in your portal, including any distance or rush fees, plus HST. Prices may change with 30 days' notice by email.",
-    "We send invoices regularly and you can pay them online by card. Invoices are due when issued. If an invoice stays unpaid, we may pause new orders until it is paid.",
+  { h: "4. Independent Contractor Terms (For Drivers)", p: [
+    "Couriers utilizing the platform enter into an independent contractor relationship rather than an employment contract.",
+    "Expenses & Taxes: Couriers are solely responsible for all vehicle maintenance, fuel, insurance, and tax withholdings.",
+    "Service Standards: Couriers agree to maintain device notification access for urgent dispatch runs and adhere to strict delivery timelines.",
+    "Account Security: PIN-based sign-ins and forgot-PIN request workflows are monitored for security and compliance.",
   ] },
-  { h: "6. Delivery, failed attempts and returns", p: [
-    "If nobody is available and the parcel can't be left safely, the driver will mark the attempt and may try again or return the parcel to you. Failed attempts and returns may be charged as a delivery.",
-    "Report a missing or damaged parcel within 48 hours of the delivery time.",
+  { h: "5. Privacy, Data Protection, and Compliance (Ontario Standards)", p: [
+    "DashLocal complies with applicable privacy laws in Ontario, Canada.",
+    "PIPEDA Compliance: Personal information (names, phone numbers, delivery addresses) is collected solely for fulfilling delivery transactions and improving platform dispatch efficiency.",
+    "PHIPA Safeguards: For specialized services such as scheduled pharmacy batch runs, all couriers and platform handlers strictly adhere to privacy standards aligned with Ontario's Personal Health Information Protection Act to protect patient confidentiality.",
   ] },
-  { h: "7. Liability", p: [
-    "We take reasonable care with every parcel. If a parcel is lost or damaged while we have it, and the cause is our fault, our liability is limited to the lesser of the parcel's value and $100 per delivery, unless we agreed to a higher amount in writing. We are not responsible for indirect losses such as lost profits, or for delays caused by events outside our control.",
-  ] },
-  { h: "8. Privacy", p: [
-    "We handle your customers' personal information as described in our Privacy Policy, under Canada's PIPEDA. We only use it to complete and support deliveries, and we never sell it.",
-  ] },
-  { h: "9. Ending the service", p: [
-    "You can stop using DashLocal at any time by contacting us. We may suspend or close an account that breaks these Terms or leaves invoices unpaid. Any fees owed up to that point remain payable.",
-  ] },
-  { h: "10. Changes and governing law", p: [
-    "We may update these Terms. If a change is important, we will email you before it takes effect. These Terms are governed by the laws of Ontario and the federal laws of Canada that apply there.",
-  ] },
-  { h: "11. Contact", p: [
-    "Questions about these Terms? Email us at hello@dashlocal.app.",
+  { h: "6. Limitation of Liability", p: [
+    "DashLocal is not liable for indirect, incidental, or consequential damages arising from delivery delays, third-party merchant product defects, or force majeure events beyond reasonable control.",
   ] },
 ];
 
@@ -62,7 +56,7 @@ export default function TermsOfService() {
       <ScrollView contentContainerStyle={[s.wrap, { paddingBottom: insets.bottom + 32 }]}>
         <Kicker>Terms</Kicker>
         <Text style={s.title}>Terms of Service</Text>
-        <Text style={s.updated}>Last updated {TERMS_UPDATED} · Stores, law offices, flower shops and other businesses</Text>
+        <Text style={s.updated}>Last updated {TERMS_UPDATED} · Customers, merchants and couriers</Text>
         {TERMS.map((sec) => (
           <View key={sec.h} style={s.section}>
             <Text style={s.h}>{sec.h}</Text>
