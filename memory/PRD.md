@@ -198,3 +198,7 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - src/crashReporter.ts (imported first in app/_layout.tsx): global JS error handler saves + POSTs to /api/crash-reports (public, 30/IP/hour); resends pending report next launch. Admin › Crash reports (/admin/crashes, GET /api/admin/crash-reports).
 
 - APK "won't open" fix: Expo SDK 58 + AGP 9 strict R8 strips Room/WorkManager constructors (async-storage uses Room, react-native-maps uses WorkManager) -> native crash before JS. Added expo-build-properties: enableMinifyInReleaseBuilds=false, shrinkResources=false, extraProguardRules keep RoomDatabase/InputMerger/WorkDatabase_Impl <init>. Aligned patch versions via expo install --fix (expo ~58.0.21, RN 0.88.1). expo-camera recordAudioAndroid=false.
+
+## 2026-06 (fork)
+- Created /app/memory/PLAY_STORE_SUBMISSION.md (Data Safety answers, background-location justification, reviewer access, console sections).
+- Square live switch: no code change needed; square.py auto-detects sandbox by "sandbox-" APPLICATION_ID prefix. Requested live keys via secrets card (keys are shared preview+prod, so preview will also charge real cards).
