@@ -22,12 +22,25 @@ if (Platform.OS !== "web") {
   });
 }
 
-/** Ask for "Always" location (foreground must already be granted) and start OS updates. Returns true when running. */
-export async function startBackgroundTracking(): Promise<boolean> {
+export type BgStatus = "granted" | "ask" | "blocked" | "unsupported";
+
+/** "Always" location state, without prompting (so the app can show its disclosure first). */
+export async function backgroundStatus(): Promise<BgStatus> {
+  if (Platform.OS === "web") return "unsupported";
+  try {
+    const bg = await Location.getBackgroundPermissionsAsync();
+    return bg.granted ? "granted" : bg.canAskAgain ? "ask" : "blocked";
+  } catch {
+    return "unsupported";
+  }
+}
+
+/** Start OS location updates. Only asks for "Always" when `ask` is true — call it after the driver read the disclosure. */
+export async function startBackgroundTracking(ask = false): Promise<boolean> {
   if (Platform.OS === "web") return false;
   try {
     let bg = await Location.getBackgroundPermissionsAsync();
-    if (!bg.granted && bg.canAskAgain) bg = await Location.requestBackgroundPermissionsAsync();
+    if (!bg.granted && bg.canAskAgain && ask) bg = await Location.requestBackgroundPermissionsAsync();
     if (!bg.granted) return false;
     if (await Location.hasStartedLocationUpdatesAsync(BG_TASK)) return true;
     await Location.startLocationUpdatesAsync(BG_TASK, {

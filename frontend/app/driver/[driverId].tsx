@@ -16,7 +16,8 @@ import DriverConsentGate, { useDriverConsent } from "@/src/components/DriverCons
 import { useTermsStatus } from "@/src/components/TermsGate";
 import PickupCheckIn from "@/src/components/PickupCheckIn";
 import ShoutoutBanner from "@/src/components/ShoutoutBanner";
-import { startBackgroundTracking, stopBackgroundTracking } from "@/src/driverTracking";
+import { backgroundStatus, BgStatus, startBackgroundTracking, stopBackgroundTracking } from "@/src/driverTracking";
+import BackgroundLocationDisclosure from "@/src/components/BackgroundLocationDisclosure";
 import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
 
@@ -196,7 +197,20 @@ export default function Manifest() {
       return;
     }
     setMode("gps");
+    const bg = await backgroundStatus();
+    setBgState(bg);
+    if (bg === "ask" && !disclosed.current) return setDisclose(true); // explain before the system "Always" prompt
     setLocked(await startBackgroundTracking());
+  };
+  const [disclose, setDisclose] = useState(false);
+  const [bgState, setBgState] = useState<BgStatus>("unsupported");
+  const disclosed = useRef(false);
+  const onDisclosure = async (allow: boolean) => {
+    disclosed.current = true;
+    setDisclose(false);
+    const ok = allow ? await startBackgroundTracking(true) : false;
+    setLocked(ok);
+    setBgState(await backgroundStatus());
   };
 
   // Auto arrival: switch live GPS on as soon as the route is active (ask first with the explanation box), off when it ends.
@@ -342,15 +356,28 @@ export default function Manifest() {
             </View>
           ) : null}
           {route.status === "active" && mode === "gps" ? (
-            <Mono style={[s.meta, { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm }]} testID="gps-status">
-              {locked ? "AUTO ARRIVAL ON · WORKS WITH THE PHONE LOCKED" : "AUTO ARRIVAL ON · KEEP THE APP OPEN (ALLOW \"ALWAYS\" LOCATION FOR LOCKED PHONE)"}
-            </Mono>
+            <View style={{ paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, gap: spacing.xs }}>
+              <Mono style={s.meta} testID="gps-status">
+                {locked ? "AUTO ARRIVAL ON · WORKS WITH THE PHONE LOCKED" : "AUTO ARRIVAL ON · KEEP THE APP OPEN (ALLOW \"ALWAYS\" LOCATION FOR LOCKED PHONE)"}
+              </Mono>
+              {!locked && bgState === "ask" ? (
+                <Pressable testID="bg-location-enable" onPress={() => setDisclose(true)} style={{ minHeight: 44, justifyContent: "center" }}>
+                  <Mono style={[s.meta, { fontWeight: "700", textDecorationLine: "underline" }]}>TURN ON LOCKED-PHONE ARRIVAL</Mono>
+                </Pressable>
+              ) : null}
+              {!locked && bgState === "blocked" ? (
+                <Pressable testID="bg-location-settings" onPress={() => Linking.openSettings()} style={{ minHeight: 44, justifyContent: "center" }}>
+                  <Mono style={[s.meta, { fontWeight: "700", textDecorationLine: "underline" }]}>OPEN SETTINGS › LOCATION › ALWAYS</Mono>
+                </Pressable>
+              ) : null}
+            </View>
           ) : null}
+          <BackgroundLocationDisclosure visible={disclose} onAllow={() => onDisclosure(true)} onDecline={() => onDisclosure(false)} />
 
           {perm ? (
             <View style={s.permBox} testID="location-permission-box">
               <Display style={{ fontSize: 18 }}>SHARE YOUR LOCATION</Display>
-              <Mono style={s.meta}>Turn on location so stops mark ARRIVED automatically within 50 m, even with your phone locked, and customers see you approach live. Choose &quot;Always&quot; when asked so it keeps working in your pocket.</Mono>
+              <Mono style={s.meta}>Turn on location so stops mark ARRIVED automatically within 50 m and customers see you approach live. Next, we&apos;ll explain locked-phone arrival before your phone asks about &quot;Always&quot; location.</Mono>
               {perm === "settings" ? (
                 <Btn testID="location-open-settings-button" label="OPEN SETTINGS" variant="dark" icon="settings" onPress={() => Linking.openSettings()} />
               ) : (

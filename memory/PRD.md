@@ -189,3 +189,6 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - All customer-facing text, logo wordmark (ARRIVE / WISE, same arrow+D mark), emails, PDFs, link pages, app.json name -> ArriveWise.
 - Logins moved to @arrivewise.app (admin@, bakery@, books@); old @dashlocal.app users disabled in preview; seed_users renames @dashlocal.app -> @arrivewise.app on startup (update only).
 - ADMIN_EMAIL=admin@arrivewise.app, EMAIL_FROM_NAME=ArriveWise (secrets). Internal keys kept: dashlocal_order_*, dashlocal_driver_phone, dashlocal-driver-location task, dashlocal-square message, DashLocalAdmin2026 password. Scanner accepts ARRIVEWISE:/DASHLOCAL:/MULTIDROP: labels.
+
+## Background location disclosure (Oct 2026)
+- src/components/BackgroundLocationDisclosure.tsx: prominent disclosure (what/background/why/who/when it stops) shown before the system "Always"/"Allow all the time" prompt. driverTracking.backgroundStatus() + startBackgroundTracking(ask) only prompts after CONTINUE. Decline = foreground only; status line offers "TURN ON LOCKED-PHONE ARRIVAL" or "OPEN SETTINGS" when blocked. Native builds only (web/Expo Go never show it).
