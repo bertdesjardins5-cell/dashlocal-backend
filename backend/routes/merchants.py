@@ -12,7 +12,7 @@ import secrets
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timedelta, date as date_cls, time as time_cls
-from core import RUNS, TZ, admin_user, check_merchant_access, current_user, db, haversine_m, issue_token, logger, merchant_access, now_iso, today_str
+from core import RUNS, TZ, admin_user, check_merchant_access, current_user, merchant_terms_ok, db, haversine_m, issue_token, logger, merchant_access, now_iso, today_str
 from models import Stop, merchant_pickup
 from routes import billing
 from routes import feedback
@@ -484,12 +484,13 @@ async def set_matter(merchant_id: str, stop_id: str, body: MatterIn, _: dict = D
 
 
 @router.put("/import-rows/{row_id}")
-async def fix_import_row(row_id: str, body: RowFixIn, u: dict = Depends(current_user)):
+async def fix_import_row(row_id: str, body: RowFixIn, request: Request, u: dict = Depends(current_user)):
     """Edit a flagged row and try it again straight away."""
     row = await db.import_rows.find_one({"id": row_id}, {"_id": 0})
     if not row:
         raise HTTPException(404, "Row not found")
     check_merchant_access(u, row["merchant_id"])
+    merchant_terms_ok(u, request)
     if row["status"] not in FLAGGED:
         raise HTTPException(400, f"Row is already {row['status']}")
     data = {**row["data"], **{k: v.strip() for k, v in body.model_dump().items() if v is not None}}
@@ -500,11 +501,12 @@ async def fix_import_row(row_id: str, body: RowFixIn, u: dict = Depends(current_
 
 
 @router.delete("/import-rows/{row_id}")
-async def dismiss_import_row(row_id: str, u: dict = Depends(current_user)):
+async def dismiss_import_row(row_id: str, request: Request, u: dict = Depends(current_user)):
     row = await db.import_rows.find_one({"id": row_id}, {"_id": 0})
     if not row:
         raise HTTPException(404, "Row not found")
     check_merchant_access(u, row["merchant_id"])
+    merchant_terms_ok(u, request)
     if row["status"] not in FLAGGED:
         raise HTTPException(400, f"Row is already {row['status']}")
     await db.import_rows.update_one({"id": row_id}, {"$set": {"status": "dismissed"}})

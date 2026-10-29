@@ -8,7 +8,7 @@ import secrets
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timezone, timedelta
-from core import ADMIN_ONLY, CONSENT_VERSION, db, decode_token, hash_pw, issue_token, logger, merchant_access, now_iso
+from core import ADMIN_ONLY, CONSENT_VERSION, TERMS_VERSION, db, decode_token, hash_pw, issue_token, logger, merchant_access, now_iso
 from routes import auth
 from routes import emails
 from routes import merchants as merchant_routes
@@ -259,7 +259,6 @@ class SignupIn(BaseModel):
 
 
 BUSINESS_TYPES = {"store": "Store", "law_office": "Law office", "flower_shop": "Flower shop", "pharmacy": "Pharmacy", "other": "Other"}
-TERMS_VERSION = "2026-10"
 
 
 @router.post("/signup-requests")

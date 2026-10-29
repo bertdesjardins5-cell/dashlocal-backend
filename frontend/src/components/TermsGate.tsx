@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { api } from "@/src/api";
+import { queryClient } from "@/src/query-client";
 import { clearSession } from "@/src/session";
 import TermsModal from "@/src/components/TermsModal";
 
@@ -36,6 +37,7 @@ export default function TermsGate({ kind, onNotify, onSignedOut }: { kind: "merc
     try {
       await api("/auth/accept-terms", { method: "POST" });
       await q.refetch();
+      queryClient.invalidateQueries(); // anything the server blocked until acceptance loads now
       onNotify?.("THANKS · TERMS ACCEPTED", "green");
     } catch (e: any) {
       onNotify?.(e.message, "red");

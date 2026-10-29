@@ -47,6 +47,14 @@ def _admin_reset_auth():
     pending = [u["id"] for u in users.find({"role": "driver", "phipa_consent_given": {"$ne": True}}, {"_id": 0, "id": 1})]
     users.update_many({"role": "driver"}, {"$set": {"phipa_consent_given": True, "consent_version": "2026-06",
                                                     "consent_timestamp": "2026-06-01T00:00:00Z", "consent_recorded_at": "2026-06-01T00:00:00Z"}})
+    # the server also blocks drivers / store changes until the latest terms are accepted: accept them for the suites, restore after
+    from core import DRIVER_TERMS_VERSION, TERMS_VERSION
+    prior = list(users.find({"role": {"$in": ["driver", "merchant"]}}, {"_id": 0, "id": 1, "terms_version": 1, "driver_terms_version": 1}))
+    users.update_many({"role": "driver"}, {"$set": {"driver_terms_version": DRIVER_TERMS_VERSION}})
+    users.update_many({"role": "merchant"}, {"$set": {"terms_version": TERMS_VERSION}})
     yield
     requests.Session.request = _orig_request
     users.update_many({"id": {"$in": pending}}, {"$unset": {"phipa_consent_given": "", "consent_version": "", "consent_timestamp": "", "consent_recorded_at": ""}})
+    for p in prior:
+        for f in ("terms_version", "driver_terms_version"):
+            users.update_one({"id": p["id"]}, {"$set": {f: p[f]}} if f in p else {"$unset": {f: ""}})

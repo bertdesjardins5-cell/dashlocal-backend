@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 from fastapi.concurrency import run_in_threadpool
-from core import ADMIN_ONLY, DEPOT, DUMMY_HASH, admin_user, check_pw, current_user, db, hash_pw, issue_token, logger, now_iso
+from core import ADMIN_ONLY, DEPOT, DRIVER_TERMS_VERSION, DUMMY_HASH, admin_user, check_pw, current_user, db, hash_pw, issue_token, logger, now_iso
 from models import Driver
 from routes import merchants as merchant_routes
 from routes import onboarding
@@ -471,7 +471,6 @@ async def reset_merchant_password(user_id: str, body: PasswordIn, _: dict = Depe
 
 # ---- Terms acceptance: store users accept the current Terms of Service (and drivers the independent-contractor terms)
 #      on their next sign-in. Admin › Terms shows who accepted and sends reminder emails.
-DRIVER_TERMS_VERSION = "2026-10"
 REMIND_COOLDOWN_H = 20
 
 

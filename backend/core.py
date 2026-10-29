@@ -162,10 +162,28 @@ HTML_CSP = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline';
 
 
 def driver_consented(u: dict) -> dict:
-    """Drivers must accept the privacy & compliance terms (consent modal) before working any manifest data."""
+    """Drivers must accept the privacy & compliance terms (consent modal) and the current independent-courier terms
+    before working any manifest data — enforced here on the server, not only in the app."""
     if u["role"] == "driver" and not (u.get("phipa_consent_given") and u.get("consent_version") == CONSENT_VERSION):
         raise HTTPException(403, "Accept the privacy & compliance terms to continue")
+    if u["role"] == "driver" and u.get("driver_terms_version") != DRIVER_TERMS_VERSION:
+        raise HTTPException(403, "Accept the DashLocal courier terms to continue")
     return u
+
+
+# Bump to ask every store / driver to accept again (the app shows the terms on their next sign-in).
+TERMS_VERSION = "2026-10"
+DRIVER_TERMS_VERSION = "2026-10"
+TERMS_EXEMPT = ("/invoices", "/square", "/statements", "/receipts")  # paying or downloading what they owe stays possible
+
+
+def merchant_terms_ok(u: dict, request: Request):
+    """Stores can still look at their portal, but can't send or change deliveries until they accept the latest terms."""
+    if u["role"] != "merchant" or request.method in ("GET", "HEAD", "OPTIONS") or u.get("terms_version") == TERMS_VERSION:
+        return
+    if any(p in request.url.path for p in TERMS_EXEMPT):
+        return
+    raise HTTPException(403, "Accept the updated DashLocal Terms of Service to send or change deliveries")
 
 
 async def require_driver_self(driver_id: str, request: Request):
@@ -208,7 +226,7 @@ async def require_stop_driver(stop_id: str, request: Request):
 async def require_any_driver(request: Request):
     u = await current_user(request)
     if u["role"] in ("admin", "driver"):
-        return u
+        return driver_consented(u)
     raise HTTPException(403, "Driver sign-in required")
 
 
@@ -473,8 +491,9 @@ def check_merchant_access(u: dict, merchant_id: str):
         raise HTTPException(403, "You can only see your own store")
 
 
-async def merchant_access(merchant_id: str, u: dict = Depends(current_user)) -> dict:
+async def merchant_access(merchant_id: str, request: Request, u: dict = Depends(current_user)) -> dict:
     check_merchant_access(u, merchant_id)
+    merchant_terms_ok(u, request)
     return u
 RUNS = {  # Eastern (depot) time
     "afternoon": {"label": "Afternoon Batch", "cutoff": "13:30", "pickup": ("14:00", "14:30"), "window": ("14:30", "18:00")},
