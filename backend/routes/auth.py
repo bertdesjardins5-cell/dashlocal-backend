@@ -5,6 +5,7 @@ import math
 import uuid
 import re
 import secrets
+from html import escape
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
@@ -186,7 +187,7 @@ class PinIn(BaseModel):
 async def driver_accounts():
     users = {u["driver_id"]: u for u in await db.users.find({"role": "driver"}, {"_id": 0, "pin_hash": 0}).to_list(500)}
     return [{"id": d["id"], "name": d["name"], "phone": d["phone"], "vehicle": d["vehicle"],
-             "has_pin": d["id"] in users, "last_login_at": (users.get(d["id"]) or {}).get("last_login_at")}
+             "has_pin": d["id"] in users, "last_login_at": (users.get(d["id"]) or {}).get("last_login_at"), "pin_request_at": d.get("pin_request_at")}
             for d in await db.drivers.find({}, {"_id": 0}).sort("id", 1).to_list(500)]
 
 
@@ -283,7 +284,76 @@ async def set_driver_pin(driver_id: str, body: PinIn):
                                "$setOnInsert": {"id": str(uuid.uuid4()), "role": "driver", "driver_id": driver_id, "created_at": now_iso()}},
                               upsert=True)
     await db.login_attempts.delete_many({"key": {"$regex": f"^drv:{re.escape(d['phone'])}:"}})
+    await db.drivers.update_one({"id": driver_id}, {"$set": {"pin_request_at": None}})  # any "forgot PIN" request is handled
     return {"ok": True}
+
+
+# ---- driver "Forgot PIN": texts (and emails) dispatch, who resets it with one tap in Admin › Drivers
+class ForgotPinIn(BaseModel):
+    phone: str
+
+
+PIN_REQUEST_COOLDOWN_MIN = 10
+
+
+async def dispatch_phone() -> Optional[str]:
+    return (await db.settings.find_one({"key": "dispatch_phone"}, {"_id": 0}) or {}).get("value")
+
+
+@router.post("/auth/driver-forgot-pin")
+async def driver_forgot_pin(body: ForgotPinIn, request: Request):
+    """Public. Always answers the same way so it can't be used to find out which numbers are drivers."""
+    ip = client_ip(request)
+    limits = [(f"pinreq:{ip}", 10)]
+    atts = await check_lockout(limits)
+    await record_failure(limits, atts)  # every request counts towards the per-device limit
+    ok = {"ok": True, "message": "If this number belongs to a DashLocal driver, dispatch has been asked to reset your PIN. You'll get a text with a new one."}
+    phone = merchant_routes.normalize_phone(body.phone)
+    d = await db.drivers.find_one({"phone": phone}, {"_id": 0}) if phone else None
+    if not d:
+        return ok
+    last = d.get("pin_request_at")
+    if last and datetime.now(timezone.utc) - datetime.fromisoformat(last) < timedelta(minutes=PIN_REQUEST_COOLDOWN_MIN):
+        return ok  # dispatch was already told
+    await db.drivers.update_one({"id": d["id"]}, {"$set": {"pin_request_at": now_iso()}})
+    base = (await db.settings.find_one({"key": "public_base"}, {"_id": 0}) or {}).get("value") or ""
+    from services import realtime  # lazy: avoids an import cycle
+    realtime.spawn(tell_dispatch_pin_request(d, base))  # in the background, so the reply time doesn't reveal real driver numbers
+    return ok
+
+
+async def tell_dispatch_pin_request(d: dict, base: str):
+    link = f"{base}/admin/drivers?focus={d['id']}"
+    to = await dispatch_phone()
+    if to:
+        try:
+            tw = stop_routes.twilio_client()
+            await run_in_threadpool(lambda: tw.messages.create(to=to, from_=stop_routes.twilio_number(),
+                                    body=f"DashLocal: driver {d['name']} ({d['phone']}) forgot their PIN. Tap to text them a new one: {link}"))
+        except Exception as e:
+            logger.warning(f"Forgot-PIN text to dispatch failed: {e}")
+    await onboarding.notify_admin(f"{d['name']} forgot their driver PIN",
+                                  f"<p>{escape(d['name'])} ({escape(d['phone'])}) asked for a new PIN. Open Admin › Drivers and tap <b>NEW PIN BY TEXT</b>.</p>", base or None)
+
+
+class DispatchPhoneIn(BaseModel):
+    phone: Optional[str] = None
+
+
+@router.get("/admin/dispatch-phone", dependencies=ADMIN_ONLY)
+async def get_dispatch_phone():
+    return {"phone": await dispatch_phone()}
+
+
+@router.put("/admin/dispatch-phone", dependencies=ADMIN_ONLY)
+async def set_dispatch_phone(body: DispatchPhoneIn):
+    """Mobile that gets a text when a driver taps Forgot PIN (empty = email only)."""
+    raw = (body.phone or "").strip()
+    phone = merchant_routes.normalize_phone(raw) if raw else None
+    if raw and not phone:
+        raise HTTPException(400, "Enter a valid mobile number")
+    await db.settings.update_one({"key": "dispatch_phone"}, {"$set": {"key": "dispatch_phone", "value": phone}}, upsert=True)
+    return {"phone": phone}
 
 
 @router.post("/admin/drivers/{driver_id}/pin/text", dependencies=ADMIN_ONLY)

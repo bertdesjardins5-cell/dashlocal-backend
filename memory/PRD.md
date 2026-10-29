@@ -168,3 +168,7 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - Merchant autopay: card on file (Square Customers+Cards). Monthly platform fee (Admin › Pricing, same for every store, default $25 + 13% HST) and every Monday all unpaid delivery invoices from before this week, one charge. Retries daily up to 3x; receipt + failure emails.
 - Manual invoice pay by card (PAY BY CARD) and customer order pay (store sets amount_due per order or CSV column amount_due; customer pays + HST after the 4-digit unlock; /customer/paid confirmation + email receipt).
 - All money goes to DashLocal's single Square account. Before launch: put live keys in the live slot and publish.
+
+## Driver sign-in helpers (Oct 2026)
+- Driver phone remembered on the device after sign-in ("Welcome back", PIN only; "Not you?" clears).
+- Forgot PIN: POST /api/auth/driver-forgot-pin (generic reply, 10/IP limit, 1 per driver per 10 min). Texts the dispatch mobile (Admin › Drivers setting, GET/PUT /api/admin/dispatch-phone) and emails the admin; Admin › Drivers shows a FORGOT PIN banner with one-tap TEXT NEW PIN.

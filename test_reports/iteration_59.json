@@ -1,0 +1,39 @@
+{
+  "summary": "Tested Remember Driver Phone + Forgot PIN Request end-to-end on the preview URL at 390x844, plus the backend. Backend: 15/15 pytest pass when run serially (forgot-pin always gives the same reply, including for unknown or invalid numbers; pin_request_at is set once per 10 min; the per-IP limit returns 200 for requests 1-10 and 429 on the 11th; PUT pin and the one-tap pin/text both clear the request; text-pin 404/401/60s-429; dispatch-phone GET/PUT is admin only (401 without login, 403 for a driver), invalid=400, valid is normalised to +1..., empty clears). Frontend: ?as=driver opens the Driver tab. First sign-in with (519) 555-0101/482913 lands on /driver/drv-1. After sign-out, coming back shows 'Welcome back' with driver-saved-phone and only the PIN field, and PIN + Enter signs in. driver-not-you clears the saved phone, survives a reload, and the phone input comes back. A phone typed in the Admin email field switches to the Driver tab with the phone prefilled and driver-sign-in-notice shown, by tapping the button or pressing Enter. Forgot PIN: no phone shows an error; known and unknown numbers show the same driver-forgot-pin-sent message. Admin /admin/drivers: the FORGOT PIN banner lists drv-2 and drv-3. TEXT NEW PIN on drv-2 gave the toast 'NEW PIN TEXTED TO PRIYA NAIR' (Twilio accepted it) and the request disappeared. Dispatch phone edit: invalid shows a red toast and keeps the input open, valid saves, empty clears. No blocking bugs. Only minor UX and security notes.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/auth/driver-forgot-pin", "issue": "Timing leak: a known driver number takes about 0.42s (the admin email and optional Twilio text are awaited inline). Unknown numbers and the cooldown path take about 0.13-0.16s. The generic message can be bypassed by timing to find out which numbers belong to drivers. The per-IP limit (10 per 15 min) reduces the risk. Fix: send the notifications with BackgroundTasks / asyncio.create_task."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "DriverSignInForm 'Welcome back'", "issue": "The PIN field is not auto-focused on the Welcome back screen. autoFocus={!!saved} is checked on mount, but `saved` loads asynchronously from AsyncStorage/SecureStore after the field has mounted (document.activeElement was null). Fix: focus a ref once the saved phone loads, or use key={saved ?? 'new'} on the PIN input.", "testID": "driver-sign-in-pin", "priority": "LOW"},
+      {"component": "DriverSignInForm forgot-PIN message state", "issue": "`info` is never cleared. After a 'no phone' error, tapping Forgot PIN again clears the error and the old 'sent' message shows again while the request is still running. forgetPhone() (Not you?) also leaves info/error from the previous driver visible.", "testID": "driver-forgot-pin-sent", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/sign-in/staff Driver tab", "issues": ["The success message (driver-forgot-pin-sent) and the notice use the same cream background as the error box. Only the left border colour changes (green vs red), so success and error look alike at a glance. Consider a green-tinted background."]},
+      {"screen": "/admin/drivers FORGOT PIN banner", "issues": ["'ASKED 11:47' shows only the time. Requests stay open with no expiry, so a request from an earlier day looks like today's. Show the date when it is not today."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_forgot_pin_dispatch_phone.py", "/app/test_reports/pytest/iteration_59.xml"],
+  "action_items": [
+    "LOW: make driver-forgot-pin respond in the same time for known and unknown numbers by sending the admin email and Twilio text in the background.",
+    "LOW: auto-focus the PIN field when the saved phone finishes loading (the autoFocus prop has no effect after mount).",
+    "LOW: clear `info` when starting a new forgot-PIN request, on validation errors, and in forgetPhone().",
+    "OPTIONAL: give the forgot-PIN success message a green-tinted background; show the date on old FORGOT PIN requests."
+  ],
+  "critical_code_review_comments": [
+    "The per-IP forgot-pin limit counts every request (record_failure before the lookup), so the 10th request locks the IP and the 11th gets 429. This matches the spec.",
+    "The saved phone is stored only after a successful sign-in, and initialPhone (carried from the Admin tab) takes priority over the saved phone. Both are correct.",
+    "test_forgot_pin_dispatch_phone.py must be run with -n 0. Under xdist, another worker's module cleanup deletes the pinreq: keys in the middle of the rate-limit test (this was a false failure on the first run)."
+  ],
+  "updated_files": ["/app/backend/tests/test_forgot_pin_dispatch_phone.py"],
+  "success_rate": {"backend": "100% (15/15)", "frontend": "100% of requested flows (minor UX notes only)"},
+  "seed_data_creation": "None. Restored afterwards: drv-2 PIN 730516 and drv-3 PIN 264871 (both verified by login), drv-2's original open pin_request_at, drv-3 request cleared, pin_texted_at cleared for drv-2/3, dispatch_phone left unset (it was unset before), db.login_attempts pinreq:* keys deleted.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests/test_forgot_pin_dispatch_phone.py -n 0. Each run uses 15 of the per-IP forgot-pin requests, and the test clears the pinreq: keys itself. Twilio accepted the SMS to the fictional drv-2 number (invite='sent'), so the UI toast was 'NEW PIN TEXTED TO PRIYA NAIR' and no PIN was shown. Driver sign-out goes to /driver."
+}

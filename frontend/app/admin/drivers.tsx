@@ -1,13 +1,14 @@
 import React, { useState } from "react";
 import { Pressable, RefreshControl, TextInput, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
+import { useLocalSearchParams } from "expo-router";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { api, fmtDepotTime } from "@/src/api";
+import { api, dayLabel, fmtDepotTime } from "@/src/api";
 import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, useToast } from "@/src/ui";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
-type DriverAccount = { id: string; name: string; phone: string; vehicle: string; has_pin: boolean; last_login_at: string | null };
+type DriverAccount = { id: string; name: string; phone: string; vehicle: string; has_pin: boolean; last_login_at: string | null; pin_request_at: string | null };
 
 // Admin: set / reset the 6-digit PIN each driver signs in with.
 export default function DriverPins() {
@@ -15,7 +16,24 @@ export default function DriverPins() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const toast = useToast();
-  const q = useQuery({ queryKey: ["driver-accounts"], queryFn: () => api<DriverAccount[]>("/admin/driver-accounts") });
+  const { focus } = useLocalSearchParams<{ focus?: string }>();
+  const q = useQuery({ queryKey: ["driver-accounts"], queryFn: () => api<DriverAccount[]>("/admin/driver-accounts"), refetchInterval: 30000 });
+  const dq = useQuery({ queryKey: ["dispatch-phone"], queryFn: () => api<{ phone: string | null }>("/admin/dispatch-phone") });
+  const [dPhone, setDPhone] = useState<string | null>(null);
+  const saveDispatch = async () => {
+    setBusy(true);
+    try {
+      const r = await api<{ phone: string | null }>("/admin/dispatch-phone", { method: "PUT", body: { phone: dPhone } });
+      toast.show(r.phone ? `FORGOT-PIN TEXTS GO TO ${r.phone}` : "FORGOT-PIN REQUESTS BY EMAIL ONLY", "green");
+      setDPhone(null);
+      dq.refetch();
+    } catch (e: any) {
+      toast.show(e.message, "red");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const requests = (q.data ?? []).filter((d) => d.pin_request_at).sort((a, b) => (a.id === focus ? -1 : b.id === focus ? 1 : 0));
   const [open, setOpen] = useState<string | null>(null);
   const [pin, setPin] = useState("");
   const [texting, setTexting] = useState<string | null>(null);
@@ -74,6 +92,34 @@ export default function DriverPins() {
         <KeyboardAwareScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }} keyboardShouldPersistTaps="handled" bottomOffset={24}
           refreshControl={<RefreshControl refreshing={false} onRefresh={() => { q.refetch(); }} />}>
           <Mono style={s.note}>New drivers get a welcome text with the sign-in link and their PIN. Drivers sign in with the phone number on file and this PIN.</Mono>
+          {requests.length ? (
+            <View style={[s.row, { backgroundColor: colors.warning }]} testID="pin-requests">
+              <Mono style={[s.smallBtnText, { color: colors.onWarning }]}>FORGOT PIN · {requests.length} DRIVER{requests.length === 1 ? "" : "S"} WAITING</Mono>
+              {requests.map((d) => (
+                <View key={d.id} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }} testID={`pin-request-${d.id}`}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Display style={[s.name, { color: colors.onWarning }]} numberOfLines={1}>{d.name}</Display>
+                    <Mono style={[s.meta, { color: colors.onWarning }]}>{d.phone} · ASKED {dayLabel(d.pin_request_at!.slice(0, 10)).toUpperCase()} {fmtDepotTime(d.pin_request_at!)}</Mono>
+                  </View>
+                  <Btn testID={`pin-request-text-${d.id}`} label="TEXT NEW PIN" icon="send" variant="dark" loading={texting === d.id} onPress={() => textPin(d)} />
+                </View>
+              ))}
+            </View>
+          ) : null}
+          <View style={s.row} testID="dispatch-phone-section">
+            <Mono style={s.smallBtnText}>TEXT FORGOT-PIN REQUESTS TO</Mono>
+            {dPhone === null ? (
+              <Pressable testID="dispatch-phone-edit" onPress={() => setDPhone(dq.data?.phone ?? "")} style={s.smallBtn}>
+                <Mono style={s.smallBtnText}>{dq.data?.phone ? `${dq.data.phone} · EDIT` : "NOT SET (EMAIL ONLY) · ADD MOBILE"}</Mono>
+              </Pressable>
+            ) : (
+              <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                <TextInput testID="dispatch-phone-input" value={dPhone} onChangeText={setDPhone} keyboardType="phone-pad" placeholder="Dispatch mobile, e.g. 519 555 0199"
+                  placeholderTextColor={colors.muted} style={[s.field, { flex: 1, minWidth: 0 }]} />
+                <Btn testID="dispatch-phone-save" label="SAVE" loading={busy} onPress={saveDispatch} />
+              </View>
+            )}
+          </View>
           <View style={s.row} testID="add-driver-section">
             {adding ? (
               <>
