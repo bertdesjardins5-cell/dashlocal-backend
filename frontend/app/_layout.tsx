@@ -1,3 +1,4 @@
+import "@/src/crashReporter"; // first: records any error thrown while the app starts
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter } from "expo-router";
 import { useFonts } from "expo-font";
@@ -27,7 +28,7 @@ if (Notifications) {
   });
 }
 if (Notifications && Platform.OS === "android") {
-  Notifications.setNotificationChannelAsync("default", { name: "Default", importance: Notifications.AndroidImportance.MAX, sound: "default" });
+  Notifications.setNotificationChannelAsync("default", { name: "Default", importance: Notifications.AndroidImportance.MAX, sound: "default" }).catch(() => {});
 }
 
 function usePushTaps(ready: boolean) {

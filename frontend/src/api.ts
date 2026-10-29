@@ -1,6 +1,7 @@
 import { clearSession, getToken } from "@/src/session";
 
-export const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL as string;
+// Guarded: if the build is ever missing this variable, the app must still open (a throw here crashes it on launch).
+export const BACKEND_URL = ((process.env.EXPO_PUBLIC_BACKEND_URL as string | undefined) ?? "").replace(/\/$/, "");
 export const API = `${BACKEND_URL}/api`;
 export const WS_BASE = `${BACKEND_URL.replace(/^http/, "ws")}/api/ws`;
 

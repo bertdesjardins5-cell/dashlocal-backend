@@ -192,3 +192,7 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 
 ## Background location disclosure (Oct 2026)
 - src/components/BackgroundLocationDisclosure.tsx: prominent disclosure (what/background/why/who/when it stops) shown before the system "Always"/"Allow all the time" prompt. driverTracking.backgroundStatus() + startBackgroundTracking(ask) only prompts after CONTINUE. Decline = foreground only; status line offers "TURN ON LOCKED-PHONE ARRIVAL" or "OPEN SETTINGS" when blocked. Native builds only (web/Expo Go never show it).
+
+## Android launch crash (Samsung S23) + crash reporting (Oct 2026)
+- Guarded BACKEND_URL in src/api.ts (module-level .replace on undefined crashed native launch if the env var was missing). Notification channel promise now caught.
+- src/crashReporter.ts (imported first in app/_layout.tsx): global JS error handler saves + POSTs to /api/crash-reports (public, 30/IP/hour); resends pending report next launch. Admin › Crash reports (/admin/crashes, GET /api/admin/crash-reports).

@@ -169,6 +169,14 @@ export default function AdminDashboard() {
             </View>
             <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />
           </Pressable>
+          <Pressable testID="admin-crashes-link" onPress={() => router.push("/admin/crashes")} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
+            <Ionicons name="bug" size={24} color={colors.onSurface} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Display style={s.rowTitle}>CRASH REPORTS</Display>
+              <Mono style={s.meta}>Errors the app reported from phones</Mono>
+            </View>
+            <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />
+          </Pressable>
           <Pressable testID="admin-terms-link" onPress={() => router.push("/admin/terms")} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
             <Ionicons name="document-text" size={24} color={colors.onSurface} />
             <View style={{ flex: 1, gap: 2 }}>
