@@ -196,3 +196,5 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 ## Android launch crash (Samsung S23) + crash reporting (Oct 2026)
 - Guarded BACKEND_URL in src/api.ts (module-level .replace on undefined crashed native launch if the env var was missing). Notification channel promise now caught.
 - src/crashReporter.ts (imported first in app/_layout.tsx): global JS error handler saves + POSTs to /api/crash-reports (public, 30/IP/hour); resends pending report next launch. Admin › Crash reports (/admin/crashes, GET /api/admin/crash-reports).
+
+- APK "won't open" fix: Expo SDK 58 + AGP 9 strict R8 strips Room/WorkManager constructors (async-storage uses Room, react-native-maps uses WorkManager) -> native crash before JS. Added expo-build-properties: enableMinifyInReleaseBuilds=false, shrinkResources=false, extraProguardRules keep RoomDatabase/InputMerger/WorkDatabase_Impl <init>. Aligned patch versions via expo install --fix (expo ~58.0.21, RN 0.88.1). expo-camera recordAudioAndroid=false.
