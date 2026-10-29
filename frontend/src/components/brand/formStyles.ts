@@ -1,6 +1,6 @@
 import { fonts, makeStyles } from "@/src/theme";
 
-// Shared DashLocal brand styles for sign-in forms.
+// Shared ArriveWise brand styles for sign-in forms.
 export const useBrandForm = makeStyles((c) => ({
   screen: { flex: 1, backgroundColor: c.brandSoftGray },
   wrap: { padding: 24, alignItems: "center" },

@@ -28,7 +28,7 @@ def cleanup():
 
 @pytest.fixture(scope="module")
 def admin():
-    r = requests.post(f"{BASE_URL}/api/auth/login", json={"email": "admin@dashlocal.app", "password": "DashLocalAdmin2026"}, headers=NOAUTH)
+    r = requests.post(f"{BASE_URL}/api/auth/login", json={"email": "admin@arrivewise.app", "password": "DashLocalAdmin2026"}, headers=NOAUTH)
     if r.status_code != 200:
         pytest.skip(f"admin login failed {r.status_code}")
     return {"Authorization": f"Bearer {r.json()['token']}", **NOAUTH}

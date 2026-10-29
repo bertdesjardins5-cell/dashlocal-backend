@@ -38,7 +38,7 @@ export async function startBackgroundTracking(): Promise<boolean> {
       activityType: Location.ActivityType.AutomotiveNavigation,
       showsBackgroundLocationIndicator: true,
       foregroundService: {
-        notificationTitle: "DashLocal route in progress",
+        notificationTitle: "ArriveWise route in progress",
         notificationBody: "Sharing your location so stops mark arrived automatically",
       },
     });

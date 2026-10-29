@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api")
 
 
 # ---------------------------------------------------------------- privacy & compliance (PIPEDA / PHIPA)
-CONSENT_TEXT = ("I consent to DashLocal and its designated independent drivers collecting and processing my name, address, and "
+CONSENT_TEXT = ("I consent to ArriveWise and its designated independent drivers collecting and processing my name, address, and "
                 "contact details solely for the purpose of same-day parcel/prescription fulfillment.")
 PRIVACY_DEFAULT = {"retention_days": 730}
 AUDIT_SKIP = re.compile(r"^/api/(drivers/[^/]+/(location|simulate-step|badges/new|coaching)|rate-card|testimonials|$)")
@@ -154,7 +154,7 @@ async def customer_data(phone: str) -> dict:
 
 @router.get("/admin/customers/lookup", dependencies=ADMIN_ONLY)
 async def customer_lookup(phone: str):
-    """PIPEDA access request: everything DashLocal holds about one customer, found by phone number."""
+    """PIPEDA access request: everything ArriveWise holds about one customer, found by phone number."""
     d = await customer_data(customer_phone_or_400(phone))
     names = sorted({o["customer_name"] for o in d["orders"] if o["customer_name"]})
     return {"phone": d["phone"], "names": names, "orders": len(d["orders"]), "saved_notes": len(d["saved_notes"]),
@@ -175,8 +175,8 @@ async def customer_export(token: str, request: Request):
     d = await customer_data(t["phone"])
     await db.data_requests.insert_one({"id": str(uuid.uuid4()), "kind": "export", "phone": t["phone"], "by": t["sub"], "at": now_iso(),
                                        "orders": len(d["orders"]), "ip": auth.client_ip(request)})
-    body = {"exported_at": now_iso(), "exported_by": "DashLocal Inc. — PIPEDA access request", **d}
-    fname = f"dashlocal-customer-{t['phone'].lstrip('+')}.json"
+    body = {"exported_at": now_iso(), "exported_by": "ArriveWise Inc. — PIPEDA access request", **d}
+    fname = f"arrivewise-customer-{t['phone'].lstrip('+')}.json"
     return Response(content=json.dumps(body, indent=2, default=str), media_type="application/json",
                     headers={"Content-Disposition": f'attachment; filename="{fname}"', "Cache-Control": "no-store"})
 

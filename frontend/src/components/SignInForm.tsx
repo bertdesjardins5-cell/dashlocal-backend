@@ -7,7 +7,7 @@ import BrandButton from "@/src/components/brand/BrandButton";
 import { useBrandForm } from "@/src/components/brand/formStyles";
 import { useTheme } from "@/src/theme";
 
-// Email + password sign-in for merchants and the dispatch admin (DashLocal brand styling).
+// Email + password sign-in for merchants and the dispatch admin (ArriveWise brand styling).
 export default function SignInForm({ title, hint, role, onSignedIn, onPhone, scroll = true }: { title: string; hint: string; role?: "admin" | "merchant"; onSignedIn?: (u: SessionUser) => void; onPhone?: (phone: string) => void; scroll?: boolean }) {
   const s = useBrandForm();
   const { colors } = useTheme();

@@ -182,10 +182,10 @@ async def email_pharmacy_summary(merchant_id: str, week: str):
             f"<li><b>{s['pickups_on_time']}/{s['pickups_checked_in']}</b> pickups on time{pct}</li>"
             f"<li><b>{s['batch_rate_drops']}</b> drops at the batch rate · <b>${s['savings']:.2f}</b> saved</li>"
             f"<li>Patient rating: <b>{s['avg_rating'] or '—'}</b> from {s['ratings']} ratings · {escape(tags)}</li></ul>")
-    subject = f"{m['name']}: your DashLocal week — {s['drops']} drops, ${s['savings']:.2f} saved"
+    subject = f"{m['name']}: your ArriveWise week — {s['drops']} drops, ${s['savings']:.2f} saved"
     for to in await pickup_routes.merchant_alert_recipients(merchant_id):
         try:
-            await emails.send_email(to=to, subject=subject, html=onboarding.brand_email("Your week with DashLocal", body))
+            await emails.send_email(to=to, subject=subject, html=onboarding.brand_email("Your week with ArriveWise", body))
         except Exception as e:
             logger.warning(f"Pharmacy summary email failed: {e}")
 

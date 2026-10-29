@@ -1,6 +1,6 @@
 """Square payments: merchant card on file (auto-charged monthly platform fee + weekly delivery charges),
 one-off invoice payments, and customer order payments. All amounts CAD incl. Ontario HST.
-Card numbers never touch DashLocal: Square's Web Payments SDK (hosted page below) returns a one-use token."""
+Card numbers never touch ArriveWise: Square's Web Payments SDK (hosted page below) returns a one-use token."""
 from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import HTMLResponse
 from pymongo.errors import DuplicateKeyError
@@ -25,7 +25,7 @@ router = APIRouter(prefix="/api")
 SQUARE_VERSION = "2025-10-16"
 MAX_ATTEMPTS = 3
 RETRY_HOURS = 24
-CARD_CONSENT = ("I authorize DashLocal to charge this card for my monthly platform fee and, each week, for the deliveries completed "
+CARD_CONSENT = ("I authorize ArriveWise to charge this card for my monthly platform fee and, each week, for the deliveries completed "
                 "the week before — all in CAD including 13% Ontario HST. A receipt is emailed after every charge. I can remove the card anytime.")
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[A-Za-z]{2,}$")
 
@@ -137,7 +137,7 @@ async def email_merchant_receipt(merchant_id: str, ch: dict, invs: list):
     sent = []
     for to in await merchant_recipients(merchant_id):
         try:
-            await emails.send_email(to=to, subject=f"DashLocal receipt: {money(ch['total'])} charged — {ch['label']}", html=html)
+            await emails.send_email(to=to, subject=f"ArriveWise receipt: {money(ch['total'])} charged — {ch['label']}", html=html)
             sent.append({"to": to, "status": "sent"})
         except Exception as e:
             sent.append({"to": to, "status": f"failed: {e}"})
@@ -151,7 +151,7 @@ async def settle_invoices(merchant_id: str, invs: list, source_id: str, key: str
     hst = round(sum(i["hst"] for i in invs), 2)
     total = round(sum(i["total"] for i in invs), 2)
     nums = ", ".join(i["number"] for i in invs)
-    p = await charge(source_id, cents(total), key, f"DashLocal {label}: {nums}", f"{merchant_id}"[:40], customer_id=customer_id)
+    p = await charge(source_id, cents(total), key, f"ArriveWise {label}: {nums}", f"{merchant_id}"[:40], customer_id=customer_id)
     ch = {"merchant_id": merchant_id, "kind": kind, "label": label, "invoice_ids": [i["id"] for i in invs], "subtotal": sub, "hst": hst, "total": total,
           "status": "paid", "paid_at": now_iso(), "by": by, **p}
     if charge_doc:
@@ -252,7 +252,7 @@ async def email_charge_failed(m: dict, label: str, total: float, reason: str, fi
                                   f"{escape(card_label(m['square'].get('brand'), m['square'].get('last4')))}, but it failed: {escape(reason)}.</p><p>{nxt}</p>")
     for to in await merchant_recipients(m["id"]):
         try:
-            await emails.send_email(to=to, subject=f"DashLocal: card payment failed — {money(total)}", html=html)
+            await emails.send_email(to=to, subject=f"ArriveWise: card payment failed — {money(total)}", html=html)
         except Exception as e:
             logger.warning(f"Charge-failed email to {to}: {e}")
     if final:
@@ -305,7 +305,7 @@ async def describe(p: dict) -> dict:
     if pay["paid"]:
         raise HTTPException(409, "This order is already paid")
     m = await db.merchants.find_one({"id": s.get("merchant_id")}, {"_id": 0, "name": 1}) or {}
-    return {"title": f"Order {s['tracking_code']}", "who": m.get("name", "DashLocal"), "total": pay["total"], "subtotal": pay["amount"], "hst": pay["hst"],
+    return {"title": f"Order {s['tracking_code']}", "who": m.get("name", "ArriveWise"), "total": pay["total"], "subtotal": pay["amount"], "hst": pay["hst"],
             "hst_pct": pay["hst_pct"], "lines": [(f"Order from {m.get('name', 'the store')}", pay["amount"])], "button": "Pay", "stop": s, "pay": pay}
 
 
@@ -346,11 +346,11 @@ async def pay_page(t: str = ""):
     cfg = json.dumps({"app": os.environ.get("SQUARE_APPLICATION_ID", ""), "loc": os.environ.get("SQUARE_LOCATION_ID", ""), "t": t, "kind": p["kind"],
                       "amount": f"{d['total']:.2f}" if d["total"] is not None else None}).replace("<", "\\u003c")
     html = f"""<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
-<title>DashLocal · Secure card payment</title><style>{PAGE_CSS}</style><script src="{sdk_url()}" nonce="{nonce}"></script></head><body><div class=w>
+<title>ArriveWise · Secure card payment</title><style>{PAGE_CSS}</style><script src="{sdk_url()}" nonce="{nonce}"></script></head><body><div class=w>
 {"<div class=sb>TEST MODE · use card 4111 1111 1111 1111, any future expiry, CVV 111, ZIP 12345</div>" if sandbox() else ""}
 <div class=c id=box><h1>{escape(d['title'])}</h1><div class=m>{escape(d.get('who') or '')} · Secured by Square</div><div style="margin-top:12px">{rows}</div>
 {extra}<div id=card></div><button id=go disabled>{escape(btn)}</button><div class=e id=err></div>
-<div class=m style="margin-top:10px">Your card details go straight to Square. DashLocal never sees or stores your card number.</div></div></div>
+<div class=m style="margin-top:10px">Your card details go straight to Square. ArriveWise never sees or stores your card number.</div></div></div>
 <script nonce="{nonce}">
 const C={cfg};const $=i=>document.getElementById(i);let card;
 const tell=m=>{{try{{if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify(m));else if(window.parent!==window)window.parent.postMessage(m,location.origin)}}catch(e){{}}}};
@@ -586,7 +586,7 @@ async def email_customer_receipt(s: dict, store: str, cp: dict):
                                   + f"<p style='color:#5C5C5E;font-size:12px'>Square payment {escape(cp['payment_id'])}.</p>",
                                   ("View Square receipt", cp["receipt_url"]) if (cp.get("receipt_url") or "").startswith("https://") else None)
     try:
-        await emails.send_email(to=cp["email"], subject=f"Your DashLocal receipt — order {s['tracking_code']} ({money(cp['total'])})", html=html)
+        await emails.send_email(to=cp["email"], subject=f"Your ArriveWise receipt — order {s['tracking_code']} ({money(cp['total'])})", html=html)
         status = "sent"
     except Exception as e:
         status = f"failed: {e}"

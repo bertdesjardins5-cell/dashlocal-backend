@@ -85,7 +85,7 @@ const light = {
   divider: "#0A0A0A", // subtle list separators
 
   // ---------------------------------------------------------------------------
-  // DashLocal brand (landing page + sign-in screens only; dashboards keep the tokens above)
+  // ArriveWise brand (landing page + sign-in screens only; dashboards keep the tokens above)
   // ---------------------------------------------------------------------------
   brandCharcoal: "#333335",
   onBrandCharcoal: "#FFFFFF",

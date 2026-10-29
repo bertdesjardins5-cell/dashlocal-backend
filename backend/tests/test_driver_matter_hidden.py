@@ -38,7 +38,7 @@ def toks():
     r = requests.post(f"{API}/auth/driver-login", json={"phone": "+15195550101", "pin": "482913"}, headers=NA)
     assert r.status_code == 200, r.text
     return {"admin": login(os.environ["ADMIN_EMAIL"], os.environ["ADMIN_PASSWORD"]), "drv1": r.json()["token"],
-            "m1": login("bakery@dashlocal.app", "Bakery2026")}
+            "m1": login("bakery@arrivewise.app", "Bakery2026")}
 
 
 @pytest.fixture(scope="module")

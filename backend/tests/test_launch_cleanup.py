@@ -11,7 +11,7 @@ load_dotenv(Path(__file__).resolve().parents[2] / "frontend" / ".env")
 BASE_URL = (os.environ.get("EXPO_PUBLIC_BACKEND_URL") or os.environ.get("EXPO_BACKEND_URL")).rstrip("/")
 LOCAL = "http://localhost:8001"
 LIVE = {"Host": "dashlocal.app"}
-ADMIN = {"email": os.environ.get("ADMIN_EMAIL", "admin@dashlocal.app"), "password": os.environ.get("ADMIN_PASSWORD")}
+ADMIN = {"email": os.environ.get("ADMIN_EMAIL", "admin@arrivewise.app"), "password": os.environ.get("ADMIN_PASSWORD")}
 NO_AUTO = {"X-No-Auto-Auth": "1"}
 
 
@@ -29,7 +29,7 @@ def admin_tok():
 
 @pytest.fixture(scope="module")
 def merchant_tok():
-    r = _login(BASE_URL, {"email": "bakery@dashlocal.app", "password": "Bakery2026"})
+    r = _login(BASE_URL, {"email": "bakery@arrivewise.app", "password": "Bakery2026"})
     if r.status_code != 200:
         pytest.skip(f"demo merchant login failed: {r.status_code} {r.text}")
     return r.json()["token"]

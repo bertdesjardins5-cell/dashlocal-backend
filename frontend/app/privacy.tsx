@@ -13,8 +13,8 @@ const UPDATED = "June 2026";
 
 const sections = (officer: string, email: string): { h: string; p: string[] }[] => [
   { h: "Who we are", p: [
-    "DashLocal Inc. (\"DashLocal\") provides same-day local delivery for shops and pharmacies in Kitchener-Waterloo, Ontario. This policy explains how we handle personal information under Canada's Personal Information Protection and Electronic Documents Act (PIPEDA) and, for pharmacy deliveries, Ontario's Personal Health Information Protection Act, 2004 (PHIPA).",
-    "For pharmacy orders, the pharmacy is the health information custodian. DashLocal acts as its agent and only handles what it needs to complete the delivery.",
+    "ArriveWise Inc. (\"ArriveWise\") provides same-day local delivery for shops and pharmacies in Kitchener-Waterloo, Ontario. This policy explains how we handle personal information under Canada's Personal Information Protection and Electronic Documents Act (PIPEDA) and, for pharmacy deliveries, Ontario's Personal Health Information Protection Act, 2004 (PHIPA).",
+    "For pharmacy orders, the pharmacy is the health information custodian. ArriveWise acts as its agent and only handles what it needs to complete the delivery.",
   ] },
   { h: "What we collect", p: [
     "Recipients: name, delivery address, phone number, delivery instructions (for example a gate code or \"leave at side door\"), the delivery time window, and proof of delivery (a doorstep photo or signature, and the time it was delivered). We may also keep a rating and comment if you choose to leave one.",
@@ -26,12 +26,12 @@ const sections = (officer: string, email: string): { h: string; p: string[] }[] 
     "Only to deliver your order: planning the route, telling the driver where to go, letting you track the delivery, contacting you about it through a masked phone line, proving it was delivered, and billing the shop. We do not sell personal information or use it for advertising.",
   ] },
   { h: "Consent", p: [
-    "Shops confirm the recipient's consent each time they place orders. We record when consent was given and who gave it, alongside the order. Shops, pharmacies and drivers also accept these terms before they use DashLocal, and we record that acceptance with a timestamp.",
+    "Shops confirm the recipient's consent each time they place orders. We record when consent was given and who gave it, alongside the order. Shops, pharmacies and drivers also accept these terms before they use ArriveWise, and we record that acceptance with a timestamp.",
     "You can withdraw consent at any time by contacting the shop you ordered from or our Privacy Officer. If you do, we may not be able to complete a delivery.",
   ] },
   { h: "How we store and protect it", p: [
     "All data travels over encrypted HTTPS connections. Delivery notes, signatures and doorstep photos are also encrypted when they are stored.",
-    "Access is limited by role. Drivers see only the recipient's name, street address and delivery notes for their own stops, never phone numbers, prices or invoice items. Shops see only their own orders, and only signed-in DashLocal staff can see everything else.",
+    "Access is limited by role. Drivers see only the recipient's name, street address and delivery notes for their own stops, never phone numbers, prices or invoice items. Shops see only their own orders, and only signed-in ArriveWise staff can see everything else.",
     "Calls and texts between drivers and customers go through a masked number, so neither side sees the other's phone number. Every time anyone views or changes personal information, it is recorded in an audit log that shows who did it and when.",
   ] },
   { h: "How long we keep it", p: [
@@ -44,7 +44,7 @@ const sections = (officer: string, email: string): { h: string; p: string[] }[] 
     "Under PIPEDA and PHIPA you can ask to see the personal information we hold about you, ask us to correct it, ask how it has been used or shared, and withdraw your consent. You can also complain to us, and if you are not satisfied, to the Office of the Privacy Commissioner of Canada (priv.gc.ca) or, for health information, the Information and Privacy Commissioner of Ontario (ipc.on.ca).",
     "If a privacy breach puts you at real risk of significant harm, we will notify you and the relevant commissioner as the law requires.",
   ] },
-  { h: "Contact", p: [`${officer}, Privacy Officer, DashLocal Inc. · ${email}. We reply within 30 days.`] },
+  { h: "Contact", p: [`${officer}, Privacy Officer, ArriveWise Inc. · ${email}. We reply within 30 days.`] },
 ];
 
 export default function PrivacyPolicy() {

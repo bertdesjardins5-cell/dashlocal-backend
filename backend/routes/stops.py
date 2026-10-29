@@ -54,7 +54,7 @@ async def verify_qr(stop_id: str, body: QrIn, u: dict = Depends(require_stop_dri
         raise HTTPException(400, f"Stop is already {stop.status}")
     await seed.ensure_stop_actionable_today(stop)
     scanned = body.code.strip().upper()
-    if scanned.startswith(("DASHLOCAL:", "MULTIDROP:")):  # labels printed before the rename still scan
+    if scanned.startswith(("ARRIVEWISE:", "DASHLOCAL:", "MULTIDROP:")):  # labels printed before the rename still scan
         scanned = scanned.split(":", 1)[1]
     if scanned != stop.tracking_code:
         raise HTTPException(400, f"Wrong parcel — scanned {scanned[:20]}, expected {stop.tracking_code}")
@@ -86,9 +86,9 @@ async def send_booking_sms(stop: "Stop", kind: str) -> str:
     if stop.window_end:
         when = f"{seed.nice_date(stop.window_date or today_str())}, {stop.window_start}-{stop.window_end}"
         verb = "is booked for" if kind == "booked" else "has moved to"
-        body = f"DashLocal: your delivery {stop.tracking_code} {verb} {when} (Eastern time). Reply or track your order in the app."
+        body = f"ArriveWise: your delivery {stop.tracking_code} {verb} {when} (Eastern time). Reply or track your order in the app."
     else:
-        body = f"DashLocal: the delivery window for {stop.tracking_code} was cleared. We'll deliver at any time on your route day."
+        body = f"ArriveWise: the delivery window for {stop.tracking_code} was cleared. We'll deliver at any time on your route day."
     try:
         tw = TwilioClient(os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"])
         res = await run_in_threadpool(lambda: tw.messages.create(to=stop.customer_phone, from_=twilio_number(), body=body))
@@ -279,7 +279,7 @@ async def contact(stop_id: str, body: ContactIn):
                      f"<Dial callerId=\"{proxy}\">{stop.customer_phone}</Dial></Response>")
             res = await run_in_threadpool(lambda: tw.calls.create(to=driver.phone, from_=proxy, twiml=twiml))
         else:
-            text = (body.message or "").strip() or f"DashLocal: your driver {driver.name if driver else ''} is on the way with order {stop.tracking_code}."
+            text = (body.message or "").strip() or f"ArriveWise: your driver {driver.name if driver else ''} is on the way with order {stop.tracking_code}."
             res = await run_in_threadpool(lambda: tw.messages.create(to=stop.customer_phone, from_=proxy, body=text[:600]))
     except TwilioRestException as e:
         logger.error(f"Twilio error: {e}")

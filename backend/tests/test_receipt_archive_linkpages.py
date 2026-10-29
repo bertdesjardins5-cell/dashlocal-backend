@@ -45,7 +45,7 @@ def toks():
     db.login_attempts.delete_many({})
     r = requests.post(f"{BASE_URL}/api/auth/driver-login", json={"phone": "+15195550101", "pin": "482913"}, headers=NA)
     assert r.status_code == 200, r.text
-    return {"admin": login(*ADMIN), "drv1": r.json()["token"], "m1": login("bakery@dashlocal.app", "Bakery2026")}
+    return {"admin": login(*ADMIN), "drv1": r.json()["token"], "m1": login("bakery@arrivewise.app", "Bakery2026")}
 
 
 @pytest.fixture(scope="module", autouse=True)

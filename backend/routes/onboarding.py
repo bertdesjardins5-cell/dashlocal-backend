@@ -39,7 +39,7 @@ def brand_email(title: str, body_html: str, cta: Optional[tuple] = None) -> str:
            f'border-radius:10px;text-decoration:none;font-family:Arial,sans-serif;font-weight:bold">{escape(cta[0])}</a></p>') if cta else ""
     return (f'<!doctype html><html><body style="margin:0;background:#F5F5F5;padding:24px">'
             f'<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:16px;padding:28px;color:#333335">'
-            f'<div style="font-family:Arial,sans-serif;font-weight:bold;font-size:20px"><span style="color:#333335">DASH</span><span style="color:#D7262E">LOCAL</span></div>'
+            f'<div style="font-family:Arial,sans-serif;font-weight:bold;font-size:20px"><span style="color:#333335">ARRIVE</span><span style="color:#D7262E">WISE</span></div>'
             f'<h1 style="font-family:Arial,sans-serif;font-size:22px;margin:20px 0 8px">{escape(title)}</h1>'
             f'<div style="font-family:Georgia,serif;font-size:16px;line-height:1.6">{body_html}</div>{btn}'
             f'<p style="font-family:Georgia,serif;font-size:13px;color:#5C5C5E">Same-day local delivery for small businesses.</p></div></body></html>')
@@ -70,13 +70,13 @@ async def send_review_request(body: ReviewRequestIn, request: Request):
     base = await app_base(request)
     rid = str(uuid.uuid4())
     link = f"{base}/review/{issue_token(rid, 'merchant', purpose='review', minutes=REVIEW_LINK_DAYS * 24 * 60)}"
-    html = brand_email(f"How is DashLocal working for {m['name']}?",
-                       f"<p>We'd love a short quote about delivering with DashLocal. With your OK, it may appear on our website for other small businesses to read.</p>"
+    html = brand_email(f"How is ArriveWise working for {m['name']}?",
+                       f"<p>We'd love a short quote about delivering with ArriveWise. With your OK, it may appear on our website for other small businesses to read.</p>"
                        f"<p>The link works once and lasts {REVIEW_LINK_DAYS} days.</p>", ("Write a quick review", link))
     sent, errors = [], []
     for u in users:
         try:
-            await emails.send_email(to=demo_inbox(u["email"]), subject=f"A quick review of DashLocal? — {m['name']}", html=html)
+            await emails.send_email(to=demo_inbox(u["email"]), subject=f"A quick review of ArriveWise? — {m['name']}", html=html)
             sent.append(u["email"])
         except Exception as e:
             errors.append(str(e))
@@ -97,7 +97,7 @@ def link_payload(token: str, purpose: str) -> dict:
     try:
         return decode_token(token, purpose)
     except HTTPException as e:
-        raise HTTPException(400, "This link has expired — ask DashLocal for a new one" if "expired" in str(e.detail) else "This link isn't valid")
+        raise HTTPException(400, "This link has expired — ask ArriveWise for a new one" if "expired" in str(e.detail) else "This link isn't valid")
 
 
 async def open_review_request(token: str) -> dict:
@@ -156,13 +156,13 @@ async def send_review_reminders() -> int:
         link = f"{base}/review/{issue_token(rr['id'], 'merchant', purpose='review', minutes=int(left.total_seconds() // 60))}"
         days_left = max(1, round(left.total_seconds() / 86400))
         html = brand_email(f"Still happy to share a few words, {rr['shop']}?",
-                           "<p>Just a friendly nudge: a sentence or two about delivering with DashLocal helps other small businesses find us. "
+                           "<p>Just a friendly nudge: a sentence or two about delivering with ArriveWise helps other small businesses find us. "
                            f"No pressure at all — the link stays open for {days_left} more day{'s' if days_left != 1 else ''}.</p>",
                            ("Write a quick review", link))
         ok = False
         for em in rr.get("emails", []):
             try:
-                await emails.send_email(to=demo_inbox(em), subject=f"A quick review of DashLocal? — {rr['shop']}", html=html)
+                await emails.send_email(to=demo_inbox(em), subject=f"A quick review of ArriveWise? — {rr['shop']}", html=html)
                 ok = True
             except Exception as e:
                 logger.warning(f"Review reminder failed for {rr['id']}: {e}")
@@ -209,8 +209,8 @@ async def send_first_delivery_email(merchant_id: str):
     users = await db.users.find({"merchant_id": merchant_id, "role": "merchant", "disabled": {"$ne": True}}, {"_id": 0, "email": 1}).to_list(20)
     base = (await db.settings.find_one({"key": "public_base"}, {"_id": 0}) or {}).get("value")
     tips = "".join(f"<li style=\"margin-bottom:10px\"><b>{escape(t)}</b><br>{escape(b)}</li>" for t, b in GROWTH_TIPS)
-    html = brand_email(f"Your first DashLocal delivery is done 🎉",
-                       f"<p>Congratulations, {escape(m['name'])}: your first order just reached its customer. A few tips to get the most from DashLocal:</p>"
+    html = brand_email(f"Your first ArriveWise delivery is done 🎉",
+                       f"<p>Congratulations, {escape(m['name'])}: your first order just reached its customer. A few tips to get the most from ArriveWise:</p>"
                        f"<ol style=\"padding-left:20px\">{tips}</ol><p>Questions? Just reply to this email.</p>",
                        ("Open your portal", f"{base}/sign-in/merchant") if base else None)
     ok = False
@@ -263,7 +263,7 @@ BUSINESS_TYPES = {"store": "Store", "law_office": "Law office", "flower_shop": "
 
 @router.post("/signup-requests")
 async def request_signup(body: SignupIn, request: Request):
-    """Public: a shop asks for a DashLocal account. The admin approves it from the admin panel."""
+    """Public: a shop asks for a ArriveWise account. The admin approves it from the admin panel."""
     clip = lambda v, n: " ".join((v or "").split())[:n]
     doc = {"store_name": clip(body.store_name, 80), "contact_name": clip(body.contact_name, 60), "email": body.email.strip().lower()[:120],
            "phone": clip(body.phone, 30) or None, "address": clip(body.address, 160) or None, "message": clip(body.message, 500) or None}
@@ -340,8 +340,8 @@ async def approve_signup(sid: str, request: Request):
     link = f"{base}/set-password/{issue_token(user['id'], 'merchant', purpose='setpw', minutes=SETPW_LINK_HOURS * 60, n=nonce)}"
     status = "sent"
     try:
-        await emails.send_email(to=demo_inbox(sr["email"]), subject="Your DashLocal store is ready",
-                         html=brand_email(f"Welcome to DashLocal, {sr['contact_name'].split(' ')[0]}",
+        await emails.send_email(to=demo_inbox(sr["email"]), subject="Your ArriveWise store is ready",
+                         html=brand_email(f"Welcome to ArriveWise, {sr['contact_name'].split(' ')[0]}",
                                           f"<p>Your store <b>{escape(sr['store_name'])}</b> is approved. Choose a password to sign in and upload your first orders.</p>"
                                           f"<p>The link works once and lasts {SETPW_LINK_HOURS} hours.</p>", ("Choose your password", link)))
     except Exception as e:
@@ -362,7 +362,7 @@ async def setpw_user(token: str) -> dict:
     p = link_payload(token, "setpw")
     u = await db.users.find_one({"id": p["sub"], "disabled": {"$ne": True}}, {"_id": 0})
     if not u or not u.get("pw_nonce") or not secrets.compare_digest(u["pw_nonce"], str(p.get("n", ""))):
-        raise HTTPException(400, "This link was already used or has been replaced — ask DashLocal for a new one")
+        raise HTTPException(400, "This link was already used or has been replaced — ask ArriveWise for a new one")
     return u
 
 

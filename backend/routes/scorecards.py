@@ -194,7 +194,7 @@ async def route_labels(route_id: str, token: str = "", autoprint: int = 0):
     for load_no, x in enumerate(stops, 1):
         win = f"{x.window_date or ''} {x.window_start}-{x.window_end}".strip() if x.window_end else "ANY TIME"
         note = f'<div class="note">{esc(x.notes)}</div>' if x.notes else ''
-        cards.append(f"""<div class="label"><div class="qr">{qr_svg('DASHLOCAL:' + x.tracking_code)}</div>
+        cards.append(f"""<div class="label"><div class="qr">{qr_svg('ARRIVEWISE:' + x.tracking_code)}</div>
 <div class="info"><div class="tags"><span class="load">LOAD {load_no:02d}</span><span class="seq">DROP #{x.seq:02d}</span></div><div class="code">{esc(x.tracking_code)}</div>
 <div class="name">{esc(x.customer_name)}</div><div class="addr">{esc(x.address)}</div>
 <div class="meta">{esc(x.postal_code)} &middot; {esc(x.zone.upper())}</div><div class="win">WINDOW {esc(win)}</div>{note}</div></div>""")

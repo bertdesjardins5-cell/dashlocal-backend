@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api")
 
 
 # ---------------------------------------------------------------- invoices with HST (one per completed delivery, CAD)
-BUSINESS_DEFAULT = {"name": "DashLocal", "address": "Business address — set in Admin › Invoices", "hst_number": "HST # — set in Admin › Invoices", "hst_pct": 13.0}
+BUSINESS_DEFAULT = {"name": "ArriveWise", "address": "Business address — set in Admin › Invoices", "hst_number": "HST # — set in Admin › Invoices", "hst_pct": 13.0}
 
 
 async def get_business() -> dict:
@@ -298,7 +298,7 @@ def invoice_pdf(inv: dict) -> bytes:
     e = lambda v: escape(str(v or ""))
     money = lambda n: f"CA${n:,.2f}"
     biz, mer, d = inv["business"], inv["merchant"], inv["delivery"]
-    logo = Paragraph('<font name="Helvetica-Bold" size="18" color="#333335">DASH</font><font name="Helvetica-Bold" size="18" color="#D7262E">LOCAL</font>', body)
+    logo = Paragraph('<font name="Helvetica-Bold" size="18" color="#333335">ARRIVE</font><font name="Helvetica-Bold" size="18" color="#D7262E">WISE</font>', body)
     head = Table([[logo, Paragraph("INVOICE", ParagraphStyle("r", parent=h, alignment=2))]], colWidths=[3.45 * inch, 3.45 * inch])
     meta = Table([
         [Paragraph(f"<b>{e(biz['name'])}</b><br/>{e(biz['address'])}<br/>HST Reg. No. {e(biz['hst_number'])}", body),
@@ -321,7 +321,7 @@ def invoice_pdf(inv: dict) -> bytes:
         ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
     ]))
     doc.build([head, Spacer(1, 14), meta, Spacer(1, 18), bill_to, Spacer(1, 12), deliv, Spacer(1, 16), t, Spacer(1, 24),
-               Paragraph("Thank you for delivering with DashLocal. Stores with a card on file are charged automatically (monthly fee at the start of each month, "
+               Paragraph("Thank you for delivering with ArriveWise. Stores with a card on file are charged automatically (monthly fee at the start of each month, "
                          "deliveries every Monday for the week before). Otherwise pay by card in the Merchant Portal, quoting the invoice number.", small)])
     return buf.getvalue()
 
@@ -336,7 +336,7 @@ async def download_invoice(invoice_id: str, token: str = ""):
         raise linkpages.LinkPageError("invoice", "missing", 404)
     pdf = await run_in_threadpool(invoice_pdf, inv)
     return Response(content=pdf, media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="DashLocal-{inv["number"]}.pdf"', "Cache-Control": "no-store"})
+                    headers={"Content-Disposition": f'attachment; filename="ArriveWise-{inv["number"]}.pdf"', "Cache-Control": "no-store"})
 
 
 @router.get("/admin/invoices", dependencies=ADMIN_ONLY)

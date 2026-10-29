@@ -11,7 +11,7 @@ if not BASE_URL:
     for line in open("/app/frontend/.env"):
         if line.startswith("EXPO_PUBLIC_BACKEND_URL="):
             BASE_URL = line.split("=", 1)[1].strip().strip('"').rstrip("/")
-MSG = "If this number belongs to a DashLocal driver, dispatch has been asked to reset your PIN. You'll get a text with a new one."
+MSG = "If this number belongs to a ArriveWise driver, dispatch has been asked to reset your PIN. You'll get a text with a new one."
 NOAUTH = {"X-No-Auto-Auth": "1"}
 
 db = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]

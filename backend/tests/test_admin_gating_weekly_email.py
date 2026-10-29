@@ -31,9 +31,9 @@ def H(t):
 
 @pytest.fixture(scope="module")
 def toks():
-    return {"admin": login("admin@dashlocal.app", "DashLocalAdmin2026"),
-            "m1": login("bakery@dashlocal.app", "Bakery2026"),
-            "m2": login("books@dashlocal.app", "Books2026")}
+    return {"admin": login("admin@arrivewise.app", "DashLocalAdmin2026"),
+            "m1": login("bakery@arrivewise.app", "Bakery2026"),
+            "m2": login("books@arrivewise.app", "Books2026")}
 
 
 @pytest.fixture(scope="module")
@@ -130,7 +130,7 @@ class TestWeeklyEmail:
 
     def test_status_shape_next_monday(self, toks):
         j = raw("GET", f"{API}/merchants/mer-1/weekly-email", headers=H(toks["m1"])).json()
-        assert isinstance(j["enabled"], bool) and "bakery@dashlocal.app" in j["recipients"] and "last" in j
+        assert isinstance(j["enabled"], bool) and "bakery@arrivewise.app" in j["recipients"] and "last" in j
         nxt = datetime.fromisoformat(j["next_send"]).astimezone(TZ)
         assert nxt.weekday() == 0 and nxt.hour == 8 and nxt.minute == 0
         assert nxt > datetime.now(TZ) and (nxt - datetime.now(TZ)).days < 7

@@ -5,8 +5,8 @@ import requests
 
 API = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/") + "/api"
 H = lambda t: {"Authorization": f"Bearer {t}"}
-m1 = requests.post(f"{API}/auth/login", json={"email": "bakery@dashlocal.app", "password": "Bakery2026"}).json()["token"]
-adm = requests.post(f"{API}/auth/login", json={"email": "admin@dashlocal.app", "password": "DashLocalAdmin2026"}).json()["token"]
+m1 = requests.post(f"{API}/auth/login", json={"email": "bakery@arrivewise.app", "password": "Bakery2026"}).json()["token"]
+adm = requests.post(f"{API}/auth/login", json={"email": "admin@arrivewise.app", "password": "DashLocalAdmin2026"}).json()["token"]
 d2 = requests.post(f"{API}/auth/driver-login", json={"phone": "+14155550102", "pin": "730516"}).json()["token"]
 
 

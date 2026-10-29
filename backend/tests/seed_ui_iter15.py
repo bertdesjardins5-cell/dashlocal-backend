@@ -37,7 +37,7 @@ def deliver(name, weeks_ago):
     print(name, db.stops.update_one({"customer_name": name}, {"$set": {"status": "delivered", "delivered_at": when.isoformat()}}).modified_count)
 
 
-m1, m2 = tok("bakery@dashlocal.app", "Bakery2026"), tok("books@dashlocal.app", "Books2026")
+m1, m2 = tok("bakery@arrivewise.app", "Bakery2026"), tok("books@arrivewise.app", "Books2026")
 print(imp("mer-1", m1, b"customer_name,phone,address\nTEST_UI15A,4155550193,1 Market St\nTEST_UI15B,4155550194,101 Market St\n"))
 print(imp("mer-2", m2, b"customer_name,phone,address\nTEST_UI15C,4155550195,1 Market St\n"))
 deliver("TEST_UI15A", 1)

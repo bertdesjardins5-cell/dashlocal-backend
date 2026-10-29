@@ -39,7 +39,7 @@ def admin():
 @pytest.fixture(scope="module")
 def pharmacy_route(admin):
     """Import 2 evening-run pharmacy drops for mer-2, batch their zone to drv-3; teardown restores everything."""
-    books = login("books@dashlocal.app", "Books2026")
+    books = login("books@arrivewise.app", "Books2026")
     r = requests.post(f"{BASE_URL}/api/merchants/mer-2/import?run=evening&consent=true", headers=books,
                       files={"file": ("TEST_run.csv", CSV, "text/csv")})
     assert r.status_code == 200, r.text

@@ -184,3 +184,8 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 ## Deployment health check (Oct 2026) — PASS (warnings only)
 - Fixed blockers: removed startup user rename/delete; seed() inserts only (wipe_demo only via admin reset force=True); retention anonymises saved_notes/contact_logs, keeps audit_log; fee backfill moved to background.
 - Remaining store-review advice: in-app account deletion (Apple 5.1.1(v)), reviewer demo account, background-location disclosure/declarations.
+
+## Rebrand DashLocal -> ArriveWise (Oct 2026)
+- All customer-facing text, logo wordmark (ARRIVE / WISE, same arrow+D mark), emails, PDFs, link pages, app.json name -> ArriveWise.
+- Logins moved to @arrivewise.app (admin@, bakery@, books@); old @dashlocal.app users disabled in preview; seed_users renames @dashlocal.app -> @arrivewise.app on startup (update only).
+- ADMIN_EMAIL=admin@arrivewise.app, EMAIL_FROM_NAME=ArriveWise (secrets). Internal keys kept: dashlocal_order_*, dashlocal_driver_phone, dashlocal-driver-location task, dashlocal-square message, DashLocalAdmin2026 password. Scanner accepts ARRIVEWISE:/DASHLOCAL:/MULTIDROP: labels.

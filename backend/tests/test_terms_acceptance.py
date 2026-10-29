@@ -34,26 +34,26 @@ def admin():
 
 @pytest.fixture(scope="module")
 def bakery():
-    return _login("bakery@dashlocal.app", "Bakery2026")
+    return _login("bakery@arrivewise.app", "Bakery2026")
 
 
 @pytest.fixture(scope="module")
 def books():
-    return _login("books@dashlocal.app", "Books2026")
+    return _login("books@arrivewise.app", "Books2026")
 
 
 @pytest.fixture(scope="module", autouse=True)
 def _restore():
     # snapshot drv-2 + bakery + mer-1 state and restore afterwards
     drv2 = db.users.find_one({"role": "driver", "driver_id": "drv-2"}, {"_id": 0})
-    bak = db.users.find_one({"email": "bakery@dashlocal.app"}, {"_id": 0})
+    bak = db.users.find_one({"email": "bakery@arrivewise.app"}, {"_id": 0})
     m1 = db.merchants.find_one({"id": "mer-1"}, {"_id": 0})
     db.users.update_one({"role": "driver", "driver_id": "drv-2"}, {"$unset": {"driver_terms_version": "", "driver_terms_at": ""}})
     db.merchants.update_one({"id": "mer-1"}, {"$unset": {"terms_reminded_at": ""}})
-    db.users.update_one({"email": "bakery@dashlocal.app"}, {"$unset": {"terms_version": "", "terms_consent_at": ""}})
+    db.users.update_one({"email": "bakery@arrivewise.app"}, {"$unset": {"terms_version": "", "terms_consent_at": ""}})
     yield
     db.users.update_one({"role": "driver", "driver_id": "drv-2"}, {"$unset": {"driver_terms_version": "", "driver_terms_at": ""}})
-    db.users.update_one({"email": "bakery@dashlocal.app"}, {"$unset": {"terms_version": "", "terms_consent_at": ""}})
+    db.users.update_one({"email": "bakery@arrivewise.app"}, {"$unset": {"terms_version": "", "terms_consent_at": ""}})
     db.merchants.update_one({"id": "mer-1"}, {"$unset": {"terms_reminded_at": ""}})
 
 
@@ -84,7 +84,7 @@ class TestTermsReport:
         assert d["version"] == "2026-10" and d["driver_version"] == "2026-10"
         st = {s["id"]: s for s in d["stores"]}
         assert st["mer-1"]["accepted"] is False and st["mer-1"]["reminded_at"] is None
-        assert st["mer-1"]["users"][0]["email"] == "bakery@dashlocal.app"
+        assert st["mer-1"]["users"][0]["email"] == "bakery@arrivewise.app"
         assert st["mer-1"]["users"][0]["accepted"] is False
         assert st["mer-2"]["accepted"] is True
         assert st["mer-2"]["users"][0]["accepted"] is True

@@ -20,12 +20,12 @@ def _login(path, body):
 
 @pytest.fixture(scope="module")
 def admin():
-    return _login("login", {"email": "admin@dashlocal.app", "password": "DashLocalAdmin2026"})
+    return _login("login", {"email": "admin@arrivewise.app", "password": "DashLocalAdmin2026"})
 
 
 @pytest.fixture(scope="module")
 def merchant():
-    return _login("login", {"email": "bakery@dashlocal.app", "password": "Bakery2026"})
+    return _login("login", {"email": "bakery@arrivewise.app", "password": "Bakery2026"})
 
 
 @pytest.fixture(scope="module")

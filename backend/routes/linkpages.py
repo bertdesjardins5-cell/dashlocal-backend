@@ -6,12 +6,12 @@ from core import HTML_CSP, db, decode_token
 # ---------------------------------------------------------------- friendly pages for emailed download links
 # Links opened straight in a browser (PDFs, CSVs) show a branded page instead of raw JSON when they can't be used.
 HOW_TO_GET_NEW = {
-    "receipt": "Sign in to your DashLocal store portal and open <b>Signed receipts</b> — every past receipt is there to download any time.",
+    "receipt": "Sign in to your ArriveWise store portal and open <b>Signed receipts</b> — every past receipt is there to download any time.",
     "receipts": "Go back to <b>Signed receipts</b> in your store portal and tap <b>Download all</b> again. Download links last 5 minutes.",
-    "mstatement": "Sign in to your DashLocal store portal, open <b>Invoices</b> and tap <b>Statement PDF</b> for the month you need.",
-    "invoice": "Sign in to your DashLocal store portal and open <b>Invoices</b> to download any invoice, or reply to your invoice email and we'll resend it.",
+    "mstatement": "Sign in to your ArriveWise store portal, open <b>Invoices</b> and tap <b>Statement PDF</b> for the month you need.",
+    "invoice": "Sign in to your ArriveWise store portal and open <b>Invoices</b> to download any invoice, or reply to your invoice email and we'll resend it.",
     "report": "Go back to your store portal and tap <b>Download CSV</b> again. Report links last 5 minutes.",
-    "proof": "Ask the store that sent your delivery for a fresh proof-of-delivery link, or open your order in the DashLocal app.",
+    "proof": "Ask the store that sent your delivery for a fresh proof-of-delivery link, or open your order in the ArriveWise app.",
 }
 
 
@@ -40,7 +40,7 @@ async def link_error_page(request: Request, exc: LinkPageError):
     btn = "" if exc.kind == "proof" or not base else (
         f'<a class="btn" href="{escape(base)}/sign-in/merchant">Sign in to your store portal</a>')
     html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex"><title>{escape(title)} · DashLocal</title>
+<meta name="robots" content="noindex"><title>{escape(title)} · ArriveWise</title>
 <style>body{{margin:0;background:#F5F5F5;font-family:Georgia,'Times New Roman',serif;color:#333335}}
 .wrap{{max-width:520px;margin:0 auto;padding:32px 20px}}.logo{{font-family:Arial,sans-serif;font-weight:800;font-size:22px;letter-spacing:.5px}}
 .logo span{{color:#D7262E}}.card{{background:#fff;border-radius:12px;padding:24px;margin-top:20px;box-shadow:0 1px 3px rgba(0,0,0,.08)}}
@@ -48,7 +48,7 @@ h1{{font-family:Arial,sans-serif;font-size:22px;margin:0 0 8px}}p{{font-size:16p
 .how{{background:#F1F6F2;border-left:4px solid #1F5130;padding:12px 14px;border-radius:6px}}
 .btn{{display:inline-block;background:#1F5130;color:#fff;text-decoration:none;font-family:Arial,sans-serif;font-weight:700;
 padding:14px 20px;border-radius:8px;margin-top:6px}}.foot{{font-size:13px;color:#77777A;margin-top:18px}}</style></head>
-<body><div class="wrap" data-testid="link-error-page"><div class="logo">DASH<span>LOCAL</span></div><div class="card">
+<body><div class="wrap" data-testid="link-error-page"><div class="logo">ARRIVE<span>WISE</span></div><div class="card">
 <h1>{escape(title)}</h1><p>{escape(why)}</p><p class="how"><b>How to get a new one:</b> {how}</p>{btn}
-<p class="foot">Need help? Email hello@dashlocal.app.</p></div></div></body></html>"""
+<p class="foot">Need help? Email hello@arrivewise.app.</p></div></div></body></html>"""
     return HTMLResponse(html, status_code=exc.status, headers={"Content-Security-Policy": HTML_CSP, "Cache-Control": "no-store"})

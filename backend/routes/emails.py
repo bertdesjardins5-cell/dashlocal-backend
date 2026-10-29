@@ -27,7 +27,7 @@ router = APIRouter(prefix="/api")
 # ---------------------------------------------------------------- weekly merchant report emails (Emergent managed Resend)
 EMAIL_BASE_URL = "https://integrations.emergentagent.com"  # constant on purpose: survives deployment
 EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY", "")
-EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "DashLocal")
+EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "ArriveWise")
 EMAIL_REPLY_TO = os.environ.get("EMAIL_REPLY_TO")
 TEST_INBOX = "delivered@resend.dev"  # seeded demo store logins are not real inboxes
 WEEKLY_SEND_HOUR = 8  # Monday 08:00 depot (Eastern) time

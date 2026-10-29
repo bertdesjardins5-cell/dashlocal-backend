@@ -93,7 +93,7 @@ export default function ReviewsScreen() {
         <View style={s.block} testID="review-form">
           <Mono style={s.label}>{editing ? "EDIT REVIEW" : "ADD A REVIEW"}</Mono>
           <Mono style={s.meta}>Only use real quotes, with the shop&apos;s permission.</Mono>
-          <TextInput testID="review-quote" value={form.quote} onChangeText={(v) => setForm({ ...form, quote: v })} placeholder="What the shop said about DashLocal" placeholderTextColor={colors.muted} multiline maxLength={400} style={[s.input, { minHeight: 96, textAlignVertical: "top", paddingTop: spacing.sm }]} />
+          <TextInput testID="review-quote" value={form.quote} onChangeText={(v) => setForm({ ...form, quote: v })} placeholder="What the shop said about ArriveWise" placeholderTextColor={colors.muted} multiline maxLength={400} style={[s.input, { minHeight: 96, textAlignVertical: "top", paddingTop: spacing.sm }]} />
           <TextInput testID="review-shop" value={form.shop} onChangeText={(v) => setForm({ ...form, shop: v })} placeholder="Shop name" placeholderTextColor={colors.muted} maxLength={80} style={s.input} />
           <TextInput testID="review-person" value={form.person} onChangeText={(v) => setForm({ ...form, person: v })} placeholder="Person & role (optional), e.g. Ana, owner" placeholderTextColor={colors.muted} maxLength={60} style={s.input} />
           <View style={s.row}>

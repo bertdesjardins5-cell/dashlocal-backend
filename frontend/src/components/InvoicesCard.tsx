@@ -86,7 +86,7 @@ export default function InvoicesCard({ merchantId, notify }: { merchantId: strin
     setBusy("report");
     try {
       const r = await api<{ updated: number }>(`/merchants/${merchantId}/invoices/report-paid`, { method: "POST", body: { ids: Array.from(sel), note } });
-      notify(`${r.updated} INVOICE${r.updated === 1 ? "" : "S"} REPORTED PAID · DASHLOCAL WILL CONFIRM`, "green");
+      notify(`${r.updated} INVOICE${r.updated === 1 ? "" : "S"} REPORTED PAID · ARRIVEWISE WILL CONFIRM`, "green");
       setSel(new Set());
       setNote("");
       q.refetch();
@@ -165,7 +165,7 @@ export default function InvoicesCard({ merchantId, notify }: { merchantId: strin
                 <View style={s.lineRow}><Mono style={s.lineText}>HST {inv.hst_pct}%</Mono><Mono style={s.lineText} testID={`invoice-hst-${inv.number}`}>{money(inv.hst)}</Mono></View>
                 <View style={s.lineRow}><Mono style={s.main}>TOTAL</Mono><Mono style={s.main}>{money(inv.total)}</Mono></View>
                 {inv.paid_at ? <Mono style={s.meta}>PAID {dayLabel(inv.paid_at.slice(0, 10))}{inv.paid_note ? ` · ${inv.paid_note}` : ""}</Mono> : null}
-                {inv.status === "reported" && inv.report ? <Mono style={s.meta}>YOU REPORTED PAYMENT {dayLabel(inv.report.at.slice(0, 10))} · {inv.report.note} · WAITING FOR DASHLOCAL TO CONFIRM</Mono> : null}
+                {inv.status === "reported" && inv.report ? <Mono style={s.meta}>YOU REPORTED PAYMENT {dayLabel(inv.report.at.slice(0, 10))} · {inv.report.note} · WAITING FOR ARRIVEWISE TO CONFIRM</Mono> : null}
                 {inv.status !== "paid" ? (
                   <Btn testID={`invoice-select-${inv.number}`} label={sel.has(inv.id) ? "SELECTED TO PAY" : "SELECT TO PAY"} icon={sel.has(inv.id) ? "checkbox" : "square-outline"} variant="outline" onPress={() => toggleSel(inv.id)} />
                 ) : null}
@@ -192,7 +192,7 @@ export default function InvoicesCard({ merchantId, notify }: { merchantId: strin
                 </View>
                 <Mono style={s.meta}>OR, IF YOU PAID BY E-TRANSFER OR CHEQUE:</Mono>
                 <TextInput testID="invoices-report-note" value={note} onChangeText={setNote} placeholder="How you paid, e.g. e-Transfer ref 8841" placeholderTextColor={colors.muted} style={s.input} />
-                <Btn testID="invoices-report-submit" label="TELL DASHLOCAL I PAID" icon="send" variant="outline" loading={busy === "report"} disabled={!note.trim()} onPress={report} />
+                <Btn testID="invoices-report-submit" label="TELL ARRIVEWISE I PAID" icon="send" variant="outline" loading={busy === "report"} disabled={!note.trim()} onPress={report} />
               </>
             ) : null}
           </View>

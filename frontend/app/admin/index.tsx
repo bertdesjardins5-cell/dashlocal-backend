@@ -125,7 +125,7 @@ export default function AdminDashboard() {
             <Ionicons name="key" size={24} color={colors.onSurface} />
             <View style={{ flex: 1, gap: 2 }}>
               <Display style={s.rowTitle}>DRIVER PINS</Display>
-              <Mono style={s.meta}>Set or reset each driver's 6-digit sign-in PIN</Mono>
+              <Mono style={s.meta}>Set or reset each driver&apos;s 6-digit sign-in PIN</Mono>
             </View>
             <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />
           </Pressable>

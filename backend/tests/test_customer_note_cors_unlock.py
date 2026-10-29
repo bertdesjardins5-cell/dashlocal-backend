@@ -20,7 +20,7 @@ def mongo(js):
 
 
 def admin_token():
-    r = requests.post(f"{BASE_URL}/api/auth/login", json={"email": "admin@dashlocal.app", "password": "DashLocalAdmin2026"}, headers=NOAUTH)
+    r = requests.post(f"{BASE_URL}/api/auth/login", json={"email": "admin@arrivewise.app", "password": "DashLocalAdmin2026"}, headers=NOAUTH)
     assert r.status_code == 200, r.text
     return r.json()["token"]
 

@@ -27,7 +27,7 @@ export default function MerchantSelect() {
     return (
       <View style={s.root} testID="merchant-sign-in-screen">
         <Header title="MERCHANT SIGN-IN" subtitle="Your orders, your store only" />
-        <SignInForm title="SIGN IN TO YOUR STORE" hint="Use the email and password dispatch set up for your store. Need an account? Ask your DashLocal admin." />
+        <SignInForm title="SIGN IN TO YOUR STORE" hint="Use the email and password dispatch set up for your store. Need an account? Ask your ArriveWise admin." />
       </View>
     );
   }

@@ -60,7 +60,7 @@ export default function Landing() {
             <Animated.View entering={FadeInDown.duration(500)} style={{ gap: 16, maxWidth: 640 }}>
               <Text style={s.heroKicker}>Same-day local delivery</Text>
               <Text style={[s.heroTitle, wide && { fontSize: 54, lineHeight: 62 }]} testID="landing-hero-title">Your shop’s deliveries, done today.</Text>
-              <Text style={s.heroBody}>DashLocal picks up from small businesses and delivers across town the same day, with live tracking your customers will love.</Text>
+              <Text style={s.heroBody}>ArriveWise picks up from small businesses and delivers across town the same day, with live tracking your customers will love.</Text>
               <View style={[s.ctaRow, !wide && { flexDirection: "column" }]}>
                 <BrandButton testID="landing-cta-merchant" label="Start delivering with us" icon="arrow-forward" onPress={() => router.push("/sign-up")} />
                 <BrandButton testID="landing-cta-staff" label="Admin & driver sign-in" variant="outline" onPress={() => router.push("/sign-in/staff")} style={s.heroOutline} />
@@ -168,7 +168,7 @@ export default function Landing() {
         {reviews.data?.length ? (
           <View style={[s.container, s.section]} testID="landing-reviews">
             <Kicker>From our shops</Kicker>
-            <Text style={s.h2}>Small businesses on DashLocal</Text>
+            <Text style={s.h2}>Small businesses on ArriveWise</Text>
             <View style={[s.grid, wide && { flexDirection: "row", flexWrap: "wrap" }]}>
               {reviews.data.map((r) => (
                 <View key={r.id} style={[s.review, wide && { flexGrow: 1, flexBasis: "30%" }]} testID={`landing-review-${r.id}`}>
@@ -234,7 +234,7 @@ export default function Landing() {
         <View style={s.footer}>
           <View style={[s.container, s.footerInner]}>
             <LogoMark size={28} />
-            <Text style={s.footerText}>© {new Date().getFullYear()} DashLocal · Same-day local delivery for small businesses</Text>
+            <Text style={s.footerText}>© {new Date().getFullYear()} ArriveWise · Same-day local delivery for small businesses</Text>
             <Text style={[s.footerText, { flex: 0, textDecorationLine: "underline" }]} onPress={() => router.push("/privacy")} testID="landing-privacy-link">Privacy Policy</Text>
           </View>
         </View>
