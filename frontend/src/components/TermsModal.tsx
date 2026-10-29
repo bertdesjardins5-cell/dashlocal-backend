@@ -5,10 +5,12 @@ import BrandButton from "@/src/components/brand/BrandButton";
 import { TERMS } from "@/app/terms";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
-type Props = { visible: boolean; onAgree: (timestamp: string) => void; onClose: () => void; busy?: boolean; onOpenTerms?: () => void };
+type Props = { visible: boolean; onAgree: (timestamp: string) => void; onClose: () => void; busy?: boolean; onOpenTerms?: () => void;
+  sub?: string; cancelLabel?: string; acceptLabel?: string };
 
-// Non-pharmacy sign-up: scroll to the end of the Terms of Service, tick the box, then accept.
-export default function TermsModal({ visible, onAgree, onClose, busy, onOpenTerms }: Props) {
+// Non-pharmacy sign-up (and re-acceptance after an update): scroll to the end of the Terms of Service, tick the box, then accept.
+export default function TermsModal({ visible, onAgree, onClose, busy, onOpenTerms, sub = "Please review and accept our terms to send your request.",
+  cancelLabel = "Cancel", acceptLabel = "Accept & Send" }: Props) {
   const s = useStyles();
   const { colors } = useTheme();
   const [read, setRead] = useState(false);
@@ -25,7 +27,7 @@ export default function TermsModal({ visible, onAgree, onClose, busy, onOpenTerm
       <View style={s.overlay}>
         <View style={s.card} testID="terms-modal">
           <Text style={s.title}>DashLocal Terms of Service</Text>
-          <Text style={s.sub}>Please review and accept our terms to send your request.</Text>
+          <Text style={s.sub}>{sub}</Text>
           <ScrollView style={s.scroll} contentContainerStyle={{ padding: 12 }} onScroll={onScroll} scrollEventThrottle={100}
             onContentSizeChange={(_, h) => h < 200 && setRead(true)} testID="terms-scroll">
             {TERMS.map((sec) => (
@@ -43,8 +45,8 @@ export default function TermsModal({ visible, onAgree, onClose, busy, onOpenTerm
             <Text style={[s.boxLabel, !read && { color: colors.brandMuted }]}>I have read and agree to the DashLocal Terms of Service on behalf of my business.</Text>
           </Pressable>
           <View style={s.actions}>
-            <BrandButton testID="terms-cancel" label="Cancel" variant="outline" onPress={onClose} style={{ flex: 1 }} />
-            <BrandButton testID="terms-accept" label="Accept & Send" disabled={!(read && agree)} loading={busy} onPress={() => onAgree(new Date().toISOString())} style={{ flex: 2 }} />
+            <BrandButton testID="terms-cancel" label={cancelLabel} variant="outline" onPress={onClose} style={{ flex: 1 }} />
+            <BrandButton testID="terms-accept" label={acceptLabel} disabled={!(read && agree)} loading={busy} onPress={() => onAgree(new Date().toISOString())} style={{ flex: 2 }} />
           </View>
         </View>
       </View>

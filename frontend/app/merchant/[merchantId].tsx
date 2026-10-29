@@ -18,6 +18,7 @@ import ReceiptArchive from "@/src/components/ReceiptArchive";
 import MatterTag from "@/src/components/MatterTag";
 import AmountDueTag from "@/src/components/AmountDueTag";
 import CardOnFileCard from "@/src/components/CardOnFileCard";
+import TermsGate from "@/src/components/TermsGate";
 import { queryClient } from "@/src/query-client";
 import BatchRateTracker from "@/src/components/BatchRateTracker";
 import PharmacySummaryCard from "@/src/components/PharmacySummaryCard";
@@ -272,6 +273,7 @@ export default function MerchantHome() {
       )}
       {fix ? <FixRowSheet row={fix} lawOffice={q.data?.business_type === "law_office"} onClose={() => setFix(null)} onDone={() => { setFix(null); q.refetch(); }} notify={toast.show} /> : null}
       {toast.node}
+      {user?.role === "merchant" ? <TermsGate onNotify={toast.show} /> : null}
     </View>
   );
 }

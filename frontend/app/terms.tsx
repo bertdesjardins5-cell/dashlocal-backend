@@ -27,7 +27,7 @@ export const TERMS: { h: string; p: string[] }[] = [
   { h: "3. Orders, Pricing, and Payment Terms", p: [
     "All financial transactions are processed securely through integrated payment gateways (such as Square).",
     "Fee Structures: Delivery fees are calculated based on distance tiers, delivery speed (standard vs. express), and multi-stop batch parameters.",
-    "Payment Authorization: Customers authorize weekly payment upon placing an order through in-app card tokenization.",
+    "Payment Authorization: Customers pay for each order separately, by credit or debit card in the app, when they choose to pay. Stores (merchants) keep a card on file and authorize DashLocal to charge it automatically: the monthly platform fee at the start of each month, and every Monday the deliveries completed the week before. All amounts are in Canadian dollars and include 13% Ontario HST, and a receipt is emailed after every charge.",
     "Cancellations & Refunds: Orders cancelled after dispatch may incur a partial fee to compensate couriers for travel time and effort.",
   ] },
   { h: "4. Independent Contractor Terms (For Drivers)", p: [

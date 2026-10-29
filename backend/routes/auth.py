@@ -467,3 +467,23 @@ async def reset_merchant_password(user_id: str, body: PasswordIn, _: dict = Depe
     if not res.matched_count:
         raise HTTPException(404, "Merchant account not found")
     return {"ok": True}
+
+
+# ---- Terms re-acceptance: store users accept the current Terms of Service version on their next sign-in
+@router.get("/auth/terms-status")
+async def terms_status(u: dict = Depends(current_user)):
+    if u.get("role") != "merchant":
+        return {"required": False, "version": onboarding.TERMS_VERSION}
+    doc = await db.users.find_one({"id": u["id"]}, {"_id": 0, "terms_version": 1, "terms_consent_at": 1})
+    return {"required": (doc or {}).get("terms_version") != onboarding.TERMS_VERSION, "version": onboarding.TERMS_VERSION,
+            "accepted_version": (doc or {}).get("terms_version"), "accepted_at": (doc or {}).get("terms_consent_at")}
+
+
+@router.post("/auth/accept-terms")
+async def accept_terms(request: Request, u: dict = Depends(current_user)):
+    if u.get("role") != "merchant":
+        raise HTTPException(403, "Only store accounts accept the Terms of Service here")
+    rec = {"version": onboarding.TERMS_VERSION, "at": now_iso(), "ip": client_ip(request), "user_agent": (request.headers.get("user-agent") or "")[:200]}
+    await db.users.update_one({"id": u["id"]}, {"$set": {"terms_consent": True, "terms_version": rec["version"], "terms_consent_at": rec["at"]},
+                                                 "$push": {"terms_history": rec}})
+    return {"ok": True, "version": rec["version"], "accepted_at": rec["at"]}
