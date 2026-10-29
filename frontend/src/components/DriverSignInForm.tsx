@@ -8,10 +8,10 @@ import { useBrandForm } from "@/src/components/brand/formStyles";
 import { useTheme } from "@/src/theme";
 
 // Driver sign-in: phone number + 6-digit PIN set by dispatch (DashLocal brand styling).
-export default function DriverSignInForm({ onSignedIn, scroll = true }: { onSignedIn?: (u: SessionUser) => void; scroll?: boolean }) {
+export default function DriverSignInForm({ onSignedIn, initialPhone = "", notice, scroll = true }: { onSignedIn?: (u: SessionUser) => void; initialPhone?: string; notice?: string | null; scroll?: boolean }) {
   const s = useBrandForm();
   const { colors } = useTheme();
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState(initialPhone);
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -36,6 +36,7 @@ export default function DriverSignInForm({ onSignedIn, scroll = true }: { onSign
     <View style={s.card}>
       <Text style={s.title}>Start your shift</Text>
       <Text style={s.hint}>Sign in with your phone number and the 6-digit PIN from dispatch. Forgot it? Ask dispatch to reset it.</Text>
+      {notice && !error ? <View style={[s.err, { borderLeftColor: colors.brandForest }]} testID="driver-sign-in-notice"><Text style={s.errText}>{notice}</Text></View> : null}
       {error ? <View style={s.err} testID="driver-sign-in-error"><Text style={s.errText}>{error}</Text></View> : null}
       <Text style={s.label}>Phone number</Text>
       <TextInput testID="driver-sign-in-phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" textContentType="telephoneNumber"

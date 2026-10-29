@@ -8,7 +8,7 @@ import { useBrandForm } from "@/src/components/brand/formStyles";
 import { useTheme } from "@/src/theme";
 
 // Email + password sign-in for merchants and the dispatch admin (DashLocal brand styling).
-export default function SignInForm({ title, hint, role, onSignedIn, scroll = true }: { title: string; hint: string; role?: "admin" | "merchant"; onSignedIn?: (u: SessionUser) => void; scroll?: boolean }) {
+export default function SignInForm({ title, hint, role, onSignedIn, onPhone, scroll = true }: { title: string; hint: string; role?: "admin" | "merchant"; onSignedIn?: (u: SessionUser) => void; onPhone?: (phone: string) => void; scroll?: boolean }) {
   const s = useBrandForm();
   const { colors } = useTheme();
   const [email, setEmail] = useState("");
@@ -17,6 +17,8 @@ export default function SignInForm({ title, hint, role, onSignedIn, scroll = tru
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
+    // A driver typed their phone number into the admin email form: send them to the driver sign-in instead.
+    if (onPhone && !email.includes("@") && email.replace(/\D/g, "").length >= 10) return onPhone(email.trim());
     if (!email.trim() || !password) return setError("Enter your email and password");
     setBusy(true);
     setError(null);

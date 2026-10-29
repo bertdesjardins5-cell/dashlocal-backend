@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { Redirect, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SessionUser, useSession } from "@/src/session";
 import SignInForm from "@/src/components/SignInForm";
@@ -13,7 +13,9 @@ export default function StaffSignIn() {
   const s = useStyles();
   const router = useRouter();
   const { ready, user } = useSession();
-  const [mode, setMode] = useState<"admin" | "driver">("admin");
+  const params = useLocalSearchParams<{ as?: string }>();
+  const [mode, setMode] = useState<"admin" | "driver">(params.as === "driver" ? "driver" : "admin");
+  const [carried, setCarried] = useState("");
   const go = (u: SessionUser) => router.replace(u.role === "admin" ? "/admin" : `/driver/${u.driver_id}`);
   if (ready && user?.role === "admin") return <Redirect href="/admin" />;
   if (ready && user?.role === "driver" && user.driver_id) return <Redirect href={`/driver/${user.driver_id}`} />;
@@ -26,15 +28,17 @@ export default function StaffSignIn() {
           <View style={s.toggle} accessibilityRole="tablist">
             {(["admin", "driver"] as const).map((m) => (
               <Pressable key={m} testID={`staff-toggle-${m}`} onPress={() => setMode(m)} style={[s.seg, mode === m && s.segOn]} accessibilityRole="tab" accessibilityState={{ selected: mode === m }}>
-                <Text style={[s.segText, mode === m && s.segTextOn]}>{m === "admin" ? "Admin" : "Driver"}</Text>
+                <Text style={[s.segText, mode === m && s.segTextOn]}>{m === "admin" ? "Admin · email" : "Driver · phone + PIN"}</Text>
               </Pressable>
             ))}
           </View>
         </View>
         {mode === "admin" ? (
-          <SignInForm scroll={false} role="admin" title="Dispatch control centre" hint="Sign in with the dispatch admin account to open routes, merchants, pricing and analytics." onSignedIn={go} />
+          <SignInForm scroll={false} role="admin" title="Dispatch control centre" hint="Sign in with the dispatch admin account to open routes, merchants, pricing and analytics. Drivers: tap Driver above."
+            onSignedIn={go} onPhone={(p) => { setCarried(p); setMode("driver"); }} />
         ) : (
-          <DriverSignInForm scroll={false} onSignedIn={go} />
+          <DriverSignInForm key={carried} scroll={false} onSignedIn={go} initialPhone={carried}
+            notice={carried ? "That looks like a phone number, so we switched you to driver sign-in. Enter your 6-digit PIN." : null} />
         )}
       </KeyboardAwareScrollView>
     </View>
