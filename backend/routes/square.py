@@ -128,13 +128,12 @@ def money(x: float) -> str:
     return f"CA${x:,.2f}"
 
 
-def amounts_table(rows: list, subtotal: float, hst_pct: float, hst: float, total: float, tip: float = 0) -> str:
+def amounts_table(rows: list, subtotal: float, hst_pct: float, hst: float, total: float) -> str:
     td = 'style="padding:6px 0;font-family:Arial,sans-serif;font-size:14px"'
     tr = "".join(f'<tr><td {td}>{escape(a)}</td><td {td} align="right">{money(b)}</td></tr>' for a, b in rows)
-    tip_tr = f'<tr><td {td}>Driver tip (no HST)</td><td {td} align="right">{money(tip)}</td></tr>' if tip else ""
     return (f'<table width="100%" cellpadding="0" cellspacing="0">{tr}'
             f'<tr><td {td}>Subtotal</td><td {td} align="right">{money(subtotal)}</td></tr>'
-            f'<tr><td {td}>HST ({hst_pct:g}%, Ontario)</td><td {td} align="right">{money(hst)}</td></tr>{tip_tr}'
+            f'<tr><td {td}>HST ({hst_pct:g}%, Ontario)</td><td {td} align="right">{money(hst)}</td></tr>'
             f'<tr><td {td}><b>Total charged (CAD)</b></td><td {td} align="right"><b>{money(total)}</b></td></tr></table>')
 
 
@@ -317,11 +316,6 @@ async def describe(p: dict) -> dict:
                 "lines": [(i["number"], i["total"]) for i in invs[:8]] + ([(f"+ {len(invs) - 8} more", round(sum(i['total'] for i in invs[8:]), 2))] if len(invs) > 8 else []),
                 "subtotal": round(sum(i["subtotal"] for i in invs), 2), "hst": round(sum(i["hst"] for i in invs), 2), "button": "Pay"}
     s = await db.stops.find_one({"id": p["sub"]}, {"_id": 0})
-    if p["kind"] == "tip":
-        if not s or s.get("status") != "delivered":
-            raise HTTPException(404, "Tips open once your order is delivered")
-        m = await db.merchants.find_one({"id": s.get("merchant_id")}, {"_id": 0, "name": 1}) or {}
-        return {"title": f"Tip your driver · {s['tracking_code']}", "who": m.get("name", "ArriveWise"), "total": None, "lines": [], "button": "Send tip", "stop": s}
     pay = order_payment(s) if s else None
     if not pay:
         raise HTTPException(404, "Nothing to pay on this order")
@@ -337,13 +331,11 @@ PAGE_CSS = ("body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-
             "h1{font-size:20px;margin:0 0 4px}.m{color:#5C5C5E;font-size:13px}.r{display:flex;justify-content:space-between;font-size:14px;padding:4px 0}"
             ".t{font-weight:700;font-size:17px;border-top:2px solid #333335;margin-top:6px;padding-top:8px}"
             "label{display:block;font-size:12px;font-weight:700;margin:14px 0 6px;letter-spacing:.5px}"
-            "input[type=email],input[type=number]{width:100%;box-sizing:border-box;min-height:46px;border:2px solid #333335;padding:0 12px;font-size:16px}"
+            "input[type=email]{width:100%;box-sizing:border-box;min-height:46px;border:2px solid #333335;padding:0 12px;font-size:16px}"
             ".ck{display:flex;gap:10px;align-items:flex-start;font-size:13px;font-weight:400;letter-spacing:0;margin-top:14px}.ck input{width:22px;height:22px;flex:none}"
             "button{width:100%;min-height:52px;margin-top:16px;background:#2B8932;color:#fff;border:0;font-size:16px;font-weight:700;letter-spacing:1px;cursor:pointer}"
             "button:disabled{opacity:.5}.e{color:#D7262E;font-size:14px;margin-top:10px;min-height:18px}.ok{text-align:center;padding:24px 8px}"
-            ".sb{background:#FFE9A8;padding:8px 10px;font-size:12px;margin-bottom:12px}#card{margin-top:14px;min-height:90px}"
-            ".tips{display:flex;gap:8px}.tips button{flex:1;margin-top:0;min-height:46px;background:#fff;color:#333335;border:2px solid #333335;letter-spacing:0}"
-            ".tips button{white-space:nowrap;padding:0 4px;font-size:15px}.tips button.on{background:#333335;color:#fff}#tipc{display:none;margin-top:8px}")
+            ".sb{background:#FFE9A8;padding:8px 10px;font-size:12px;margin-bottom:12px}#card{margin-top:14px;min-height:90px}")
 
 
 @router.get("/square/pay", response_class=HTMLResponse)
@@ -360,24 +352,15 @@ async def pay_page(t: str = ""):
         rows += f"<div class=r><span>HST ({d['hst_pct']:g}%, Ontario)</span><span>{money(d['hst'])}</span></div>"
     elif d.get("hst") is not None:
         rows += f"<div class=r><span>incl. HST</span><span>{money(d['hst'])}</span></div>"
-    tipping = p["kind"] in ("order", "tip")
-    if tipping:
-        rows += f"<div class=r id=tiprow{' style=display:none' if p['kind'] == 'order' else ''}><span>Driver tip (no HST)</span><span id=tipv>{money(0)}</span></div>"
-    if d["total"] is not None or tipping:
-        rows += f"<div class='r t'><span>Total (CAD)</span><span id=totv>{money(d['total'] or 0)}</span></div>"
+    if d["total"] is not None:
+        rows += f"<div class='r t'><span>Total (CAD)</span><span>{money(d['total'])}</span></div>"
     extra = ""
-    if tipping:
-        none = "<button type=button data-t=0 class=on>No tip</button>" if p["kind"] == "order" else ""
-        extra = (f"<label>{'ADD A TIP FOR YOUR DRIVER' if p['kind'] == 'order' else 'CHOOSE A TIP — 100% GOES TO YOUR DRIVER'}</label><div class=tips id=tips>{none}"
-                 + "".join(f"<button type=button data-t={t}>{money(t).replace('CA', '').replace('.00', '')}</button>" for t in TIP_PRESETS)
-                 + "<button type=button data-t=c>Other</button></div>"
-                 f"<input id=tipc type=number inputmode=decimal min=1 max={MAX_TIP} step=0.01 placeholder='Tip amount, e.g. 4.50'>"
-                 "<label for=em>EMAIL FOR YOUR RECEIPT</label><input id=em type=email autocomplete=email inputmode=email placeholder=you@example.com>")
+    if p["kind"] == "order":
+        extra = "<label for=em>EMAIL FOR YOUR RECEIPT</label><input id=em type=email autocomplete=email inputmode=email placeholder=you@example.com>"
     if p["kind"] == "card":
         extra = f"<label class=ck><input id=agree type=checkbox><span>{escape(CARD_CONSENT)}</span></label>"
     btn = f"{d['button']} {money(d['total'])}" if d["total"] is not None else d["button"]
     cfg = json.dumps({"app": os.environ.get("SQUARE_APPLICATION_ID", ""), "loc": os.environ.get("SQUARE_LOCATION_ID", ""), "t": t, "kind": p["kind"],
-                      "base": d["total"] or 0, "label": d["button"], "maxTip": MAX_TIP,
                       "amount": f"{d['total']:.2f}" if d["total"] is not None else None}).replace("<", "\\u003c")
     html = f"""<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
 <title>ArriveWise · Secure card payment</title><style>{PAGE_CSS}</style><script src="{sdk_url()}" nonce="{nonce}"></script></head><body><div class=w>
@@ -386,31 +369,22 @@ async def pay_page(t: str = ""):
 {extra}<div id=card></div><button id=go disabled>{escape(btn)}</button><div class=e id=err></div>
 <div class=m style="margin-top:10px">Your card details go straight to Square. ArriveWise never sees or stores your card number.</div></div></div>
 <script nonce="{nonce}">
-const C={cfg};const $=i=>document.getElementById(i);let card;let tip=0;let tipMode=C.kind==='tip'?null:'0';
-const fmt=n=>'CA$'+n.toFixed(2);
-const tipNow=()=>{{if(tipMode==='c'){{const v=parseFloat($('tipc').value);return isFinite(v)?Math.round(v*100)/100:0}}return tipMode?parseFloat(tipMode):0}};
-const paint=()=>{{tip=tipNow();const tot=Math.round((C.base+tip)*100)/100;C.amount=tot.toFixed(2);if($('tipv'))$('tipv').textContent=fmt(tip);
- if($('tiprow')&&C.kind==='order')$('tiprow').style.display=tip>0?'flex':'none';if($('totv'))$('totv').textContent=fmt(tot);
- if(C.kind==='order'||C.kind==='tip')$('go').textContent=C.label+(tot>0?' '+fmt(tot):'')}};
-if($('tips')){{$('tips').querySelectorAll('button').forEach(b=>b.onclick=()=>{{tipMode=b.dataset.t;$('tips').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
- $('tipc').style.display=tipMode==='c'?'block':'none';if(tipMode==='c')$('tipc').focus();paint()}});$('tipc').oninput=paint;paint()}}
+const C={cfg};const $=i=>document.getElementById(i);let card;
 const tell=m=>{{try{{if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify(m));else if(window.parent!==window)window.parent.postMessage(m,location.origin)}}catch(e){{}}}};
 const fail=m=>{{$('err').textContent=m;$('go').disabled=false}};
 (async()=>{{try{{const pay=Square.payments(C.app,C.loc);card=await pay.card();await card.attach('#card');$('go').disabled=false}}catch(e){{fail('Card form failed to load — check your connection and reopen this page.')}}}})();
 $('go').onclick=async()=>{{$('err').textContent='';
  const em=$('em')?$('em').value.trim():null;
- if(C.kind==='tip'&&!tipMode)return fail('Choose a tip amount');
- if((C.kind==='order'||C.kind==='tip')&&tipMode==='c'&&!(tip>=1&&tip<=C.maxTip))return fail('Enter a tip between CA$1 and CA$'+C.maxTip);
- if((C.kind==='order'||C.kind==='tip')&&!/^[^@\\s]+@[^@\\s]+\\.[A-Za-z]{{2,}}$/.test(em||''))return fail('Enter your email for the receipt');
+ if(C.kind==='order'&&!/^[^@\\s]+@[^@\\s]+\\.[A-Za-z]{{2,}}$/.test(em||''))return fail('Enter your email for the receipt');
  if(C.kind==='card'&&!$('agree').checked)return fail('Tick the box to authorize automatic charges');
  const btnTxt=$('go').textContent;$('go').disabled=true;$('go').textContent='Processing…';
  try{{const bc={{countryCode:'CA'}};if(em)bc.email=em;const v=C.kind==='card'?{{intent:'STORE',customerInitiated:true,sellerKeyedIn:false,billingContact:bc}}:{{amount:C.amount,currencyCode:'CAD',intent:'CHARGE',customerInitiated:true,sellerKeyedIn:false,billingContact:bc}};
   const r=await card.tokenize(v);
   if(r.status!=='OK'){{$('go').textContent=btnTxt;return fail((r.errors&&r.errors[0]&&r.errors[0].message)||'Check your card details')}}
-  const res=await fetch('/api/square/complete',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{t:C.t,source_id:r.token,email:em,tip:tip}})}});
+  const res=await fetch('/api/square/complete',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{t:C.t,source_id:r.token,email:em}})}});
   const j=await res.json().catch(()=>({{}}));
   if(!res.ok){{$('go').textContent=btnTxt;return fail(typeof j.detail==='string'?j.detail:'Payment failed — try again')}}
-  $('box').innerHTML='<div class=ok><h1>'+(C.kind==='card'?'Card saved':C.kind==='tip'?'Thank you! Your tip was sent':'Payment received')+'</h1><p class=m>You can close this window.</p></div>';
+  $('box').innerHTML='<div class=ok><h1>'+(C.kind==='card'?'Card saved':'Payment received')+'</h1><p class=m>You can close this window.</p></div>';
   tell({{type:'dashlocal-square',ok:true,result:j}});
  }}catch(e){{$('go').textContent=btnTxt;fail('Payment failed — check your connection and try again')}}}};
 </script></body></html>"""
@@ -425,18 +399,6 @@ class CompleteIn(BaseModel):
     t: str
     source_id: str
     email: Optional[str] = None
-    tip: float = 0
-
-
-TIP_PRESETS = (2, 3, 5)
-MAX_TIP = 100
-
-
-def clean_tip(tip: float, required: bool) -> float:
-    tip = round(tip or 0, 2)
-    if tip != tip or tip < 0 or tip > MAX_TIP or (0 < tip < 1) or (required and tip < 1):
-        raise HTTPException(400, f"Tip must be between CA$1 and CA${MAX_TIP}")
-    return tip
 
 
 async def take_lock(key: str):
@@ -481,9 +443,7 @@ async def complete(body: CompleteIn):
                 await db.square_locks.delete_many({"key": {"$in": locks}})
             return {"kind": "invoices", "status": "paid", "total": ch["total"], "count": len(d["invs"]), "card": card_label(ch.get("brand"), ch.get("last4")),
                     "payment_id": ch["payment_id"], "receipt_url": ch.get("receipt_url")}
-        if p["kind"] == "tip":
-            return await pay_tip(d, body.source_id, (body.email or "").strip(), clean_tip(body.tip, True))
-        return await pay_order(d, body.source_id, (body.email or "").strip(), clean_tip(body.tip, False))
+        return await pay_order(d, body.source_id, (body.email or "").strip())
     except SquareError as e:
         raise HTTPException(http_code(e), str(e))
 
@@ -595,7 +555,7 @@ def order_payment(s: dict) -> Optional[dict]:
     amount = cp.get("amount", amt)
     hst = cp.get("hst", round(amount * pct / 100, 2))
     return {"amount": amount, "hst_pct": pct, "hst": hst, "total": cp.get("total", round(amount + hst, 2)), "paid": bool(cp.get("payment_id")),
-            "tip": cp.get("tip", 0), "refunded": refunded(cp),
+            "refunded": refunded(cp),
             "paid_at": cp.get("paid_at"), "card": cp.get("card"), "receipt_url": cp.get("receipt_url"), "payment_id": cp.get("payment_id"), "email": cp.get("email")}
 
 
@@ -615,82 +575,33 @@ async def order_pay_link(code: str, request: Request):
     return {"url": await page_url(request, page_token("order", s["id"])), "total": pay["total"]}
 
 
-@router.post("/track/{code}/tip-link")
-async def tip_link(code: str, request: Request):
-    """Secure Square page for a driver tip after delivery (the verified customer only)."""
-    s = await db.stops.find_one({"tracking_code": code.strip().upper()}, {"_id": 0})
-    if not s:
-        raise HTTPException(404, "Tracking code not found")
-    await check_order_token(request.headers.get("x-order-token", "").strip(), s["id"])
-    if s.get("status") != "delivered":
-        raise HTTPException(409, "Tips open once your order is delivered")
-    if not configured():
-        raise HTTPException(503, "Card payments aren't set up yet")
-    return {"url": await page_url(request, page_token("tip", s["id"]))}
-
-
-async def pay_tip(d: dict, source_id: str, email: str, tip: float) -> dict:
-    if not EMAIL_RE.match(email):
-        raise HTTPException(400, "Enter your email for the receipt")
-    s = d["stop"]
-    await take_lock(f"tip:{s['id']}")
-    try:
-        p = await charge(source_id, cents(tip), f"tip-{uuid.uuid4().hex}", f"Driver tip · order {s['tracking_code']}", s["tracking_code"], email=email)
-    finally:
-        await db.square_locks.delete_one({"key": f"tip:{s['id']}"})
-    t = {"payment_id": p["payment_id"], "amount": tip, "total": tip, "paid_at": now_iso(), "card": card_label(p.get("brand"), p.get("last4")),
-         "receipt_url": p.get("receipt_url"), "email": email, "driver_id": await stop_driver_id(s)}
-    await db.stops.update_one({"id": s["id"]}, {"$push": {"tips": t}})
-    realtime.spawn(email_tip_receipt(s, t))
-    return {"kind": "tip", "status": "paid", "tracking_code": s["tracking_code"], **{k: t[k] for k in ("amount", "card", "payment_id", "paid_at", "email", "receipt_url")}}
-
-
-async def stop_driver_id(s: dict) -> Optional[str]:
-    r = await db.routes.find_one({"id": s.get("route_id")}, {"_id": 0, "driver_id": 1}) if s.get("route_id") else None
-    return (r or {}).get("driver_id")
-
-
-async def email_tip_receipt(s: dict, t: dict):
-    html = onboarding.brand_email(f"Thanks for your tip — {money(t['amount'])}",
-                                  f"<p>Your tip of <b>{money(t['amount'])}</b> for order <b>{escape(s['tracking_code'])}</b> was charged to {escape(t['card'])} "
-                                  f"on {datetime.now(TZ).strftime('%B %-d, %Y')}. All of it goes to your driver. Tips have no HST.</p>"
-                                  f"<p style='color:#5C5C5E;font-size:12px'>Square payment {escape(t['payment_id'])}.</p>",
-                                  ("View Square receipt", t["receipt_url"]) if (t.get("receipt_url") or "").startswith("https://") else None)
-    try:
-        await emails.send_email(to=t["email"], subject=f"Your ArriveWise tip receipt — order {s['tracking_code']} ({money(t['amount'])})", html=html)
-    except Exception as e:
-        logger.warning(f"Tip receipt email: {e}")
-
-
-async def pay_order(d: dict, source_id: str, email: str, tip: float = 0) -> dict:
+async def pay_order(d: dict, source_id: str, email: str) -> dict:
     if not EMAIL_RE.match(email):
         raise HTTPException(400, "Enter your email for the receipt")
     s, pay = d["stop"], d["pay"]
     pct = (await invoices.get_business())["hst_pct"]
     hst = round(pay["amount"] * pct / 100, 2)
-    total = round(pay["amount"] + hst + tip, 2)
+    total = round(pay["amount"] + hst, 2)
     await take_lock(f"order:{s['id']}")
     try:
-        p = await charge(source_id, cents(total), f"ord-{uuid.uuid4().hex}", f"Order {s['tracking_code']} ({d['who']})" + (f" + tip {money(tip)}" if tip else ""),
-                         s["tracking_code"], email=email)
+        p = await charge(source_id, cents(total), f"ord-{uuid.uuid4().hex}", f"Order {s['tracking_code']} ({d['who']})", s["tracking_code"], email=email)
     except Exception:
         await db.square_locks.delete_one({"key": f"order:{s['id']}"})
         raise
-    cp = {"payment_id": p["payment_id"], "amount": pay["amount"], "hst_pct": pct, "hst": hst, "tip": tip, "total": total, "paid_at": now_iso(),
-          "card": card_label(p.get("brand"), p.get("last4")), "receipt_url": p.get("receipt_url"), "email": email,
-          **({"tip_driver_id": await stop_driver_id(s)} if tip else {})}
+    cp = {"payment_id": p["payment_id"], "amount": pay["amount"], "hst_pct": pct, "hst": hst, "total": total, "paid_at": now_iso(),
+          "card": card_label(p.get("brand"), p.get("last4")), "receipt_url": p.get("receipt_url"), "email": email}
     await db.stops.update_one({"id": s["id"]}, {"$set": {"customer_payment": cp}})
     realtime.spawn(email_customer_receipt(s, d["who"], cp))
     if s.get("route_id"):
         realtime.spawn(realtime.broadcast_route(s["route_id"]))
-    return {"kind": "order", "status": "paid", "tracking_code": s["tracking_code"], **{k: cp[k] for k in ("amount", "hst", "hst_pct", "tip", "total", "card", "payment_id", "paid_at", "email", "receipt_url")}}
+    return {"kind": "order", "status": "paid", "tracking_code": s["tracking_code"], **{k: cp[k] for k in ("amount", "hst", "hst_pct", "total", "card", "payment_id", "paid_at", "email", "receipt_url")}}
 
 
 async def email_customer_receipt(s: dict, store: str, cp: dict):
     html = onboarding.brand_email(f"Payment received — {money(cp['total'])}",
                                   f"<p>Thanks! We received your payment for order <b>{escape(s['tracking_code'])}</b> from <b>{escape(store)}</b>, "
                                   f"charged to {escape(cp['card'])} on {datetime.now(TZ).strftime('%B %-d, %Y')}.</p>"
-                                  + amounts_table([(f"Order from {store}", cp["amount"])], cp["amount"], cp["hst_pct"], cp["hst"], cp["total"], cp.get("tip") or 0)
+                                  + amounts_table([(f"Order from {store}", cp["amount"])], cp["amount"], cp["hst_pct"], cp["hst"], cp["total"])
                                   + f"<p style='color:#5C5C5E;font-size:12px'>Square payment {escape(cp['payment_id'])}.</p>",
                                   ("View Square receipt", cp["receipt_url"]) if (cp.get("receipt_url") or "").startswith("https://") else None)
     try:
@@ -708,7 +619,7 @@ async def email_store_order_paid(s: dict, store: str, cp: dict):
     html = onboarding.brand_email(f"Customer paid — {money(cp['total'])}",
                                   f"<p>Hi {escape(store)}, <b>{escape(s.get('customer_name') or 'your customer')}</b> paid for order <b>{escape(s['tracking_code'])}</b> "
                                   f"by card in the ArriveWise app on {datetime.now(TZ).strftime('%B %-d, %Y')}.</p>"
-                                  + amounts_table([(f"Order {s['tracking_code']}", cp["amount"])], cp["amount"], cp["hst_pct"], cp["hst"], cp["total"], cp.get("tip") or 0)
+                                  + amounts_table([(f"Order {s['tracking_code']}", cp["amount"])], cp["amount"], cp["hst_pct"], cp["hst"], cp["total"])
                                   + f"<p style='color:#5C5C5E;font-size:12px'>Square payment {escape(cp['payment_id'])}. Shown as paid in your Merchant Portal.</p>")
     sent = []
     for to in await merchant_recipients(s["merchant_id"]):
@@ -734,19 +645,19 @@ async def admin_charges(status: Optional[str] = None):
     return {"configured": configured(), "sandbox": sandbox(), "charges": rows}
 
 
-# ---------------------------------------------------------------- refunds (admin) + customer payments & tips list
+# ---------------------------------------------------------------- refunds (admin) + customer payments list
 def refunded(p: dict) -> float:
     return round(sum(r["amount"] for r in p.get("refunds") or [] if r.get("status") not in ("FAILED", "REJECTED")), 2)
 
 
 def customer_payments(s: dict) -> list:
-    """Every customer card payment on an order: the order payment (may include a tip) and separate tips."""
+    """Every customer card payment on an order (plus any driver tips paid before tipping was switched off)."""
     out = []
     cp = s.get("customer_payment") or {}
     if cp.get("payment_id"):
-        out.append({"kind": "order", "tip": cp.get("tip") or 0, "driver_id": cp.get("tip_driver_id"), **cp})
+        out.append({"kind": "order", **cp})
     for t in s.get("tips") or []:
-        out.append({"kind": "tip", "tip": t["amount"], **t})
+        out.append({"kind": "tip", **t})
     for p in out:
         p["refunded"] = refunded(p)
         p["refundable"] = round(p["total"] - p["refunded"], 2)
@@ -756,21 +667,16 @@ def customer_payments(s: dict) -> list:
 @router.get("/admin/customer-payments", dependencies=ADMIN_ONLY)
 async def admin_customer_payments():
     stops = await db.stops.find({"$or": [{"customer_payment.payment_id": {"$exists": True}}, {"tips.0": {"$exists": True}}]}, {"_id": 0}).to_list(2000)
-    drivers = {d["id"]: d["name"] for d in await db.drivers.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(1000)}
     merchants = {m["id"]: m["name"] for m in await db.merchants.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(1000)}
-    rows, tips = [], {}
+    rows = []
     for s in stops:
         for p in customer_payments(s):
-            row = {k: p.get(k) for k in ("kind", "payment_id", "total", "tip", "refunded", "refundable", "card", "paid_at", "email", "refunds")}
+            row = {k: p.get(k) for k in ("kind", "payment_id", "total", "refunded", "refundable", "card", "paid_at", "email", "refunds")}
             row.update(stop_id=s["id"], tracking_code=s["tracking_code"], customer_name=s.get("customer_name"), status=s.get("status"),
-                       store=merchants.get(s.get("merchant_id")), driver=drivers.get(p.get("driver_id")))
+                       store=merchants.get(s.get("merchant_id")))
             rows.append(row)
-            if p["tip"] and p.get("driver_id"):
-                tips.setdefault(p["driver_id"], {"driver": drivers.get(p["driver_id"], p["driver_id"]), "total": 0, "count": 0})
-                tips[p["driver_id"]]["total"] = round(tips[p["driver_id"]]["total"] + p["tip"], 2)
-                tips[p["driver_id"]]["count"] += 1
     rows.sort(key=lambda r: r["paid_at"] or "", reverse=True)
-    return {"payments": rows, "tips_by_driver": sorted(tips.values(), key=lambda t: -t["total"]), "sandbox": sandbox()}
+    return {"payments": rows, "sandbox": sandbox()}
 
 
 class RefundIn(BaseModel):

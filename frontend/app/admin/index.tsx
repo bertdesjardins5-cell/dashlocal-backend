@@ -196,8 +196,8 @@ export default function AdminDashboard() {
           <Pressable testID="admin-customer-payments-link" onPress={() => router.push("/admin/payments")} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
             <Ionicons name="cash" size={24} color={colors.onSurface} />
             <View style={{ flex: 1, gap: 2 }}>
-              <Display style={s.rowTitle}>CUSTOMER PAYMENTS & TIPS</Display>
-              <Mono style={s.meta}>Order payments, driver tips and refunds</Mono>
+              <Display style={s.rowTitle}>CUSTOMER PAYMENTS</Display>
+              <Mono style={s.meta}>Order payments, refunds & store cards</Mono>
             </View>
             <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />
           </Pressable>

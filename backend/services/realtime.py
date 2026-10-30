@@ -58,13 +58,7 @@ def order_private(stop: "Stop") -> dict:
     return {"customer_name": stop.customer_name, "address": stop.address, "lat": stop.lat, "lng": stop.lng,
             "pod_photo_url": file_url(stop.pod_photo_path) if stop.pod_photo_path else None,
             "pod_signature": stop.pod_signature, "apology_code": stop.apology_code, "customer_note": stop.customer_note,
-            "customer_note_source": stop.customer_note_source, "payment": order_payment(stop.model_dump()),
-            "tips_total": tips_total(stop)}
-
-
-def tips_total(stop: "Stop") -> float:
-    from routes.square import customer_payments  # lazy: routes.square imports this module
-    return round(sum(max(0, min(p["tip"], p["refundable"])) for p in customer_payments(stop.model_dump())), 2)
+            "customer_note_source": stop.customer_note_source, "payment": order_payment(stop.model_dump())}
 
 
 def order_payment(s: dict):

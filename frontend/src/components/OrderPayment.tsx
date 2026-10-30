@@ -35,7 +35,6 @@ export default function OrderPayment({ code, payment, orderToken, onPaid, onErro
       </View>
       <View style={s.line}><Mono style={s.meta}>ORDER</Mono><Mono style={s.meta}>{money(payment.amount)}</Mono></View>
       <View style={s.line}><Mono style={s.meta}>HST {payment.hst_pct}% (ONTARIO)</Mono><Mono style={s.meta}>{money(payment.hst)}</Mono></View>
-      {payment.tip ? <View style={s.line}><Mono style={s.meta}>DRIVER TIP</Mono><Mono style={s.meta} testID="order-payment-tip">{money(payment.tip)}</Mono></View> : null}
       {payment.refunded ? <View style={s.line}><Mono style={s.meta}>REFUNDED</Mono><Mono style={s.meta} testID="order-payment-refunded">−{money(payment.refunded)}</Mono></View> : null}
       <View style={s.line}><Display style={{ fontSize: 18 }}>TOTAL CAD</Display><Display style={{ fontSize: 18 }} testID="order-payment-total">{money(payment.total)}</Display></View>
       {payment.paid ? (
@@ -43,7 +42,7 @@ export default function OrderPayment({ code, payment, orderToken, onPaid, onErro
       ) : (
         <Btn testID="order-payment-pay" label={`PAY ${money(payment.total)} BY CARD`} icon="card" loading={busy} onPress={start} />
       )}
-      {!payment.paid ? <Mono style={s.meta}>CREDIT OR DEBIT CARD · PROCESSED SECURELY BY SQUARE · ADD A DRIVER TIP ON THE NEXT SCREEN</Mono> : null}
+      {!payment.paid ? <Mono style={s.meta}>CREDIT OR DEBIT CARD · PROCESSED SECURELY BY SQUARE</Mono> : null}
       <SquarePaySheet url={url} title={`PAY ORDER ${code}`} onClose={() => setUrl(null)} onDone={() => {
         setUrl(null);
         onPaid();

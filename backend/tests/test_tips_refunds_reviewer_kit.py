@@ -41,87 +41,23 @@ def order_token(code, last4):
     return r.json()["token"]
 
 
-# ---- tip-link
-class TestTipLink:
-    def test_tip_link_requires_token(self):
-        r = requests.post(f"{API}/track/MD1002/tip-link", headers=NOAUTH)
-        assert r.status_code in (401, 403), r.text
-
-    def test_tip_link_wrong_order_token(self):
-        tok = order_token("MD1001", "0100")  # token for a different order
-        r = requests.post(f"{API}/track/MD1002/tip-link", headers={"X-Order-Token": tok, **NOAUTH})
-        assert r.status_code in (401, 403), r.text
-
-    def test_tip_link_not_delivered_409(self):
-        tok = order_token("MD1001", "0100")
-        r = requests.post(f"{API}/track/MD1001/tip-link", headers={"X-Order-Token": tok, **NOAUTH})
-        assert r.status_code == 409, r.text
-
-    def test_tip_link_unknown_code_404(self):
-        r = requests.post(f"{API}/track/ZZ9999/tip-link", headers={"X-Order-Token": "x", **NOAUTH})
-        assert r.status_code == 404
-
-    def test_tip_link_delivered_ok_and_page_renders(self):
-        tok = order_token("MD1002", "0101")
-        r = requests.post(f"{API}/track/MD1002/tip-link", headers={"X-Order-Token": tok, **NOAUTH})
-        assert r.status_code == 200, r.text
-        url = r.json()["url"]
-        assert "/api/square/pay?t=" in url
-        page = requests.get(url)
-        assert page.status_code == 200
-        h = page.text
-        assert 'id=tips' in h and 'data-t=2' in h and 'data-t=3' in h and 'data-t=5' in h and 'data-t=c' in h
-        assert 'data-t=0' not in h  # tip page has no "No tip"
-        assert 'id=totv' in h and 'Tip your driver' in h
-        assert "Content-Security-Policy" in page.headers
-
-    def test_private_has_tips_total(self):
-        tok = order_token("MD1002", "0101")
-        r = requests.get(f"{API}/track/MD1002/private", headers={"X-Order-Token": tok, **NOAUTH})
-        assert r.status_code == 200
-        assert "tips_total" in r.json(), list(r.json().keys())
-
-
-# ---- order pay page with tip
-class TestOrderPayPage:
-    def test_order_pay_page_has_tips(self):
-        tok = order_token("MD1001", "0100")
-        r = requests.post(f"{API}/track/MD1001/pay-link", headers={"X-Order-Token": tok, **NOAUTH})
-        assert r.status_code == 200, r.text
-        assert r.json()["total"] == 22.6
-        h = requests.get(r.json()["url"]).text
-        assert 'data-t=0 class=on' in h and 'data-t=5' in h and 'id=totv' in h
-        assert 'CA$22.60' in h
-        assert 'id=tiprow style=display:none' in h
-
-    def test_pay_page_bad_token(self):
-        r = requests.get(f"{API}/square/pay?t=garbage")
-        assert r.status_code in (400, 401, 403)
-
-    def test_complete_invalid_tip_rejected(self):
-        tok = order_token("MD1002", "0101")
-        url = requests.post(f"{API}/track/MD1002/tip-link", headers={"X-Order-Token": tok, **NOAUTH}).json()["url"]
-        t = url.split("t=", 1)[1]
-        for tip in (0, 0.5, 150):
-            r = requests.post(f"{API}/square/complete", json={"t": t, "source_id": "cnon:card-nonce-ok", "email": "a@b.co", "tip": tip})
-            assert r.status_code == 400, (tip, r.text)
-
-
-# ---- admin customer payments + refund validation (seeded fake payment; never reaches Square)
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="module")
 def seeded(mdb):
-    s = mdb.stops.find_one({"status": "delivered", "tracking_code": {"$ne": "MD1002"}, "customer_payment.payment_id": {"$exists": False}}, {"_id": 0})
-    assert s
-    pid, tid = f"TEST_pay_{uuid.uuid4().hex[:8]}", f"TEST_tip_{uuid.uuid4().hex[:8]}"
-    drv = (mdb.routes.find_one({"id": s.get("route_id")}) or {}).get("driver_id") or "drv-1"
-    old = {k: s.get(k) for k in ("customer_payment", "tips")}
-    mdb.stops.update_one({"id": s["id"]}, {"$set": {
-        "customer_payment": {"payment_id": pid, "amount": 10.0, "hst_pct": 13.0, "hst": 1.3, "tip": 3.0, "total": 14.3, "paid_at": "2026-01-01T00:00:00Z",
-                             "card": "Visa ••1111", "email": "delivered@resend.dev", "tip_driver_id": drv,
-                             "refunds": [{"id": "TEST_rf", "amount": 4.3, "status": "COMPLETED"}]},
-        "tips": [{"payment_id": tid, "amount": 5.0, "total": 5.0, "paid_at": "2026-01-02T00:00:00Z", "card": "Visa ••1111", "email": "delivered@resend.dev", "driver_id": drv}]}})
-    yield {"stop": s, "pid": pid, "tid": tid, "drv": drv}
-    mdb.stops.update_one({"id": s["id"]}, {"$set": old})
+    """A delivered stop with a past order payment (partly refunded) and an older driver tip."""
+    sid, pid, tid = f"TEST_{uuid.uuid4().hex[:8]}", f"TESTPAY_{uuid.uuid4().hex[:6]}", f"TESTTIP_{uuid.uuid4().hex[:6]}"
+    stop = {"id": sid, "tracking_code": f"TS{uuid.uuid4().hex[:6].upper()}", "status": "delivered", "merchant_id": "mer-1", "customer_name": "Test Customer",
+            "customer_payment": {"payment_id": pid, "amount": 12.65, "hst_pct": 13, "hst": 1.65, "total": 14.3, "paid_at": "2026-10-29T10:00:00+00:00",
+                                 "card": "Visa ••1111", "email": "t@example.com", "refunds": [{"id": "RF1", "amount": 4.3, "status": "COMPLETED", "reason": "x", "at": "2026-10-29T11:00:00+00:00"}]},
+            "tips": [{"payment_id": tid, "amount": 5.0, "total": 5.0, "paid_at": "2026-10-29T12:00:00+00:00", "card": "Visa ••1111", "email": "t@example.com"}]}
+    mdb.stops.insert_one(dict(stop))
+    yield {"stop": stop, "pid": pid, "tid": tid}
+    mdb.stops.delete_one({"id": sid})
+
+
+
+class TestTipsRemoved:
+    def test_tip_link_gone(self):
+        assert requests.post(f"{API}/track/MD1002/tip-link", headers=NOAUTH).status_code in (404, 405)
 
 
 class TestAdminPaymentsRefunds:
@@ -133,13 +69,11 @@ class TestAdminPaymentsRefunds:
         r = requests.get(f"{API}/admin/customer-payments", headers=admin_h)
         assert r.status_code == 200, r.text
         j = r.json()
-        assert set(j) >= {"payments", "tips_by_driver", "sandbox"}
+        assert set(j) >= {"payments", "sandbox"} and "tips_by_driver" not in j
         rows = {p["payment_id"]: p for p in j["payments"]}
         o, t = rows[seeded["pid"]], rows[seeded["tid"]]
-        assert o["kind"] == "order" and o["refunded"] == 4.3 and o["refundable"] == 10.0 and o["tip"] == 3.0
-        assert t["kind"] == "tip" and t["refundable"] == 5.0
-        drv = next(d for d in j["tips_by_driver"] if d["count"] >= 2)
-        assert drv["total"] >= 8.0
+        assert o["kind"] == "order" and o["refunded"] == 4.3 and o["refundable"] == 10.0
+        assert t["kind"] == "tip" and t["refundable"] == 5.0  # older tips stay refundable
 
     def test_refund_unknown_payment_404(self, admin_h, seeded):
         r = requests.post(f"{API}/admin/stops/{seeded['stop']['id']}/refund", json={"payment_id": "nope", "amount": 1}, headers=admin_h)

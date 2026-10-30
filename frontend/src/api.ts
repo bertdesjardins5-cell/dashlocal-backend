@@ -100,13 +100,12 @@ export type OrderPrivate = {
   customer_note: string | null;
   customer_note_source?: string | null;
   payment?: OrderPayment | null;
-  tips_total?: number;
 };
 
 export type OrderPayment = {
   amount: number; hst_pct: number; hst: number; total: number; paid: boolean; paid_at: string | null;
   card: string | null; receipt_url: string | null; payment_id: string | null; email: string | null;
-  tip?: number; refunded?: number;
+  refunded?: number;
 };
 
 export type Tracking = {

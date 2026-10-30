@@ -11,12 +11,12 @@ import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useT
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
 type Refund = { id: string; amount: number; status: string; reason: string; at: string };
-type Row = { kind: "order" | "tip"; payment_id: string; total: number; tip: number; refunded: number; refundable: number; card: string | null;
+type Row = { kind: "order" | "tip"; payment_id: string; total: number; refunded: number; refundable: number; card: string | null;
   paid_at: string | null; email: string | null; refunds?: Refund[]; stop_id: string; tracking_code: string; customer_name: string | null;
   status: string; store: string | null; driver: string | null };
-type Resp = { payments: Row[]; tips_by_driver: { driver: string; total: number; count: number }[]; sandbox: boolean };
+type Resp = { payments: Row[]; sandbox: boolean };
 
-// Admin: every customer card payment and driver tip, with one-tap full or partial refunds back to the card.
+// Admin: every customer card payment, with one-tap full or partial refunds back to the card.
 export default function CustomerPaymentsScreen() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
@@ -29,23 +29,13 @@ export default function CustomerPaymentsScreen() {
     <View style={{ gap: spacing.md }}>
       {d.sandbox ? <Pill label="SQUARE TEST MODE · REFUNDS ARE NOT REAL" tone="yellow" /> : null}
       <CardReminderCard notify={toast.show} />
-      <View style={s.card} testID="tips-by-driver">
-        <Display style={s.title}>TIPS BY DRIVER</Display>
-        {d.tips_by_driver.length === 0 ? <Mono style={s.meta}>No tips yet.</Mono> : d.tips_by_driver.map((t) => (
-          <View key={t.driver} style={s.line}>
-            <Mono style={s.v}>{t.driver} · {t.count} TIP{t.count === 1 ? "" : "S"}</Mono>
-            <Mono style={s.v}>{money(t.total)}</Mono>
-          </View>
-        ))}
-        <Mono style={s.meta}>Tips land in your Square account. Pay them out to drivers as you usually do.</Mono>
-      </View>
       <Mono style={s.section}>CUSTOMER PAYMENTS</Mono>
     </View>
   ) : undefined;
 
   return (
     <View style={s.root} testID="customer-payments-screen">
-      <Header title="CUSTOMER PAYMENTS" subtitle="Order payments, tips & refunds" />
+      <Header title="CUSTOMER PAYMENTS" subtitle="Order payments & refunds" />
       {q.isLoading ? <Loading /> : q.error ? <ErrorBlock message={(q.error as Error).message} onRetry={q.refetch} /> : d && (
         <FlatList
           data={d.payments}
@@ -63,7 +53,7 @@ export default function CustomerPaymentsScreen() {
               </View>
               <Mono style={s.meta}>{r.customer_name ?? "—"} · {r.store ?? "—"}{r.driver ? ` · DRIVER ${r.driver}` : ""}</Mono>
               <View style={s.line}>
-                <Mono style={s.v}>{money(r.total)}{r.tip ? ` (TIP ${money(r.tip)})` : ""}</Mono>
+                <Mono style={s.v}>{money(r.total)}</Mono>
                 {r.refunded ? <Pill label={r.refundable <= 0 ? "REFUNDED" : `REFUNDED ${money(r.refunded)}`} tone="red" /> : null}
               </View>
               <Mono style={s.meta}>{r.card ?? ""} · {r.paid_at ? fmtDepotTime(r.paid_at) : ""}</Mono>
