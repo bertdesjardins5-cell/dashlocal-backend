@@ -193,7 +193,7 @@ async def driver_accounts():
     users = {u["driver_id"]: u for u in await db.users.find({"role": "driver"}, {"_id": 0, "pin_hash": 0}).to_list(500)}
     return [{"id": d["id"], "name": d["name"], "phone": d["phone"], "vehicle": d["vehicle"],
              "has_pin": d["id"] in users, "last_login_at": (users.get(d["id"]) or {}).get("last_login_at"), "pin_request_at": d.get("pin_request_at")}
-            for d in await db.drivers.find({}, {"_id": 0}).sort("id", 1).to_list(500)]
+            for d in await db.drivers.find({"deleted": {"$ne": True}}, {"_id": 0}).sort("id", 1).to_list(500)]
 
 
 class NewDriverIn(BaseModel):

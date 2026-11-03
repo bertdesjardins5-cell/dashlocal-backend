@@ -26,6 +26,7 @@ import { api, API, dayLabel, Stop, windowLabel } from "@/src/api";
 import { uploadForm } from "@/src/utils/upload";
 import FixRowSheet, { ImportRow } from "@/src/components/FixRowSheet";
 import NewDeliverySheet from "@/src/components/NewDeliverySheet";
+import DeleteAccountSheet from "@/src/components/DeleteAccountSheet";
 import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
 
@@ -53,6 +54,7 @@ export default function MerchantHome() {
   const [run, setRun] = useState<Run["key"] | null>(null);
   const [consent, setConsent] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
+  const [delOpen, setDelOpen] = useState(false);
 
   const openNew = () => {
     if (d?.runs && !d.runs.some((r) => r.key === run)) return toast.show("PICK A PICKUP RUN FIRST", "red");
@@ -277,8 +279,14 @@ export default function MerchantHome() {
               ) : null}
             </View>
           ))}
+          {user?.role === "merchant" ? (
+            <Pressable testID="merchant-delete-account-link" onPress={() => setDelOpen(true)} style={s.delLink} accessibilityRole="button">
+              <Mono style={s.delText}>DELETE MY STORE ACCOUNT</Mono>
+            </Pressable>
+          ) : null}
         </ScrollView>
       )}
+      {delOpen ? <DeleteAccountSheet role="merchant" onClose={() => setDelOpen(false)} onDeleted={() => { setDelOpen(false); signOut(); }} /> : null}
       {fix ? <FixRowSheet row={fix} lawOffice={q.data?.business_type === "law_office"} onClose={() => setFix(null)} onDone={() => { setFix(null); q.refetch(); }} notify={toast.show} /> : null}
       {newOpen && d ? (
         <NewDeliverySheet merchantId={merchantId} run={d.runs ? run : null} lawOffice={d.business_type === "law_office"} consent={consent}
@@ -294,6 +302,8 @@ export default function MerchantHome() {
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
+  delLink: { minHeight: 44, alignItems: "center", justifyContent: "center", margin: spacing.lg },
+  delText: { fontSize: 12, color: c.muted, textDecorationLine: "underline" },
   iconBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: c.onSurfaceInverse },
   totals: { flexDirection: "row", borderBottomWidth: 2, borderColor: c.border },
   cell: { flex: 1, padding: spacing.md, alignItems: "center", gap: 2 },

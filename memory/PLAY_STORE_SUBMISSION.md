@@ -58,3 +58,15 @@ Don't give the reviewer the main admin password.
 - Switch Square to live keys (real card charges). In preview it shows "Square test mode" until the keys change.
 - Publish, then build a new Android App Bundle (AAB) from the Publish button.
 - Upload to Internal testing first and run one real delivery end to end.
+
+## 7. Account deletion (Play + App Store)
+- In app: Merchant Portal → bottom "DELETE MY STORE ACCOUNT"; Driver screen → bottom "DELETE MY ACCOUNT". Confirms with password / PIN.
+- Immediate: login stops working, contact details + saved card removed. Billing & delivery records kept without personal details (tax law).
+- Blocked (with a clear message) while a store has unpaid bills or open deliveries, or a driver has an assigned route.
+- Play Console "Data deletion" URL: use the privacy page; deletion is also available in the app.
+
+## 8. iPhone / TestFlight (App Store Connect)
+- app.json: ITSAppUsesNonExemptEncryption=false (no export-compliance prompt), iPhone-only (supportsTablet=false → no iPad screenshots needed), no microphone permission requested.
+- Needs: Apple Developer account, then Publish → iOS build → TestFlight.
+- Review notes: give the reviewer kit logins (Admin → PLAY STORE REVIEWER) and say "Location is only used for drivers during an active route."
+- Privacy policy URL: https://<your-published-domain>/privacy

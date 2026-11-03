@@ -11,7 +11,7 @@ import { useTheme } from "@/src/theme";
 
 // The phone number of the last driver who signed in on this device, so each shift only needs the PIN.
 const PHONE_KEY = "dashlocal_driver_phone";
-const store = {
+export const rememberedPhone = {
   get: () => (Platform.OS === "web" ? AsyncStorage.getItem(PHONE_KEY) : SecureStore.getItemAsync(PHONE_KEY)),
   set: (v: string) => (Platform.OS === "web" ? AsyncStorage.setItem(PHONE_KEY, v) : SecureStore.setItemAsync(PHONE_KEY, v)),
   del: () => (Platform.OS === "web" ? AsyncStorage.removeItem(PHONE_KEY) : SecureStore.deleteItemAsync(PHONE_KEY)),
@@ -31,11 +31,11 @@ export default function DriverSignInForm({ onSignedIn, initialPhone = "", notice
 
   useEffect(() => {
     if (initialPhone) return;
-    store.get().then((p) => { if (p) { setSaved(p); setPhone(p); } }).catch(() => {});
+    rememberedPhone.get().then((p) => { if (p) { setSaved(p); setPhone(p); } }).catch(() => {});
   }, [initialPhone]);
 
   const forgetPhone = () => {
-    store.del().catch(() => {});
+    rememberedPhone.del().catch(() => {});
     setSaved(null);
     setPhone("");
     setPin("");
@@ -63,7 +63,7 @@ export default function DriverSignInForm({ onSignedIn, initialPhone = "", notice
     setError(null);
     try {
       const r = await api<{ token: string; user: SessionUser }>("/auth/driver-login", { method: "POST", body: { phone: phone.trim(), pin } });
-      await store.set(phone.trim()).catch(() => {});
+      await rememberedPhone.set(phone.trim()).catch(() => {});
       await setSession(r.token, r.user);
       onSignedIn?.(r.user);
     } catch (e: any) {

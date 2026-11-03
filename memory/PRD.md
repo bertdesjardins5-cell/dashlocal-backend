@@ -214,3 +214,7 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - Manual delivery entry: POST /api/merchants/{id}/orders (create_order, same validation as CSV rows, nothing stored on error) + NewDeliverySheet 'ENTER A DELIVERY' in merchant portal ADD ORDERS section.
 - Android crash fix: react-native-maps MapView crashed Android release (no Google Maps API key). Added src/components/RouteMap.android.tsx (Leaflet + OpenStreetMap in WebView, no key). iOS keeps Apple Maps (RouteMap.tsx), web keeps RouteMap.web.tsx.
 - Payment locks: no TTL index / no deletes; acquire_lock takes over released or >15-min-old locks, release_locks soft-flags. Auto-dispatch excludes drv-review.
+- Account deletion: routes/account.py GET/POST /api/me/delete-account (store: password; driver: PIN). Blocks on unpaid/reported invoices, open stops, driver planned/active route. Soft: users disabled+anonymised, merchant deleted/disabled + contact wiped + square card disabled, driver deleted+anonymised (filtered from dispatch & driver lists). UI: DeleteAccountSheet in merchant portal + driver screen.
+- Map fullscreen: ExpandableRouteMap (admin route + driver screen), Modal fullscreen, pinch zoom native/Leaflet.
+- iOS prep: app.json ITSAppUsesNonExemptEncryption false, usesNonExemptEncryption false, supportsTablet false, camera/image-picker microphonePermission false.
+- Delete lockout: 5 wrong secrets per 15-min window (delete_fails {n, since}, atomic $inc) → 429. Wrong secret = 403 (not 401, so api.ts doesn't sign out). Driver deletion forgets remembered phone.

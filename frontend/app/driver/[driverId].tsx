@@ -11,7 +11,9 @@ import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { api, dayLabel, depotToday, fmtDepotTime, pickupRunText, RouteDetail, windowLabel, WS_BASE } from "@/src/api";
 import { clearSession, getToken } from "@/src/session";
 import * as Haptics from "expo-haptics";
-import RouteMap from "@/src/components/RouteMap";
+import ExpandableRouteMap from "@/src/components/ExpandableRouteMap";
+import DeleteAccountSheet from "@/src/components/DeleteAccountSheet";
+import { rememberedPhone } from "@/src/components/DriverSignInForm";
 import DriverConsentGate, { useDriverConsent } from "@/src/components/DriverConsentGate";
 import { useTermsStatus } from "@/src/components/TermsGate";
 import PickupCheckIn from "@/src/components/PickupCheckIn";
@@ -31,6 +33,7 @@ export default function Manifest() {
   const { colors } = useTheme();
   const toast = useToast();
   const [mode, setMode] = useState<Mode>("off");
+  const [delOpen, setDelOpen] = useState(false);
   const [perm, setPerm] = useState<"ask" | "settings" | null>(null);
   const [starting, setStarting] = useState(false);
   const watchRef = useRef<Location.LocationSubscription | null>(null);
@@ -270,6 +273,12 @@ export default function Manifest() {
     Linking.openURL(url!);
   };
 
+  const deleteLink = (
+    <Pressable testID="driver-delete-account-link" onPress={() => setDelOpen(true)} style={s.delLink} accessibilityRole="button">
+      <Mono style={s.delText}>DELETE MY ACCOUNT</Mono>
+    </Pressable>
+  );
+
   return (
     <View style={s.root} testID="driver-manifest-screen">
       <Header title={route?.name ?? "MANIFEST"} subtitle={route ? `${route.service_date !== depotToday() ? `${dayLabel(route.service_date)} · ` : ""}${route.completed}/${route.total} DROPS · ${route.driver?.name}` : undefined} right={
@@ -323,10 +332,12 @@ export default function Manifest() {
           <Display style={s.emptyTitle}>NO ROUTE{"\n"}ASSIGNED</Display>
           <Mono style={s.meta}>Ask dispatch to batch a zone to you.</Mono>
           <Btn testID="empty-view-summary-button" label="VIEW TODAY'S SUMMARY" icon="stats-chart" variant="dark" onPress={() => router.push(`/driver/summary/${driverId}`)} />
+          {deleteLink}
         </View>
       ) : (
         <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }} refreshControl={<RefreshControl refreshing={q.isRefetching && mode === "off"} onRefresh={() => { q.refetch(); }} />}>
-          <RouteMap
+          <ExpandableRouteMap
+            title={route.name}
             height={200}
             driver={route.status === "active" && route.driver ? route.driver : null}
             geofence={nextPickup ? null : next ?? null}
@@ -458,9 +469,11 @@ export default function Manifest() {
               <Pill label={st.status} tone={statusTone(st.status)} />
             </Pressable>
           ))}
+          <View style={{ padding: spacing.lg }}>{deleteLink}</View>
         </ScrollView>
       )}
       {toast.node}
+      {delOpen ? <DeleteAccountSheet role="driver" onClose={() => setDelOpen(false)} onDeleted={() => { setDelOpen(false); stopGps(); rememberedPhone.del().catch(() => {}); clearSession(); }} /> : null}
       {celebrate.length && legalDone ? <BadgeCelebration badges={celebrate} onDone={dismissCelebration} /> : null}
       <DriverConsentGate enabled={termsQ.data?.required === false} />
     </View>
@@ -469,6 +482,8 @@ export default function Manifest() {
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
+  delLink: { minHeight: 44, alignItems: "center", justifyContent: "center", marginTop: spacing.md },
+  delText: { fontSize: 12, color: c.muted, textDecorationLine: "underline" },
   iconBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: c.onSurfaceInverse },
   coachBox: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md, backgroundColor: c.warning, borderBottomWidth: 2, borderColor: c.border },
   coachKicker: { fontSize: 10, fontWeight: "700", letterSpacing: 1, color: c.onWarning },

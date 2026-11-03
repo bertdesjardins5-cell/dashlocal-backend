@@ -9,7 +9,7 @@ import DraggableFlatList, { RenderItemParams, ScaleDecorator } from "react-nativ
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { api, BACKEND_URL, dayLabel, depotToday, fmtDepotTime, RouteDetail, smsNote, Stop, windowLabel } from "@/src/api";
-import RouteMap from "@/src/components/RouteMap";
+import ExpandableRouteMap from "@/src/components/ExpandableRouteMap";
 import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
 
@@ -160,7 +160,8 @@ export default function AdminRoute() {
           contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }}
           ListHeaderComponent={
             <View>
-              <RouteMap
+              <ExpandableRouteMap
+                title={route.name}
                 height={220}
                 driver={route.status === "active" ? route.driver : null}
                 path={[route.depot, ...stops.map((x) => ({ lat: x.lat, lng: x.lng }))]}

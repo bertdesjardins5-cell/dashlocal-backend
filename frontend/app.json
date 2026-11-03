@@ -8,7 +8,7 @@
     "scheme": "frontend",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.emergent.arrivewise.ue3on3",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Share live location so customers track deliveries",
@@ -17,7 +17,11 @@
           "location"
         ],
         "NSCameraUsageDescription": "Scan parcel labels and photograph deliveries",
-        "NSPhotoLibraryUsageDescription": "Attach delivery photos from your gallery"
+        "NSPhotoLibraryUsageDescription": "Attach delivery photos from your gallery",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "config": {
+        "usesNonExemptEncryption": false
       }
     },
     "android": {
@@ -71,14 +75,17 @@
       [
         "expo-image-picker",
         {
-          "cameraPermission": "Photograph parcels as proof of delivery"
+          "cameraPermission": "Photograph parcels as proof of delivery",
+          "microphonePermission": false,
+          "photosPermission": "Attach delivery photos from your gallery"
         }
       ],
       [
         "expo-camera",
         {
           "cameraPermission": "Scan parcel labels and photograph deliveries",
-          "recordAudioAndroid": false
+          "recordAudioAndroid": false,
+          "microphonePermission": false
         }
       ],
       "expo-notifications",
