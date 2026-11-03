@@ -36,7 +36,7 @@ def throwaway():
     sfx = uuid.uuid4().hex[:8]
     mid, did = f"mer-deltest-{sfx}", f"drv-deltest-{sfx}"
     email, pw = f"test_deltest_{sfx}@example.com", f"TEST_Pw_{sfx}!"
-    phone = "+1519" + str(uuid.uuid4().int)[:7]
+    phone = "+151955501" + str(10 + uuid.uuid4().int % 80)  # fictional 555-01xx: deletion now texts the driver
     pin = "583" + str(uuid.uuid4().int)[:3]
     mdb.merchants.insert_one({"id": mid, "name": f"TEST_DelStore {sfx}", "contact": "test@example.com", "address": "1 King St W, Kitchener"})
     muid, duid = str(uuid.uuid4()), str(uuid.uuid4())
@@ -171,7 +171,7 @@ class TestDriverDeletion:
 @pytest.fixture
 def lock_driver():
     sfx = uuid.uuid4().hex[:8]
-    did, duid, phone, pin = f"drv-deltest-lk-{sfx}", str(uuid.uuid4()), "+1519" + str(uuid.uuid4().int)[:7], "583" + str(uuid.uuid4().int)[:3]
+    did, duid, phone, pin = f"drv-deltest-lk-{sfx}", str(uuid.uuid4()), "+151955501" + str(10 + uuid.uuid4().int % 80), "583" + str(uuid.uuid4().int)[:3]  # fictional 555-01xx phone
     mdb.drivers.insert_one({"id": did, "name": f"TEST_LockDrv {sfx}", "phone": phone, "vehicle": "TEST", "lat": 43.45, "lng": -80.49})
     mdb.users.insert_one({"id": duid, "role": "driver", "driver_id": did, "pin_hash": hash_pw(pin), "disabled": False,
                           "driver_terms_version": DRIVER_TERMS_VERSION, "phipa_consent_given": True})

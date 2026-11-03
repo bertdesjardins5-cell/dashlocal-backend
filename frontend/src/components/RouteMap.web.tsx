@@ -1,14 +1,15 @@
 // Web preview fallback: schematic projection (react-native-maps is native only).
 import React, { useState } from "react";
-import { View, Text } from "react-native";
+import { Pressable, View, Text } from "react-native";
 import Svg, { Polyline, Line, Circle } from "react-native-svg";
 import { fonts, useTheme } from "@/src/theme";
 import type { LatLng } from "@/src/api";
 
 export type MapMarker = LatLng & { id: string; label: string; tone: "red" | "dark" | "green" | "light" };
-type Props = { markers: MapMarker[]; path?: LatLng[]; driver?: LatLng | null; height?: number | `${number}%`; geofence?: LatLng | null; testID?: string };
+type Props = { markers: MapMarker[]; path?: LatLng[]; driver?: LatLng | null; height?: number | `${number}%`; geofence?: LatLng | null; testID?: string;
+  onMarkerPress?: (id: string) => void };
 
-export default function RouteMap({ markers, path = [], driver, height = 260, testID = "route-map" }: Props) {
+export default function RouteMap({ markers, path = [], driver, height = 260, testID = "route-map", onMarkerPress }: Props) {
   const { colors } = useTheme();
   const [size, setSize] = useState({ w: 0, h: 0 });
   const all = [...markers, ...path, ...(driver ? [driver] : [])];
@@ -43,9 +44,10 @@ export default function RouteMap({ markers, path = [], driver, height = 260, tes
           {markers.map((m) => {
             const q = proj(m);
             return (
-              <View key={m.id} style={{ position: "absolute", left: q.x - 14, top: q.y - 14, minWidth: 28, height: 28, paddingHorizontal: 4, backgroundColor: toneColor(m.tone), borderWidth: 2, borderColor: colors.surface, alignItems: "center", justifyContent: "center" }}>
+              <Pressable key={m.id} testID={`map-marker-${m.id}`} disabled={!onMarkerPress} onPress={() => onMarkerPress?.(m.id)}
+                hitSlop={8} style={{ position: "absolute", left: q.x - 14, top: q.y - 14, minWidth: 28, height: 28, paddingHorizontal: 4, backgroundColor: toneColor(m.tone), borderWidth: 2, borderColor: colors.surface, alignItems: "center", justifyContent: "center" }}>
                 <Text style={{ color: colors.onBrandPrimary, fontFamily: fonts.mono, fontWeight: "700", fontSize: 12 }}>{m.label}</Text>
-              </View>
+              </Pressable>
             );
           })}
           {driver ? (

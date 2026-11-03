@@ -138,7 +138,7 @@ async def mark_badges_seen(driver_id: str, body: SeenIn):
 async def all_scorecards(days: int = 7):
     """Week totals for every driver, best on-time rate first (admin dashboard)."""
     out = []
-    for d in await db.drivers.find({}, {"_id": 0}).to_list(100):
+    for d in await db.drivers.find({"deleted": {"$ne": True}}, {"_id": 0}).to_list(100):
         sc = await scorecard_data(d["id"], days)
         out.append({"driver": sc["driver"], **sc["totals"], "trend": [r["delivered"] for r in sc["days"]]})
     award_badges(out)

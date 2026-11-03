@@ -7,7 +7,8 @@ import { useTheme } from "@/src/theme";
 import type { LatLng } from "@/src/api";
 
 export type MapMarker = LatLng & { id: string; label: string; tone: "red" | "dark" | "green" | "light" };
-type Props = { markers: MapMarker[]; path?: LatLng[]; driver?: LatLng | null; height?: number | `${number}%`; geofence?: LatLng | null; testID?: string };
+type Props = { markers: MapMarker[]; path?: LatLng[]; driver?: LatLng | null; height?: number | `${number}%`; geofence?: LatLng | null; testID?: string;
+  onMarkerPress?: (id: string) => void };
 
 const HTML = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -22,13 +23,14 @@ window.render=function(d){layer.clearLayers();var pts=[];
  if(d.geo)L.circle(d.geo,{radius:50,color:d.c.red,weight:2,fillColor:d.c.geoFill,fillOpacity:0.4}).addTo(layer);
  d.markers.forEach(function(m){pts.push([m.lat,m.lng]);var w=Math.max(28,10+m.label.length*8);
   L.marker([m.lat,m.lng],{icon:L.divIcon({className:'',iconSize:[w,28],iconAnchor:[w/2,14],
-   html:'<div class="pin" style="width:'+w+'px;height:28px;background:'+m.color+'">'+m.label.replace(/</g,'&lt;')+'</div>'})}).addTo(layer)});
+   html:'<div class="pin" style="width:'+w+'px;height:28px;background:'+m.color+'">'+m.label.replace(/</g,'&lt;')+'</div>'})}).on('click',function(){
+   if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(m.id)}).addTo(layer)});
  if(d.driver){pts.push(d.driver);L.marker(d.driver,{icon:L.divIcon({className:'',iconSize:[22,22],iconAnchor:[11,11],
    html:'<div style="width:22px;height:22px;box-sizing:border-box;background:'+d.c.red+';border:4px solid '+d.c.line+'"></div>'})}).addTo(layer)}
  if(pts.length&&d.key!==lastKey){lastKey=d.key;if(pts.length===1)map.setView(pts[0],15);else map.fitBounds(pts,{padding:[40,40]})}};
 true;</script></body></html>`;
 
-export default function RouteMap({ markers, path = [], driver, height = 260, geofence, testID = "route-map" }: Props) {
+export default function RouteMap({ markers, path = [], driver, height = 260, geofence, testID = "route-map", onMarkerPress }: Props) {
   const { colors } = useTheme();
   const ref = useRef<WebView>(null);
   const [ready, setReady] = useState(false);
@@ -37,7 +39,7 @@ export default function RouteMap({ markers, path = [], driver, height = 260, geo
   const all = [...markers, ...(driver ? [driver] : [])];
   const data = JSON.stringify({
     key: all.map((p) => `${p.lat.toFixed(3)},${p.lng.toFixed(3)}`).join("|"),
-    markers: markers.map((m) => ({ lat: m.lat, lng: m.lng, label: m.label, color: toneColor(m.tone) })),
+    markers: markers.map((m) => ({ id: m.id, lat: m.lat, lng: m.lng, label: m.label, color: toneColor(m.tone) })),
     path: path.map((p) => [p.lat, p.lng]),
     driver: driver ? [driver.lat, driver.lng] : null,
     geo: geofence ? [geofence.lat, geofence.lng] : null,
@@ -56,6 +58,7 @@ export default function RouteMap({ markers, path = [], driver, height = 260, geo
         source={source}
         originWhitelist={["*"]}
         onLoadEnd={() => setReady(true)}
+        onMessage={(e: { nativeEvent: { data: string } }) => onMarkerPress?.(e.nativeEvent.data)}
         javaScriptEnabled
         scrollEnabled={false}
         nestedScrollEnabled

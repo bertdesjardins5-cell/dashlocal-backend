@@ -19,7 +19,7 @@ if len(sys.argv) > 2 and sys.argv[1] == "cleanup":
     print("cleaned", s)
     sys.exit()
 s = uuid.uuid4().hex[:8]
-phone = "+1519" + str(uuid.uuid4().int)[:7]
+phone = "+151955501" + str(10 + uuid.uuid4().int % 80)  # fictional 555-01xx: deletion now texts the driver
 db.merchants.insert_one({"id": f"mer-deltest-{s}", "name": f"TEST_UIDel {s}", "contact": "test@example.com"})
 db.users.insert_one({"id": f"usr-deltest-m-{s}", "email": f"test_uidel_{s}@example.com", "password_hash": hash_pw("TEST_Pw_123!"), "role": "merchant",
                      "name": "TEST", "merchant_id": f"mer-deltest-{s}", "disabled": False, "terms_version": TERMS_VERSION, "terms_consent": True})

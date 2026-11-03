@@ -218,3 +218,4 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - Map fullscreen: ExpandableRouteMap (admin route + driver screen), Modal fullscreen, pinch zoom native/Leaflet.
 - iOS prep: app.json ITSAppUsesNonExemptEncryption false, usesNonExemptEncryption false, supportsTablet false, camera/image-picker microphonePermission false.
 - Delete lockout: 5 wrong secrets per 15-min window (delete_fails {n, since}, atomic $inc) → 429. Wrong secret = 403 (not 401, so api.ts doesn't sign out). Driver deletion forgets remembered phone.
+- Deletion confirmations: store → branded email to its inboxes (read before wipe); driver → Twilio SMS (skips fictional 555 numbers). Map stop details: onMarkerPress on all RouteMap variants (native Marker, web Pressable map-marker-{id}, Android Leaflet postMessage); ExpandableRouteMap 'details' shows bottom card (map-stop-details) in fullscreen; admin route passes customer/address/status/code/window.

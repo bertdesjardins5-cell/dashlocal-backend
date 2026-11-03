@@ -1,0 +1,41 @@
+{
+  "summary": "Tested both new features on the preview URL at 375x667, plus the backend. (1) Map stop details work. On /admin/route/route-review, the expand button (44x44, bottom-right) opens route-map-fullscreen with the header 'R-REVIEW Downtown · TAP A STOP'. Tapping marker 1 shows map-stop-details '1. Alex Morgan', with the address '200 King St W, Kitchener', a PENDING pill and RV1001. Tapping marker 3 and then marker 2 switches the card (Sam Taylor, then Jamie Lee). map-stop-details-close hides the card and the fullscreen stays open. route-map-fullscreen-close closes the fullscreen. Reopening shows no leftover card, and Escape closes it. Also checked: H-1025 Stanley Park (completed) shows DELIVERED and FAILED pills and the window, e.g. 'MH2049 · 25 SUN 09:00–11:00'. R-101 Downtown (active, with driver marker) shows all 6 stops correctly. Dashboard card admin-route-R-121 → route page → stop 5 shows 'TEST API Customer … MC77155 · 17:30–20:30'. Markers on the inline (small) map are disabled, as designed. On the driver screen (Marcus, drv-1, R-101), the fullscreen opens with 'R-101 Downtown · PINCH TO ZOOM'. Markers there are aria-disabled and tapping one shows no card, as expected. No page errors. (2) Deletion confirmation works. test_account_deletion.py: 13/13 pass. The new unit tests test_deletion_confirmations.py: 6/6 pass. They check that the store email goes to each recipient with the name HTML-escaped and that email failures are caught. They also check that the driver SMS goes to real numbers and is skipped for fictional 555-01xx numbers, empty phones and missing Twilio env, and that Twilio errors are caught. The POST still returns 200 {ok:true}. During the run backend.err.log shows only email/send 202 Accepted, with no warnings or tracebacks. I fixed a test-safety problem first: the deletion tests made random +1519xxxxxxx driver phones, so with the new SMS a real stranger could have been texted. They now use fictional +151955501xx numbers.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET scorecards (routes/scorecards.py:141)", "issue": "db.drivers.find({}) does not filter out deleted drivers. A self-deleted driver still shows in the Admin dashboard 'DRIVER SCORECARDS' as rank 5 'Deleted driver' (seen live: drv-deltest-91225d, deleted at 16:36 by an earlier run, not mine). Other driver lists already filter with {'deleted': {'$ne': True}}."},
+      {"endpoint": "POST /api/me/delete-account", "issue": "confirm_store / confirm_driver / notify_admin are awaited inline, one after another (email timeout is 30s each). A slow email provider can delay the 200 by tens of seconds after the account is already wiped. Consider asyncio.create_task / BackgroundTasks."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Fullscreen route map (admin)", "issues": [
+        "The selected stop is not highlighted on the map, so it's unclear which marker the card belongs to, especially when markers overlap. Example: H-1025 Stanley Park, where marker 2 is mostly covered by marker 7.",
+        "When the details card opens, the map gets shorter and is re-projected, so every marker jumps (marker 1 moved from y621 to y499). The stop just tapped moves out from under the finger. Consider overlaying the card on the map instead of resizing it.",
+        "On the web fallback, the driver marker View renders on top of the stop markers and can block taps on a stop under it (R-101: driver square next to stop 1)."
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_account_deletion.py", "/app/backend/tests/test_deletion_confirmations.py", "/app/test_reports/pytest/iter65_deletion.xml"],
+  "action_items": [
+    "Filter deleted drivers out of the scorecards query (routes/scorecards.py:141: add {'deleted': {'$ne': True}}).",
+    "Optional: send the deletion confirmation emails/SMS and the admin email in the background so a slow provider can't delay the response.",
+    "Optional UX: highlight the selected marker in fullscreen, and overlay the stop card instead of shrinking the map.",
+    "Leftover test data from an earlier run (not created by me): drv-deltest-91225d plus its merchant/user (mer-deltest-91225d). Clean up by exact id if it came from your run."
+  ],
+  "critical_code_review_comments": [
+    "account.py: the driver's phone and the store recipients are read before being wiped. Correct.",
+    "account.py: confirm_store runs before the audit log and the admin email. Errors are caught, so the deletion itself can't fail because of email.",
+    "ExpandableRouteMap: onMarkerPress is passed only to the fullscreen map, and only when details are given, so the driver screen stays non-tappable. Admin labels use index+1 and the driver screen uses st.seq. Both match their own lists.",
+    "RouteMap.android.tsx: any WebView postMessage is treated as a marker id. That's safe, because details[id] just returns undefined for unknown ids."
+  ],
+  "updated_files": ["/app/backend/tests/test_account_deletion.py (throwaway driver phones changed to fictional +151955501xx so the new SMS never texts a real number)", "/app/backend/tests/ui_seed_deltest.py (same phone fix)", "/app/backend/tests/test_deletion_confirmations.py (new)"],
+  "success_rate": {"backend": "100% (19/19)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "None kept. The pytest throwaway store/drivers were created and removed by exact id.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && set -a && . ./.env && set +a && EXPO_PUBLIC_BACKEND_URL=https://arrivewise.preview.emergentagent.com python -m pytest tests/test_account_deletion.py tests/test_deletion_confirmations.py -p no:xdist -o addopts=''. In the web fullscreen map, wait about 1.5s after tapping route-map-expand, because the Modal slide animation leaves markers off-screen at first. Routes with windows and delivered/failed stops: H-1025 Stanley Park 0a23f19c-7f6c-470b-bca8-a8aeca3e22ae. Active route with driver: R-101 a6e0851a-233b-4482-8102-c0f77e7faefc."
+}

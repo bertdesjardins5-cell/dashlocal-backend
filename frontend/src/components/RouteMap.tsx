@@ -6,9 +6,10 @@ import type { LatLng } from "@/src/api";
 
 export type MapMarker = LatLng & { id: string; label: string; tone: "red" | "dark" | "green" | "light" };
 
-type Props = { markers: MapMarker[]; path?: LatLng[]; driver?: LatLng | null; height?: number | `${number}%`; geofence?: LatLng | null; testID?: string };
+type Props = { markers: MapMarker[]; path?: LatLng[]; driver?: LatLng | null; height?: number | `${number}%`; geofence?: LatLng | null; testID?: string;
+  onMarkerPress?: (id: string) => void };
 
-export default function RouteMap({ markers, path = [], driver, height = 260, geofence, testID = "route-map" }: Props) {
+export default function RouteMap({ markers, path = [], driver, height = 260, geofence, testID = "route-map", onMarkerPress }: Props) {
   const { colors } = useTheme();
   const ref = useRef<MapView>(null);
   const all = [...markers, ...(driver ? [driver] : [])];
@@ -41,7 +42,7 @@ export default function RouteMap({ markers, path = [], driver, height = 260, geo
           <Circle center={{ latitude: geofence.lat, longitude: geofence.lng }} radius={50} strokeColor={colors.brandPrimary} fillColor={colors.brandTertiary} strokeWidth={2} />
         ) : null}
         {markers.map((m) => (
-          <Marker key={m.id} coordinate={{ latitude: m.lat, longitude: m.lng }} anchor={{ x: 0.5, y: 0.5 }}>
+          <Marker key={m.id} coordinate={{ latitude: m.lat, longitude: m.lng }} anchor={{ x: 0.5, y: 0.5 }} onPress={() => onMarkerPress?.(m.id)}>
             <View style={{ minWidth: 28, height: 28, paddingHorizontal: 4, backgroundColor: toneColor(m.tone), borderWidth: 2, borderColor: colors.surface, alignItems: "center", justifyContent: "center" }}>
               <Text style={{ color: colors.onBrandPrimary, fontFamily: fonts.mono, fontWeight: "700", fontSize: 12 }}>{m.label}</Text>
             </View>

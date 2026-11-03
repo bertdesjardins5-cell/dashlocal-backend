@@ -5,9 +5,14 @@ from fastapi import APIRouter, HTTPException, Request
 from html import escape
 from pydantic import BaseModel
 from datetime import datetime, timedelta, timezone
+import os
+from fastapi.concurrency import run_in_threadpool
+from twilio.rest import Client as TwilioClient
 from core import check_pw, current_user, db, logger, now_iso
-from routes import onboarding
+from routes import emails, onboarding
 from routes import square
+from routes import stops as stop_routes
+from services import realtime
 
 router = APIRouter(prefix="/api")
 
@@ -18,6 +23,32 @@ MAX_FAILS, LOCK_MIN = 5, 15
 
 class DeleteIn(BaseModel):
     secret: str  # store password or driver PIN, to confirm it's really them
+
+
+async def confirm_store(name: str, to_list: list, at: str):
+    """Confirmation to the store's own inboxes (read before they were wiped)."""
+    html = onboarding.brand_email("Your ArriveWise account was deleted",
+                                  f"<p>As you asked, the ArriveWise account for <b>{escape(name)}</b> was deleted on {at[:10]}. "
+                                  "Every login for the store has stopped working, and your contact details and saved card were removed.</p>"
+                                  "<p>We keep past invoices and delivery records, without personal contact details, because Canadian tax law requires it.</p>"
+                                  "<p style='color:#5C5C5E;font-size:12px'>Didn't do this? Reply to this email right away.</p>")
+    for to in to_list:
+        try:
+            await emails.send_email(to=to, subject="Your ArriveWise account was deleted", html=html)
+        except Exception as e:
+            logger.warning(f"Deletion confirmation email to {to}: {e}")
+
+
+async def confirm_driver(phone: str):
+    """Drivers sign in by phone and have no email, so they get a text."""
+    if not phone or stop_routes.FICTIONAL_NUMBER.match(phone) or not all(os.environ.get(k) for k in ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_PHONE_NUMBER")):
+        return
+    body = "ArriveWise: Your driver account was deleted as you asked. Your PIN no longer works and your name and phone number were removed."
+    try:
+        tw = TwilioClient(os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"])
+        await run_in_threadpool(lambda: tw.messages.create(to=phone, from_=stop_routes.twilio_number(), body=body))
+    except Exception as e:
+        logger.warning(f"Deletion confirmation SMS: {e}")
 
 
 async def blockers(u: dict) -> list:
@@ -76,23 +107,30 @@ async def delete_account(body: DeleteIn, request: Request):
                 await square.sq("POST", f"/cards/{cid}/disable")
             except Exception as e:
                 logger.warning(f"Square disable card on account deletion: {e}")
+        to_list = await square.merchant_recipients(mid)  # read before the emails are wiped
         for x in await db.users.find({"merchant_id": mid, "role": "merchant"}, {"_id": 0, "id": 1}).to_list(50):  # the whole store closes
             await db.users.update_one({"id": x["id"]}, {"$set": {**gone, "email": f"deleted+{x['id']}@deleted.arrivewise.invalid"}, "$unset": unset})
         # keep the business name for past invoices; wipe contact details and the saved card
         await db.merchants.update_one({"id": mid}, {"$set": {"disabled": True, "deleted": True, "deleted_at": at, "contact": "", "address": ""},
                                                    "$unset": {"square": "", "billing_address": "", "problem_alerts": ""}})
         who = f"Store {escape(m.get('name', mid))} ({escape(u.get('email') or '')})"
+        realtime.spawn(confirm_store(m.get("name", ""), to_list, at))
     else:
         did = u["driver_id"]
-        d = await db.drivers.find_one({"id": did}, {"_id": 0, "name": 1}) or {}
+        d = await db.drivers.find_one({"id": did}, {"_id": 0, "name": 1, "phone": 1}) or {}
         await db.users.update_one({"id": u["id"]}, {"$set": gone, "$unset": unset})
         await db.drivers.update_one({"id": did}, {"$set": {"deleted": True, "deleted_at": at, "name": "Deleted driver", "phone": f"deleted-{did}", "vehicle": ""}})
         who = f"Driver {escape(d.get('name', did))}"
+        realtime.spawn(confirm_driver(d.get("phone") or ""))
     await db.audit_log.insert_one({"at": at, "user_id": u["id"], "role": u["role"], "action": "account_deleted", "path": "/api/me/delete-account"})
+    realtime.spawn(notify_deleted(who, at))
+    return {"ok": True}
+
+
+async def notify_deleted(who: str, at: str):
     try:
         base = (await db.settings.find_one({"key": "public_base"}, {"_id": 0}) or {}).get("value")
         await onboarding.notify_admin("Account deleted", f"<p>{who} deleted their ArriveWise account on {at[:10]}. "
                                       "Billing and delivery records were kept without personal details.</p>", base)
     except Exception as e:
         logger.warning(f"Account deletion admin email: {e}")
-    return {"ok": True}
