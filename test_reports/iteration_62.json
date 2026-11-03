@@ -1,0 +1,33 @@
+{
+  "summary": "Merchant Portal 'ENTER A DELIVERY' (manual single-order entry) tested end-to-end at 375x667 on the preview URL, plus a light backend re-check. Backend: 7/7 pytest passed: consent required (400), pharmacy run required (400), bad phone (400), cross-store 403, half window (400), unauthenticated (401), and create followed by a GET to confirm it was saved (MC code, batch_run, no _id). Frontend, pharmacy mer-2 (books@): the 'ADD ORDERS' section with ENTER A DELIVERY sits above TEMPLATE / UPLOAD CSV. No run gives the toast 'PICK A PICKUP RUN FIRST'; a run but no consent gives 'TICK THE PRIVACY CONSENT BOX FIRST'. In both cases the sheet stays closed. With a run and consent the sheet opens with new-delivery-run 'PICKUP RUN: AFTERNOON BATCH TODAY ...', and the date, window and matter fields are hidden. Errors in the sheet: empty fields -> 'Fill in name, phone, address'; phone '12' -> \"Invalid phone number '12'\"; '99999 Nowhere Blvd Zzz' -> 'Address not found in Kitchener-Waterloo — check the street and number'. The sheet stays open and keeps the typed values. A valid entry with priority and amount 20.00 gave the toast 'DELIVERY MC14378 ADDED · CA$24.99' and closed the sheet. ORDERS went from 2 to 3, the row shows the PRIORITY pill, the 14:30–18:00 window and 'CUSTOMER PAYS CA$20.00 + HST', and the afternoon batch tracker went from 0/10 to 1/10. Reopening the sheet gives an empty form, and the X closes it. Admin view of mer-1 (non-pharmacy): no run label, and the date and window fields show. Window from only -> 'Give both window_start and window_end, or neither'; past date -> 'window_date is in the past'; valid entry -> 'DELIVERY MC13505 ADDED · CA$8.99' and ORDERS went from 2 to 3. The gate code was saved for that customer (GET saved-notes confirmed). No deprecated Expo packages found. No page errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "NewDeliverySheet (admin / non-pharmacy)", "issues": [
+        "Some backend errors use raw field names that don't match the form labels: 'Give both window_start and window_end, or neither' and 'window_date is in the past'. The fields are labelled WINDOW FROM / WINDOW TO / DELIVERY DATE. Consider mapping these to the label wording in the form (CSV users may still want the column names)."
+      ]},
+      {"screen": "NewDeliverySheet", "issues": [
+        "On web the priority Pressable (accessibilityRole=checkbox, accessibilityState.checked) has no aria-checked attribute (it reads None even when checked). Accessibility only; the feature works (PRIORITY pill appears).",
+        "The runLabel is fixed when the sheet opens ('... TODAY'). If the run's cut-off passes while the sheet is open, the backend's runs_today() moves the order to tomorrow, but the label still says today. Edge case, low priority."
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_manual_delivery_entry.py", "/app/test_reports/pytest/pytest_manual_entry.xml"],
+  "action_items": [
+    "(Optional, low) Show friendlier wording in the manual-entry sheet for window/date errors ('Give both WINDOW FROM and WINDOW TO, or neither', 'Delivery date is in the past').",
+    "(Optional, low) Make the priority checkbox's checked state reachable on web (aria-checked)."
+  ],
+  "critical_code_review_comments": [
+    "NewDeliverySheet.tsx (98 lines) is clean: client-side required check, Btn disables while loading (no double submit), error box outside the scroll so it is always visible above the save button, and testIDs on every control.",
+    "The slide animation takes about 300-500 ms on web. Automated tests must wait before tapping new-delivery-save, or it reports 'outside of viewport' while the sheet slides in. Once open, the layout fits 375x667 (save button at y=595)."
+  ],
+  "updated_files": ["/app/backend/tests/test_manual_delivery_entry.py"],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% (all requested flows)"},
+  "seed_data_creation": "Created orders: mer-2 'TEST API Customer' (evening run, MC47271) and 'TEST UI Customer' (afternoon run, priority, MC14378); mer-1 'TEST UI Admin Customer' (MC13505) plus a saved note for +15195550178 'Gate code 2468'.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Manual entry: ENTER A DELIVERY (merchant-new-delivery-button) -> new-delivery-sheet. After it opens, wait about 1 s for the slide animation before clicking. Toast testID='toast'. Pharmacy mer-2 needs run-afternoon/run-evening plus order-consent-checkbox. Admin sign-in: /sign-in/staff then go to /merchant/mer-1. Regression: pytest tests/test_manual_delivery_entry.py with EXPO_PUBLIC_BACKEND_URL set."
+}

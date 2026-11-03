@@ -211,3 +211,4 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - Added card_usable(): cards saved in test mode (no "live" flag) are skipped by autopay in live mode; merchant UI shows "add your card again" (card_needs_update).
 - Card re-add emails: GET/POST /api/admin/square/card-reminders (stores without a usable card, excl. mer-review; 7-day one-tap card link; 20h cooldown per store). UI: CardReminderCard on /admin/payments.
 - Tips REMOVED at user request (tip buttons, tip-link endpoint, TipDriver, tips_by_driver). Any tips already paid stay listed on /admin/payments and remain refundable.
+- Manual delivery entry: POST /api/merchants/{id}/orders (create_order, same validation as CSV rows, nothing stored on error) + NewDeliverySheet 'ENTER A DELIVERY' in merchant portal ADD ORDERS section.

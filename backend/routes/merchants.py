@@ -383,6 +383,51 @@ async def delete_saved_note(merchant_id: str, note_id: str, _: dict = Depends(me
     return {"ok": True}
 
 
+def pick_run(m: dict, run: Optional[str]) -> tuple:
+    """Pharmacy partners must pick a pickup run (afternoon | evening); other stores don't use runs."""
+    if not m.get("pharmacy_partner"):
+        return None, None
+    if run not in RUNS:
+        raise HTTPException(400, "Pick a pickup run: afternoon or evening")
+    info = next(r for r in billing.runs_today() if r["key"] == run)
+    return run, f"{m['id']}:{info['date']}:{run}"
+
+
+class NewOrderIn(BaseModel):
+    customer_name: str = ""
+    phone: str = ""
+    address: str = ""
+    notes: str = ""
+    delivery_note: str = ""
+    window_date: str = ""
+    window_start: str = ""
+    window_end: str = ""
+    priority: bool = False
+    matter_ref: str = ""
+    amount_due: str = ""
+    consent: bool = False
+    run: Optional[str] = None
+
+
+@router.post("/merchants/{merchant_id}/orders")
+async def create_order(merchant_id: str, body: NewOrderIn, u: dict = Depends(merchant_access)):
+    """Enter one delivery by hand in the Merchant Portal. Same checks as a CSV row (phone, window, address lookup),
+    but problems come straight back to the form instead of the 'rows to fix' list."""
+    if not body.consent:
+        raise HTTPException(400, "Confirm the privacy consent statement before adding the delivery")
+    m = await get_merchant_or_404(merchant_id)
+    run, manifest_id = pick_run(m, body.run)
+    d = {k: " ".join(str(getattr(body, k) or "").split()) for k in COLUMNS if k != "priority"}
+    d["priority"] = "yes" if body.priority else ""
+    row = {"id": str(uuid.uuid4()), "merchant_id": merchant_id, "line": 1, "data": d, "run": run, "manifest_id": manifest_id,
+           "consent": {"consent_given": True, "consent_at": now_iso(), "consent_by": u.get("email") or u["id"], "consent_text": privacy.CONSENT_TEXT}}
+    r = await process_row(row)  # nothing is stored unless the delivery is created
+    if r["status"] != "created":
+        msg = r["error"].replace("window_start", "Window from").replace("window_end", "Window to").replace("window_date", "Delivery date").replace("amount_due", "Customer pays")
+        raise HTTPException(503 if r["status"] == "lookup_failed" else 400, msg)
+    return Stop(**await db.stops.find_one({"id": r["stop_id"]}, {"_id": 0})).model_dump()
+
+
 @router.post("/merchants/{merchant_id}/import")
 async def import_orders(merchant_id: str, request: Request, file: UploadFile = File(...), run: Optional[str] = None, consent: bool = False,
                         u: dict = Depends(merchant_access)):
@@ -393,14 +438,7 @@ async def import_orders(merchant_id: str, request: Request, file: UploadFile = F
         raise HTTPException(400, "Confirm the privacy consent statement before uploading orders")
     consent_rec = {"consent_given": True, "consent_at": now_iso(), "consent_by": u.get("email") or u["id"], "consent_text": privacy.CONSENT_TEXT}
     m = await get_merchant_or_404(merchant_id)
-    manifest_id = None
-    if m.get("pharmacy_partner"):
-        if run not in RUNS:
-            raise HTTPException(400, "Pick a pickup run: afternoon or evening")
-        info = next(r for r in billing.runs_today() if r["key"] == run)
-        manifest_id = f"{merchant_id}:{info['date']}:{run}"
-    else:
-        run = None
+    run, manifest_id = pick_run(m, run)
     raw = await file.read()
     if len(raw) > 2 * 1024 * 1024:
         raise HTTPException(413, "CSV is larger than 2 MB")

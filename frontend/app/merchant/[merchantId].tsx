@@ -25,6 +25,7 @@ import PharmacySummaryCard from "@/src/components/PharmacySummaryCard";
 import { api, API, dayLabel, Stop, windowLabel } from "@/src/api";
 import { uploadForm } from "@/src/utils/upload";
 import FixRowSheet, { ImportRow } from "@/src/components/FixRowSheet";
+import NewDeliverySheet from "@/src/components/NewDeliverySheet";
 import { Btn, Display, ErrorBlock, Header, Loading, Mono, Pill, statusTone, useToast } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
 
@@ -51,7 +52,13 @@ export default function MerchantHome() {
   const [busyOrder, setBusyOrder] = useState<string | null>(null);
   const [run, setRun] = useState<Run["key"] | null>(null);
   const [consent, setConsent] = useState(false);
+  const [newOpen, setNewOpen] = useState(false);
 
+  const openNew = () => {
+    if (d?.runs && !d.runs.some((r) => r.key === run)) return toast.show("PICK A PICKUP RUN FIRST", "red");
+    if (!consent) return toast.show("TICK THE PRIVACY CONSENT BOX FIRST", "red");
+    setNewOpen(true);
+  };
   const togglePriority = async (o: Stop) => {
     setBusyOrder(o.id);
     try {
@@ -141,9 +148,9 @@ export default function MerchantHome() {
 
           <WelcomeChecklist merchantId={merchantId} refreshKey={q.dataUpdatedAt} notify={toast.show} />
 
-          <Mono style={s.section}>IMPORT ORDERS FROM CSV</Mono>
+          <Mono style={s.section}>ADD ORDERS</Mono>
           <View style={s.block}>
-            <Mono style={s.meta}>Columns: customer_name, phone, address (required) · notes, window_date, window_start, window_end, priority (yes = priority delivery, surcharge applies), delivery_note or gate_code (sent to the driver and saved for that customer&apos;s next orders){d.business_type === "law_office" ? ", matter_ref or file_number (printed on the signed receipt)" : ""}, amount_due (what the customer pays in the app by card, before HST) (optional). Up to 200 rows per file. Addresses are looked up on the map automatically.{d.runs ? " Pharmacy runs set the delivery day and window, so window columns are ignored." : ""}</Mono>
+            <Mono style={s.meta}>Enter one delivery at a time, or upload a CSV for many. CSV columns: customer_name, phone, address (required) · notes, window_date, window_start, window_end, priority (yes = priority delivery, surcharge applies), delivery_note or gate_code (sent to the driver and saved for that customer&apos;s next orders){d.business_type === "law_office" ? ", matter_ref or file_number (printed on the signed receipt)" : ""}, amount_due (what the customer pays in the app by card, before HST) (optional). Up to 200 rows per file. Addresses are looked up on the map automatically.{d.runs ? " Pharmacy runs set the delivery day and window, so window columns are ignored." : ""}</Mono>
             <View style={s.privacyWarn} testID="health-info-warning">
               <Ionicons name="shield-checkmark" size={18} color={colors.onWarning} />
               <Mono style={[s.meta, { flex: 1, color: colors.onWarning }]}>
@@ -182,9 +189,10 @@ export default function MerchantHome() {
                 })}
               </View>
             ) : null}
+            <Btn testID="merchant-new-delivery-button" label="ENTER A DELIVERY" icon="create" onPress={openNew} />
             <View style={{ flexDirection: "row", gap: spacing.sm }}>
               <Btn testID="merchant-template-button" label="TEMPLATE" icon="download" variant="outline" onPress={template} style={{ flex: 1 }} />
-              <Btn testID="merchant-upload-button" label="UPLOAD CSV" icon="cloud-upload" loading={uploading} disabled={!!running} onPress={upload} style={{ flex: 2 }} />
+              <Btn testID="merchant-upload-button" label="UPLOAD CSV" icon="cloud-upload" variant="outline" loading={uploading} disabled={!!running} onPress={upload} style={{ flex: 2 }} />
             </View>
             {last ? (
               <View style={s.job} testID="merchant-import-progress">
@@ -232,7 +240,7 @@ export default function MerchantHome() {
           <ProblemAlertsCard merchantId={merchantId} notify={toast.show} />
 
           <Mono style={s.section}>ORDERS</Mono>
-          {d.orders.length === 0 ? <Mono style={s.empty} testID="merchant-orders-empty">NO ORDERS YET · UPLOAD A CSV TO GET STARTED</Mono> : null}
+          {d.orders.length === 0 ? <Mono style={s.empty} testID="merchant-orders-empty">NO ORDERS YET · ENTER A DELIVERY OR UPLOAD A CSV</Mono> : null}
           {d.orders.map((o) => (
             <View key={o.id} style={s.orderWrap}>
               <Pressable testID={`merchant-order-${o.tracking_code}`} onPress={() => router.push(`/customer/${o.tracking_code}`)} style={({ pressed }) => [s.orderRow, pressed && { backgroundColor: colors.surfaceTertiary }]}>
@@ -272,6 +280,12 @@ export default function MerchantHome() {
         </ScrollView>
       )}
       {fix ? <FixRowSheet row={fix} lawOffice={q.data?.business_type === "law_office"} onClose={() => setFix(null)} onDone={() => { setFix(null); q.refetch(); }} notify={toast.show} /> : null}
+      {newOpen && d ? (
+        <NewDeliverySheet merchantId={merchantId} run={d.runs ? run : null} lawOffice={d.business_type === "law_office"} consent={consent}
+          runLabel={(() => { const r = d.runs?.find((x) => x.key === run); return r ? `${r.label} ${r.today ? "today" : "tomorrow"}` : undefined; })()}
+          onClose={() => setNewOpen(false)}
+          onCreated={(st) => { setNewOpen(false); toast.show(`DELIVERY ${st.tracking_code} ADDED${st.fee ? ` · ${money(st.fee.total)}` : ""}`, "green"); q.refetch(); }} />
+      ) : null}
       {toast.node}
       {user?.role === "merchant" ? <TermsGate kind="merchant" onNotify={toast.show} /> : null}
     </View>
