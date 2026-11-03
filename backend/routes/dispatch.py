@@ -221,7 +221,7 @@ async def dispatch_preview(date: Optional[str] = None):
     counts = {z: 0 for z in COMPASS}
     for d in docs:
         counts[compass_of(d)] += 1
-    drivers = [Driver(**d) for d in await db.drivers.find({}, {"_id": 0}).sort("id", 1).to_list(100)]
+    drivers = [Driver(**d) for d in await db.drivers.find({"id": {"$ne": "drv-review"}}, {"_id": 0}).sort("id", 1).to_list(100)]  # Play reviewer never gets real orders
     return {"service_date": service_date, "total": len(docs),
             "zones": [{"zone": z, "count": counts[z], "driver": next(({"id": d.id, "name": d.name} for d in drivers if d.compass_zone == z), None)} for z in COMPASS],
             "drivers": [{"id": d.id, "name": d.name, "vehicle": d.vehicle, "compass_zone": d.compass_zone} for d in drivers]}
@@ -244,7 +244,7 @@ async def _auto_dispatch(body: AutoDispatchIn):
     docs = await db.stops.find(seed.eligible_query(service_date), {"_id": 0}).to_list(5000)
     if not docs:
         raise HTTPException(400, "No unassigned orders for that day")
-    drivers = [Driver(**d) for d in await db.drivers.find({}, {"_id": 0}).sort("id", 1).to_list(100)]
+    drivers = [Driver(**d) for d in await db.drivers.find({"id": {"$ne": "drv-review"}}, {"_id": 0}).sort("id", 1).to_list(100)]  # Play reviewer never gets real orders
     if not drivers:
         raise HTTPException(400, "No drivers")
     by_zone: Dict[str, list] = {z: [] for z in COMPASS}

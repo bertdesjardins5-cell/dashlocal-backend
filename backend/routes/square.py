@@ -258,7 +258,7 @@ async def auto_charge(m: dict, sqd: dict, key: str, kind: str, label: str, invs:
         realtime.spawn(email_charge_failed(m, label, round(sum(i["total"] for i in invs), 2), str(e), final))
         return {"key": key, "status": "gave_up" if final else "failed", "error": str(e)}
     finally:
-        await db.square_locks.delete_many({"key": {"$in": locks}})
+        await release_locks(locks)
 
 
 async def email_charge_failed(m: dict, label: str, total: float, reason: str, final: bool):
@@ -281,7 +281,8 @@ async def billing_watcher():
     await asyncio.sleep(40)
     await db.square_charges.create_index("key", unique=True)
     await db.square_locks.create_index("key", unique=True)
-    await db.square_locks.create_index("at_dt", expireAfterSeconds=900)  # a lock left by a crash frees itself
+    if "at_dt_1" in await db.square_locks.index_information():
+        await db.square_locks.drop_index("at_dt_1")  # old auto-expiring index; stale locks are now taken over in code (acquire_lock)
     await db.square_charges.update_many({"status": "processing", "payment_id": {"$exists": False}}, {"$set": {"status": "failed", "next_try_at": None}})  # interrupted by a restart
     while True:
         try:
@@ -401,10 +402,29 @@ class CompleteIn(BaseModel):
     email: Optional[str] = None
 
 
-async def take_lock(key: str):
+LOCK_TTL_S = 900  # a lock left behind by a crash can be taken over after 15 minutes
+
+
+async def acquire_lock(key: str) -> bool:
+    """Payment locks are never deleted: released (or stale) locks are re-taken in place."""
+    now = datetime.now(timezone.utc)
+    if await db.square_locks.find_one_and_update(
+            {"key": key, "$or": [{"released": True}, {"at_dt": {"$lt": now - timedelta(seconds=LOCK_TTL_S)}}]},
+            {"$set": {"released": False, "at": now_iso(), "at_dt": now}}):
+        return True
     try:
-        await db.square_locks.insert_one({"key": key, "at": now_iso(), "at_dt": datetime.now(timezone.utc)})
+        await db.square_locks.insert_one({"key": key, "released": False, "at": now_iso(), "at_dt": now})
+        return True
     except DuplicateKeyError:
+        return False
+
+
+async def release_locks(keys: list):
+    await db.square_locks.update_many({"key": {"$in": keys}}, {"$set": {"released": True, "released_at": now_iso()}})
+
+
+async def take_lock(key: str):
+    if not await acquire_lock(key):
         raise HTTPException(409, "A payment for this is already being processed — wait a moment and refresh")
 
 
@@ -412,10 +432,8 @@ async def lock_invoices(ids: list) -> Optional[list]:
     """All-or-nothing lock so a manual card payment and autopay never charge the same invoice. None = busy."""
     keys = [f"inv:{i}" for i in ids]
     for n, k in enumerate(keys):
-        try:
-            await db.square_locks.insert_one({"key": k, "at": now_iso(), "at_dt": datetime.now(timezone.utc)})
-        except DuplicateKeyError:
-            await db.square_locks.delete_many({"key": {"$in": keys[:n]}})
+        if not await acquire_lock(k):
+            await release_locks(keys[:n])
             return None
     return keys
 
@@ -440,7 +458,7 @@ async def complete(body: CompleteIn):
                 ch = await settle_invoices(p["sub"], d["invs"], body.source_id, f"inv-{uuid.uuid4().hex}", f"{len(d['invs'])} invoice(s) paid by card",
                                            "manual", p.get("by") or "merchant")
             finally:
-                await db.square_locks.delete_many({"key": {"$in": locks}})
+                await release_locks(locks)
             return {"kind": "invoices", "status": "paid", "total": ch["total"], "count": len(d["invs"]), "card": card_label(ch.get("brand"), ch.get("last4")),
                     "payment_id": ch["payment_id"], "receipt_url": ch.get("receipt_url")}
         return await pay_order(d, body.source_id, (body.email or "").strip())
@@ -586,7 +604,7 @@ async def pay_order(d: dict, source_id: str, email: str) -> dict:
     try:
         p = await charge(source_id, cents(total), f"ord-{uuid.uuid4().hex}", f"Order {s['tracking_code']} ({d['who']})", s["tracking_code"], email=email)
     except Exception:
-        await db.square_locks.delete_one({"key": f"order:{s['id']}"})
+        await release_locks([f"order:{s['id']}"])
         raise
     cp = {"payment_id": p["payment_id"], "amount": pay["amount"], "hst_pct": pct, "hst": hst, "total": total, "paid_at": now_iso(),
           "card": card_label(p.get("brand"), p.get("last4")), "receipt_url": p.get("receipt_url"), "email": email}
@@ -714,7 +732,7 @@ async def refund_payment(stop_id: str, body: RefundIn, u: dict = Depends(admin_u
         else:
             await db.stops.update_one({"id": stop_id, "tips.payment_id": body.payment_id}, {"$push": {"tips.$.refunds": rec}})
     finally:
-        await db.square_locks.delete_one({"key": f"refund:{body.payment_id}"})
+        await release_locks([f"refund:{body.payment_id}"])
     realtime.spawn(email_refund(s, p, rec))
     return {"ok": True, "refund": rec, "refundable": round(p["refundable"] - amt, 2)}
 

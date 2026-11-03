@@ -213,3 +213,4 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - Tips REMOVED at user request (tip buttons, tip-link endpoint, TipDriver, tips_by_driver). Any tips already paid stay listed on /admin/payments and remain refundable.
 - Manual delivery entry: POST /api/merchants/{id}/orders (create_order, same validation as CSV rows, nothing stored on error) + NewDeliverySheet 'ENTER A DELIVERY' in merchant portal ADD ORDERS section.
 - Android crash fix: react-native-maps MapView crashed Android release (no Google Maps API key). Added src/components/RouteMap.android.tsx (Leaflet + OpenStreetMap in WebView, no key). iOS keeps Apple Maps (RouteMap.tsx), web keeps RouteMap.web.tsx.
+- Payment locks: no TTL index / no deletes; acquire_lock takes over released or >15-min-old locks, release_locks soft-flags. Auto-dispatch excludes drv-review.

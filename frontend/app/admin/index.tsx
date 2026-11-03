@@ -205,7 +205,7 @@ export default function AdminDashboard() {
             <Ionicons name="logo-google-playstore" size={24} color={colors.onSurface} />
             <View style={{ flex: 1, gap: 2 }}>
               <Display style={s.rowTitle}>PLAY STORE REVIEWER</Display>
-              <Mono style={s.meta}>Test store, driver and route for Google's review</Mono>
+              <Mono style={s.meta}>Test store, driver and route for Google&apos;s review</Mono>
             </View>
             <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />
           </Pressable>
