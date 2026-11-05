@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { addDays, api, dayLabel, depotToday, Driver } from "@/src/api";
 import LowRatingAlerts from "@/src/components/LowRatingAlerts";
+import RatingsCard from "@/src/components/RatingsCard";
 import AlertTrends from "@/src/components/AlertTrends";
 import ApologyCodes from "@/src/components/ApologyCodes";
 import DailyDigest from "@/src/components/DailyDigest";
@@ -212,6 +213,8 @@ export default function AdminDashboard() {
           <Mono style={s.section}>DAILY OPS DIGEST</Mono>
           <DailyDigest />
           <LowRatingAlerts notify={toast.show} />
+          <Mono style={s.section}>CUSTOMER RATINGS · ALL STORES</Mono>
+          <RatingsCard />
           <Mono style={s.section}>LOW RATING TRENDS · 7 DAYS</Mono>
           <AlertTrends notify={toast.show} />
           <Mono style={s.section}>APOLOGY CODES · USAGE & SPEND</Mono>

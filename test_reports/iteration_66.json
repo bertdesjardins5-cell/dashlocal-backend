@@ -1,0 +1,36 @@
+{
+  "summary": "Tested Delivery Ratings on the backend and the frontend (375x667, preview URL). Backend: 18/18 pytest pass. (1) The store ratings endpoint works for mer-1, returns 403 for mer-2 and 401 without a login. (2) Admin ratings return 200 for the admin and 403/403/401 for a store, a driver and no login, with the star split summing to count. (3) A rating with a comment is trimmed and capped at 300 characters, and stars=6 and a second rating both return 400. The comment then shows in the mer-1 recent list (with driver Marcus Reid), in the admin view (with shop Mission Bakery Co.) and in drv-1 feedback recent[].comment, and not in the mer-2 view. (4) /alerts/trends returns 200 and the screenshots zip returns 200 PK. Frontend: (1) /customer/TS9902: unlocking with 0172 shows rating-prompt with 44x44 stars. Tapping a star shows rating-comment-input, which caps at 300 characters (300/300 counter). Submitting shows rating-thanks and the 'THANKS FOR YOUR FEEDBACK' toast, and the comment was saved in the DB. (2) /merchant/mer-1 shows ratings-card with 4.0★, the BY DRIVER Marcus Reid row and both TEST rows with comments. (3) /admin shows 'CUSTOMER RATINGS · ALL STORES' with ratings-avg 4.2★, 3 driver rows and 30 recent rows. (4) /driver/summary/drv-1 shows 3 driver-feedback-comment entries. No page errors. One backend bug was reproduced: free-text comments leak into the /alerts/trends top_reasons.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/alerts/trends", "issue": "When a low rating has no tags, routes/feedback.py:184 falls back to (st.rating_comment or '').split(','), so free-text customer comments become 'reasons'. Reproduced: a 1-star rating with no tags and the comment 'parcel was soaked, driver never knocked' produced top_reasons 'TEST_ PARCEL WAS SOAKED' and 'DRIVER NEVER KNOCKED'. Existing data already shows 'PARCEL CAME LATER THAN THE WINDOW. DRIVER WAS POLITE THOUGH.' as a drv-1 reason. This is noisy and may expose PHI-like free text in admin trends."},
+      {"endpoint": "GET /api/admin/ratings, /api/merchants/{id}/ratings", "issue": "ratings_summary uses to_list(2000), so count, avg and the star split silently stop at 2000 ratings. Use a Mongo aggregation for the totals."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "RatingsCard (merchant/admin) LATEST rows", "issues": ["rated_at uses fmtDepotTime, which shows only HH:MM (e.g. '11:46') with no date. Older ratings (e.g. MD1002 from the 29th) can't be told apart from today's. Use a day label plus the time, like DriverFeedbackCard does with dayLabel."]},
+      {"screen": "Admin dashboard", "issues": ["The ratings card lists all 30 recent ratings inline on the dashboard, which makes the page very long on mobile. Consider showing 5 with a 'SEE ALL' button."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_delivery_ratings_iter66.py", "/app/backend/tests/ui_seed_ratings_iter66.py", "/app/backend/tests/repro_iter66_trends_comment_reasons.py", "/app/test_reports/pytest/pytest_iter66.xml"],
+  "action_items": [
+    "routes/feedback.py:184 alert_trends: use only st.rating_tags for reasons. Drop the rating_comment split fallback, or apply it only when the comment exactly matches known RATING_TAGS (legacy data), so free-text comments never appear as top_reasons.",
+    "RatingsCard: show the date and time for rated_at (e.g. dayLabel + HH:MM) instead of only fmtDepotTime.",
+    "Optional: compute the ratings_summary totals with an aggregation instead of to_list(2000)."
+  ],
+  "critical_code_review_comments": [
+    "DriverFeedbackCard's docstring and the feedback endpoint say 'no patient details', but drivers now see raw free-text comments, which can contain names, addresses or health info. Consider a privacy note or basic redaction (this is a product decision).",
+    "RatingPrompt: the comment box uses maxLength=300 and the server also trims and caps at 300. Both are good."
+  ],
+  "updated_files": ["/app/backend/tests/test_delivery_ratings_iter66.py", "/app/backend/tests/ui_seed_ratings_iter66.py", "/app/backend/tests/repro_iter66_trends_comment_reasons.py"],
+  "success_rate": {"backend": "100% (18/18). 1 minor bug outside the suite (trends comment leak)", "frontend": "100% (4/4 flows)"},
+  "seed_data_creation": "Created TEST_ clones of MH2096 (TS9901, TS9902 and TS9903; merchant mer-1, route H-1023 drv-1, delivered now, last4 0172), rated them, and deleted them by id afterwards. MH2088 and MH2096 were not touched (both still unrated). No shout-outs were created.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && set -a && . ./.env && set +a && python tests/ui_seed_ratings_iter66.py seed && EXPO_PUBLIC_BACKEND_URL=https://arrivewise.preview.emergentagent.com python -m pytest tests/test_delivery_ratings_iter66.py -p no:xdist -o addopts='' ; python tests/ui_seed_ratings_iter66.py cleanup. mer-1 has no real ratings (its 3 stops are pending), so ratings-empty shows unless you seed. The ratings feature uses EXPO_PUBLIC_BACKEND_URL (frontend/.env has no EXPO_BACKEND_URL key).",
+  "rca_of_issue": "Trends leak: alert_trends iterates `st.rating_tags or (st.rating_comment or '').split(',')`. Before this iteration, rating_comment held comma-joined tags. Now it holds free text, so whenever a low rating has no tags the comment is split on commas and uppercased into reasons. Repro: tests/repro_iter66_trends_comment_reasons.py."
+}

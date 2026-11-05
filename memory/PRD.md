@@ -222,3 +222,9 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - 2026-11 Rebrand ArriveWise -> LocalDash (all text, logo LOCAL/DASH, emails @localdash.app logins, contact @localdash.ca, domain localdash.ca). Package/bundle ID kept com.emergent.arrivewise.ue3on3. auth.py migration renames @dashlocal/@arrivewise.app logins to @localdash.app (parks disabled holders as retired+id@retired.localdash.invalid). ADMIN_EMAIL + EMAIL_FROM_NAME secrets need updating to admin@localdash.app / LocalDash.
 - Call From Map: POST /api/stops/{id}/dispatch-call (ADMIN_ONLY) rings settings.dispatch_phone via Twilio and bridges to customer (masked). ExpandableRouteMap onCall prop → 'CALL CUSTOMER (MASKED)' in stop card (admin route only).
 - Text From Map: POST /api/stops/{id}/dispatch-text {message} (ADMIN_ONLY, ≤480 chars, 'LocalDash: ' prefix, 555-01xx skipped_fictional, logged in contact_logs). Card: CALL + TEXT buttons, quick replies, KeyboardStickyView.
+
+## Update — Store submission kit + Delivery ratings (Nov 2026)
+- PLAY_STORE_SUBMISSION.md rebranded to LocalDash, links set to https://localdash.ca/privacy and /terms.
+- STORE_LISTING.md: app name, short/full descriptions, subtitle, keywords, category, what's new.
+- Store screenshots: scripts/store_screenshots.py → /app/store_screenshots (android 1080x1920, iphone 1290x2796), zip at GET /api/store-screenshots.zip.
+- Ratings: customer comment box (300 chars) on RatingPrompt; RatingsCard (store via GET /api/merchants/{id}/ratings, admin via GET /api/admin/ratings, latest 5 + show all, date+time); drivers see comments in their feedback card. Trends reasons now from rating_tags only.

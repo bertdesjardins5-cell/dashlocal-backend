@@ -1,11 +1,11 @@
 import React, { useState } from "react";
-import { Pressable, View } from "react-native";
+import { Pressable, TextInput, View } from "react-native";
 import Animated, { FadeInDown, ZoomIn } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { api, Stop } from "@/src/api";
 import { Btn, Display, Mono } from "@/src/ui";
-import { makeStyles, spacing, useTheme } from "@/src/theme";
+import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
 const POSITIVE = ["ON TIME", "FRIENDLY DRIVER", "HANDLED WITH CARE", "DISCREET", "EASY TO FOLLOW"];
 const NEGATIVE = ["LATE", "HARD TO FIND PARCEL", "DAMAGED PARCEL", "NOT DISCREET", "RUDE DRIVER", "WRONG ADDRESS"];
@@ -20,6 +20,7 @@ export default function RatingPrompt({ stop, orderToken, onRated, onError }: Pro
   const [stars, setStars] = useState(0);
   const [tags, setTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [comment, setComment] = useState("");
 
   if (stop.rating) {
     return (
@@ -46,7 +47,7 @@ export default function RatingPrompt({ stop, orderToken, onRated, onError }: Pro
   const submit = async () => {
     setSaving(true);
     try {
-      const st = await api<Stop>(`/stops/${stop.id}/rating`, { method: "POST", body: { stars, comment: null, tags }, headers: { "X-Order-Token": orderToken } });
+      const st = await api<Stop>(`/stops/${stop.id}/rating`, { method: "POST", body: { stars, comment: comment.trim() || null, tags }, headers: { "X-Order-Token": orderToken } });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       onRated(st);
     } catch (e: any) {
@@ -95,6 +96,17 @@ export default function RatingPrompt({ stop, orderToken, onRated, onError }: Pro
               );
             })}
           </View>
+          <TextInput
+            testID="rating-comment-input"
+            value={comment}
+            onChangeText={setComment}
+            placeholder="Add a comment (optional)"
+            placeholderTextColor={colors.muted}
+            maxLength={300}
+            multiline
+            style={s.input}
+          />
+          <Mono style={s.count}>{comment.length}/300</Mono>
           <Btn testID="rating-submit-button" label="SEND RATING" icon="send" loading={saving} onPress={submit} />
         </>
       ) : null}
@@ -112,6 +124,8 @@ const useStyles = makeStyles((c) => ({
   chipText: { fontSize: 11, fontWeight: "700" },
   done: { flexDirection: "row", alignItems: "center", gap: spacing.md, borderWidth: 2, borderColor: c.border, padding: spacing.md },
   label: { fontSize: 11, fontWeight: "700", letterSpacing: 1 },
+  input: { minHeight: 72, borderWidth: 2, borderColor: c.border, padding: spacing.sm, fontFamily: fonts.mono, fontSize: 14, color: c.onSurface, backgroundColor: c.surface, textAlignVertical: "top" },
+  count: { fontSize: 11, color: c.muted, alignSelf: "flex-end" },
   apology: { backgroundColor: c.brandPrimary, padding: spacing.md, gap: 4, borderWidth: 2, borderColor: c.border },
   code: { fontSize: 24, color: c.onBrandPrimary, letterSpacing: 2, backgroundColor: c.brandSecondary, alignSelf: "flex-start", paddingHorizontal: spacing.sm },
 }));

@@ -12,6 +12,7 @@ import WeeklyEmailCard from "@/src/components/WeeklyEmailCard";
 import SavedNotesCard from "@/src/components/SavedNotesCard";
 import WelcomeChecklist from "@/src/components/WelcomeChecklist";
 import ProblemAlertsCard from "@/src/components/ProblemAlertsCard";
+import RatingsCard from "@/src/components/RatingsCard";
 import { money } from "@/src/components/BillCard";
 import InvoicesCard from "@/src/components/InvoicesCard";
 import ReceiptArchive from "@/src/components/ReceiptArchive";
@@ -238,6 +239,8 @@ export default function MerchantHome() {
           <ReportDownload merchantId={merchantId} notify={toast.show} />
           <WeeklyEmailCard merchantId={merchantId} notify={toast.show} />
           <SavedNotesCard merchantId={merchantId} notify={toast.show} />
+          <Mono style={s.section}>CUSTOMER RATINGS</Mono>
+          <RatingsCard merchantId={merchantId} />
           <Mono style={s.section}>PROBLEM ALERTS</Mono>
           <ProblemAlertsCard merchantId={merchantId} notify={toast.show} />
 

@@ -7,7 +7,7 @@ import { makeStyles, spacing, useTheme } from "@/src/theme";
 
 type Feedback = {
   count: number; avg: number | null; avg_30d: number | null; count_30d: number; stars: Record<string, number>;
-  compliments: [string, number][]; issues: [string, number][]; recent: { stars: number; tags: string[]; rated_at: string | null }[];
+  compliments: [string, number][]; issues: [string, number][]; recent: { stars: number; tags: string[]; comment: string | null; rated_at: string | null }[];
 };
 
 // Driver: their own patient ratings and top compliments (no patient names or addresses).
@@ -57,9 +57,12 @@ export default function DriverFeedbackCard({ driverId }: { driverId: string }) {
             ) : null}
             <Mono style={s.label}>RECENT</Mono>
             {d.recent.map((r, i) => (
-              <Mono key={i} style={s.meta} testID="driver-feedback-recent">
-                {"★".repeat(r.stars)}{"☆".repeat(5 - r.stars)} {r.rated_at ? dayLabel(new Date(r.rated_at).toLocaleDateString("en-CA", { timeZone: "America/Toronto" })) : ""}{r.tags.length ? ` · ${r.tags.join(", ").toLowerCase()}` : ""}
-              </Mono>
+              <View key={i} style={{ gap: 2 }}>
+                <Mono style={s.meta} testID="driver-feedback-recent">
+                  {"★".repeat(r.stars)}{"☆".repeat(5 - r.stars)} {r.rated_at ? dayLabel(new Date(r.rated_at).toLocaleDateString("en-CA", { timeZone: "America/Toronto" })) : ""}{r.tags.length ? ` · ${r.tags.join(", ").toLowerCase()}` : ""}
+                </Mono>
+                {r.comment ? <Mono style={s.comment} testID="driver-feedback-comment">&ldquo;{r.comment}&rdquo;</Mono> : null}
+              </View>
             ))}
           </>
         )}
@@ -78,4 +81,5 @@ const useStyles = makeStyles((c) => ({
   chip: { fontSize: 11, fontWeight: "700", borderWidth: 2, borderColor: c.border, paddingHorizontal: spacing.sm, paddingVertical: 6 },
   label: { fontSize: 12, fontWeight: "700", letterSpacing: 1, marginTop: spacing.sm },
   meta: { fontSize: 12, color: c.muted },
+  comment: { fontSize: 12, color: c.onSurface, fontStyle: "italic", paddingLeft: spacing.sm, borderLeftWidth: 2, borderColor: c.border },
 }));

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.concurrency import run_in_threadpool
 from pymongo.errors import DuplicateKeyError
 import os
@@ -11,7 +11,7 @@ from twilio.rest import Client as TwilioClient
 from pydantic import BaseModel
 from typing import List, Optional, Dict
 from datetime import datetime, timezone, timedelta
-from core import ADMIN_ONLY, DRIVER_SELF, ORDER_ACCESS, TZ, current_user, db, logger, now_iso, require_order_access
+from core import ADMIN_ONLY, DRIVER_SELF, ORDER_ACCESS, TZ, current_user, db, logger, merchant_access, now_iso, require_order_access
 from models import Stop, get_driver_or_404
 from routes import dispatch
 from routes import linkpages
@@ -118,6 +118,50 @@ async def send_apology_sms(stop: "Stop") -> str:
         return "failed"
 
 
+async def ratings_summary(q: dict) -> dict:
+    """Average, star split, per-driver averages and the latest ratings with comments for the given stop filter."""
+    docs = await db.stops.find({**q, "rating": {"$ne": None}}, {"_id": 0, "id": 1, "tracking_code": 1, "customer_name": 1, "route_id": 1, "merchant_id": 1,
+                                                                 "rating": 1, "rating_tags": 1, "rating_comment": 1, "rated_at": 1}).sort("rated_at", -1).to_list(2000)
+    rids = list({d["route_id"] for d in docs if d.get("route_id")})
+    route_driver = {r["id"]: r.get("driver_id") for r in await db.routes.find({"id": {"$in": rids}}, {"_id": 0, "id": 1, "driver_id": 1}).to_list(5000)}
+    names = {d["id"]: d["name"] for d in await db.drivers.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(500)}
+    shops = {m["id"]: m["name"] for m in await db.merchants.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(500)}
+    per: Dict[str, dict] = {}
+    for d in docs:
+        did = route_driver.get(d.get("route_id"))
+        d["driver"] = names.get(did) if did else None
+        if did:
+            p = per.setdefault(did, {"driver_id": did, "name": d["driver"] or did, "count": 0, "total": 0})
+            p["count"] += 1
+            p["total"] += d["rating"]
+    drivers = sorted([{"driver_id": p["driver_id"], "name": p["name"], "count": p["count"], "avg": round(p["total"] / p["count"], 2)} for p in per.values()],
+                     key=lambda x: (-x["avg"], -x["count"]))
+    recent = [{"stop_id": d["id"], "tracking_code": d["tracking_code"], "customer_name": d["customer_name"], "driver": d["driver"],
+               "shop": shops.get(d.get("merchant_id")), "stars": d["rating"], "tags": d.get("rating_tags") or [],
+               "comment": d.get("rating_comment"), "rated_at": d.get("rated_at")} for d in docs[:30]]
+    return {"count": len(docs), "avg": round(sum(d["rating"] for d in docs) / len(docs), 2) if docs else None,
+            "stars": {str(k): sum(1 for d in docs if d["rating"] == k) for k in range(5, 0, -1)}, "drivers": drivers, "recent": recent}
+
+
+@router.get("/store-screenshots.zip")
+async def store_screenshots():
+    """Store-listing screenshots (Play 1080x1920 + App Store 1290x2796) made by scripts/store_screenshots.py."""
+    path = "/app/store_screenshots/LocalDash_store_screenshots.zip"
+    if not os.path.exists(path):
+        raise HTTPException(404, "Screenshots not generated yet")
+    return FileResponse(path, media_type="application/zip", filename="LocalDash_store_screenshots.zip")
+
+
+@router.get("/merchants/{merchant_id}/ratings")
+async def merchant_ratings(merchant_id: str, _: dict = Depends(merchant_access)):
+    return await ratings_summary({"merchant_id": merchant_id})
+
+
+@router.get("/admin/ratings", dependencies=ADMIN_ONLY)
+async def admin_ratings():
+    return await ratings_summary({})
+
+
 @router.get("/alerts/trends", dependencies=ADMIN_ONLY)
 async def alert_trends(days: int = 7):
     """Low-rating hot spots over the last N days, by driver and by zone, with the most common reasons."""
@@ -137,7 +181,7 @@ async def alert_trends(days: int = 7):
             row["ratings"] += 1
             if st.rating <= LOW_RATING:
                 row["low"] += 1
-                for r in (st.rating_comment or "").split(","):
+                for r in st.rating_tags:
                     r = r.strip().upper()
                     if r and r not in POSITIVE_REASON_TAGS:
                         row["reasons"][r] = row["reasons"].get(r, 0) + 1
@@ -229,7 +273,7 @@ async def driver_feedback(driver_id: str):
     if not await db.drivers.find_one({"id": driver_id}, {"_id": 1}):
         raise HTTPException(404, "Driver not found")
     rids = [r["id"] for r in await db.routes.find({"driver_id": driver_id}, {"_id": 0, "id": 1}).to_list(5000)]
-    rows = await db.stops.find({"route_id": {"$in": rids}, "rating": {"$ne": None}}, {"_id": 0, "rating": 1, "rating_tags": 1, "rated_at": 1}).sort("rated_at", -1).to_list(2000)
+    rows = await db.stops.find({"route_id": {"$in": rids}, "rating": {"$ne": None}}, {"_id": 0, "rating": 1, "rating_tags": 1, "rating_comment": 1, "rated_at": 1}).sort("rated_at", -1).to_list(2000)
     positive = {"ON TIME", "FRIENDLY DRIVER", "HANDLED WITH CARE", "EASY TO FOLLOW", "DISCREET"}
     praise: Dict[str, int] = {}
     issues: Dict[str, int] = {}
@@ -243,7 +287,7 @@ async def driver_feedback(driver_id: str):
             "avg_30d": round(sum(recent30) / len(recent30), 2) if recent30 else None, "count_30d": len(recent30),
             "stars": {str(k): sum(1 for r in rows if r["rating"] == k) for k in range(5, 0, -1)},
             "compliments": sorted(praise.items(), key=lambda x: -x[1])[:5], "issues": sorted(issues.items(), key=lambda x: -x[1])[:3],
-            "recent": [{"stars": r["rating"], "tags": r.get("rating_tags") or [], "rated_at": r.get("rated_at")} for r in rows[:8]]}
+            "recent": [{"stars": r["rating"], "tags": r.get("rating_tags") or [], "comment": r.get("rating_comment"), "rated_at": r.get("rated_at")} for r in rows[:8]]}
 
 
 @router.get("/drivers/{driver_id}/coaching", dependencies=DRIVER_SELF)
