@@ -21,7 +21,7 @@ export default function MerchantSignIn() {
           <Kicker>Merchant portal</Kicker>
           <Text style={s.lead}>Upload orders, track every drop and see your invoices.</Text>
         </View>
-        <SignInForm scroll={false} role="merchant" title="Sign in to your store" hint="Use the email and password ArriveWise set up for your store. Need an account? Ask your ArriveWise admin."
+        <SignInForm scroll={false} role="merchant" title="Sign in to your store" hint="Use the email and password LocalDash set up for your store. Need an account? Ask your LocalDash admin."
           onSignedIn={(u) => u.merchant_id && router.replace(`/merchant/${u.merchant_id}`)} />
       </KeyboardAwareScrollView>
     </View>

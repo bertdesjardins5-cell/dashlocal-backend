@@ -27,14 +27,14 @@ class DeleteIn(BaseModel):
 
 async def confirm_store(name: str, to_list: list, at: str):
     """Confirmation to the store's own inboxes (read before they were wiped)."""
-    html = onboarding.brand_email("Your ArriveWise account was deleted",
-                                  f"<p>As you asked, the ArriveWise account for <b>{escape(name)}</b> was deleted on {at[:10]}. "
+    html = onboarding.brand_email("Your LocalDash account was deleted",
+                                  f"<p>As you asked, the LocalDash account for <b>{escape(name)}</b> was deleted on {at[:10]}. "
                                   "Every login for the store has stopped working, and your contact details and saved card were removed.</p>"
                                   "<p>We keep past invoices and delivery records, without personal contact details, because Canadian tax law requires it.</p>"
                                   "<p style='color:#5C5C5E;font-size:12px'>Didn't do this? Reply to this email right away.</p>")
     for to in to_list:
         try:
-            await emails.send_email(to=to, subject="Your ArriveWise account was deleted", html=html)
+            await emails.send_email(to=to, subject="Your LocalDash account was deleted", html=html)
         except Exception as e:
             logger.warning(f"Deletion confirmation email to {to}: {e}")
 
@@ -43,7 +43,7 @@ async def confirm_driver(phone: str):
     """Drivers sign in by phone and have no email, so they get a text."""
     if not phone or stop_routes.FICTIONAL_NUMBER.match(phone) or not all(os.environ.get(k) for k in ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_PHONE_NUMBER")):
         return
-    body = "ArriveWise: Your driver account was deleted as you asked. Your PIN no longer works and your name and phone number were removed."
+    body = "LocalDash: Your driver account was deleted as you asked. Your PIN no longer works and your name and phone number were removed."
     try:
         tw = TwilioClient(os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"])
         await run_in_threadpool(lambda: tw.messages.create(to=phone, from_=stop_routes.twilio_number(), body=body))
@@ -109,7 +109,7 @@ async def delete_account(body: DeleteIn, request: Request):
                 logger.warning(f"Square disable card on account deletion: {e}")
         to_list = await square.merchant_recipients(mid)  # read before the emails are wiped
         for x in await db.users.find({"merchant_id": mid, "role": "merchant"}, {"_id": 0, "id": 1}).to_list(50):  # the whole store closes
-            await db.users.update_one({"id": x["id"]}, {"$set": {**gone, "email": f"deleted+{x['id']}@deleted.arrivewise.invalid"}, "$unset": unset})
+            await db.users.update_one({"id": x["id"]}, {"$set": {**gone, "email": f"deleted+{x['id']}@deleted.localdash.invalid"}, "$unset": unset})
         # keep the business name for past invoices; wipe contact details and the saved card
         await db.merchants.update_one({"id": mid}, {"$set": {"disabled": True, "deleted": True, "deleted_at": at, "contact": "", "address": ""},
                                                    "$unset": {"square": "", "billing_address": "", "problem_alerts": ""}})
@@ -130,7 +130,7 @@ async def delete_account(body: DeleteIn, request: Request):
 async def notify_deleted(who: str, at: str):
     try:
         base = (await db.settings.find_one({"key": "public_base"}, {"_id": 0}) or {}).get("value")
-        await onboarding.notify_admin("Account deleted", f"<p>{who} deleted their ArriveWise account on {at[:10]}. "
+        await onboarding.notify_admin("Account deleted", f"<p>{who} deleted their LocalDash account on {at[:10]}. "
                                       "Billing and delivery records were kept without personal details.</p>", base)
     except Exception as e:
         logger.warning(f"Account deletion admin email: {e}")

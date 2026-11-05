@@ -43,8 +43,8 @@ def _hav(a, b):
 
 @pytest.fixture(scope="module")
 def toks():
-    t = {"admin": _login("admin@arrivewise.app", "DashLocalAdmin2026"), "m1": _login("bakery@arrivewise.app", "Bakery2026"),
-         "m2": _login("books@arrivewise.app", "Books2026"), "d2": _dlogin("+15195550102", "730516")}
+    t = {"admin": _login("admin@localdash.app", "DashLocalAdmin2026"), "m1": _login("bakery@localdash.app", "Bakery2026"),
+         "m2": _login("books@localdash.app", "Books2026"), "d2": _dlogin("+15195550102", "730516")}
     assert requests.post(f"{API}/admin/reset", headers=H(t["admin"])).status_code == 200
     yield t
     requests.put(f"{API}/admin/pricing", json=DEFAULTS, headers=H(t["admin"]))

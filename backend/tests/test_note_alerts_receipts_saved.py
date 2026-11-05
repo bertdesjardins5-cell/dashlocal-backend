@@ -69,10 +69,10 @@ def stop_doc(sid):
 @pytest.fixture(scope="module")
 def ctx():
     cleanup()
-    a = login("admin@arrivewise.app", "DashLocalAdmin2026")
+    a = login("admin@localdash.app", "DashLocalAdmin2026")
     requests.post(f"{API}/admin/reset", headers=a)
-    m1 = login("bakery@arrivewise.app", "Bakery2026")
-    m2 = login("books@arrivewise.app", "Books2026")
+    m1 = login("bakery@localdash.app", "Bakery2026")
+    m2 = login("books@localdash.app", "Books2026")
     yield {"a": a, "m1": m1, "m2": m2}
     cleanup()
     requests.post(f"{API}/admin/reset", headers=a)

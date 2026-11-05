@@ -30,7 +30,7 @@ router = APIRouter(prefix="/api")
 MERCHANTS = [{"id": "mer-1", "name": "Mission Bakery Co.", "contact": "orders@missionbakery.example"},
              {"id": "mer-2", "name": "Bay Books", "contact": "hello@baybooks.example"}]
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-NOMINATIM_UA = os.environ.get("NOMINATIM_USER_AGENT", "arrivewise-merchant-import/1.0 (ops@arrivewise.app)")
+NOMINATIM_UA = os.environ.get("NOMINATIM_USER_AGENT", "localdash-merchant-import/1.0 (ops@localdash.ca)")
 KW_VIEWBOX = "-80.66,43.56,-80.36,43.36"  # lookups are bounded to Kitchener-Waterloo
 IMPORT_MAX_ROWS = 200
 FLAGGED = ("invalid", "not_found", "lookup_failed")
@@ -316,7 +316,7 @@ async def report_csv(merchant_id: str, request: Request, token: str = ""):
 
 @router.get("/merchant-template.csv")
 async def merchant_template():
-    return Response(TEMPLATE_CSV, media_type="text/csv", headers={"Content-Disposition": 'attachment; filename="arrivewise-orders-template.csv"'})
+    return Response(TEMPLATE_CSV, media_type="text/csv", headers={"Content-Disposition": 'attachment; filename="localdash-orders-template.csv"'})
 
 
 @router.get("/merchants")

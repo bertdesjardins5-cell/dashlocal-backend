@@ -43,8 +43,8 @@ def toks():
     db.login_attempts.delete_many({})
     r = requests.post(f"{API}/auth/driver-login", json={"phone": "+15195550101", "pin": "482913"}, headers=NA)
     assert r.status_code == 200, r.text
-    return {"admin": login(*ADMIN), "drv1": r.json()["token"], "m1": login("bakery@arrivewise.app", "Bakery2026"),
-            "m2": login("books@arrivewise.app", "Books2026")}
+    return {"admin": login(*ADMIN), "drv1": r.json()["token"], "m1": login("bakery@localdash.app", "Bakery2026"),
+            "m2": login("books@localdash.app", "Books2026")}
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -234,8 +234,8 @@ class TestReceiptMatter:
         names = zipfile.ZipFile(io.BytesIO(g.content)).namelist()
         tcode = db.stops.find_one({"id": law["tagged"]})["tracking_code"]
         pcode = db.stops.find_one({"id": law["plain"]})["tracking_code"]
-        assert any(n.startswith(f"ArriveWise-receipt-2026_0142_Smith_v_Jones-{tcode}-") for n in names), names
-        assert any(n.startswith(f"ArriveWise-receipt-{pcode}-") for n in names), names
+        assert any(n.startswith(f"LocalDash-receipt-2026_0142_Smith_v_Jones-{tcode}-") for n in names), names
+        assert any(n.startswith(f"LocalDash-receipt-{pcode}-") for n in names), names
 
     def test_receipt_email_attempted(self, law):
         time.sleep(3)

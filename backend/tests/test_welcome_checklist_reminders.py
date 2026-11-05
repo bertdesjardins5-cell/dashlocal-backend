@@ -35,12 +35,12 @@ def _login(body):
 
 @pytest.fixture(scope="module")
 def admin():
-    return _login({"email": "admin@arrivewise.app", "password": "DashLocalAdmin2026"})
+    return _login({"email": "admin@localdash.app", "password": "DashLocalAdmin2026"})
 
 
 @pytest.fixture(scope="module")
 def bakery():
-    return _login({"email": "bakery@arrivewise.app", "password": "Bakery2026"})
+    return _login({"email": "bakery@localdash.app", "password": "Bakery2026"})
 
 
 def _cleanup():
@@ -147,7 +147,7 @@ def _ago(days):
 
 def _fake_rr(days, status="sent"):
     rid = "TEST_rr_" + uuid.uuid4().hex[:6]
-    db.review_requests.insert_one({"id": rid, "merchant_id": "mer-1", "shop": "Mission Bakery Co.", "emails": ["bakery@arrivewise.app"], "status": status,
+    db.review_requests.insert_one({"id": rid, "merchant_id": "mer-1", "shop": "Mission Bakery Co.", "emails": ["bakery@localdash.app"], "status": status,
                                    "created_at": _ago(days), "submitted_at": _ago(1) if status == "submitted" else None, "reminded_at": None})
     return rid
 

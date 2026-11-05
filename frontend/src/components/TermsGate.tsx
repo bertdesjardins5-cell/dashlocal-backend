@@ -8,15 +8,15 @@ import TermsModal from "@/src/components/TermsModal";
 
 const COPY = {
   merchant: {
-    title: "ArriveWise Terms of Service",
+    title: "LocalDash Terms of Service",
     sub: "We've updated our Terms of Service (October 2026), including how payments work. Please review and accept them to keep using your Merchant Portal.",
-    agree: "I have read and agree to the ArriveWise Terms of Service on behalf of my business.",
+    agree: "I have read and agree to the LocalDash Terms of Service on behalf of my business.",
     accept: "Accept terms",
   },
   driver: {
     title: "Independent Courier Terms",
-    sub: "Before your first shift, please read the ArriveWise terms — section 4 covers your independent contractor relationship, expenses, taxes and service standards.",
-    agree: "I have read and agree to the ArriveWise Terms, and I understand I work as an independent contractor, not an employee.",
+    sub: "Before your first shift, please read the LocalDash terms — section 4 covers your independent contractor relationship, expenses, taxes and service standards.",
+    agree: "I have read and agree to the LocalDash Terms, and I understand I work as an independent contractor, not an employee.",
     accept: "Accept & start",
   },
 };

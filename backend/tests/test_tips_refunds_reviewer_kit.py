@@ -29,7 +29,7 @@ def admin_h():
 
 @pytest.fixture(scope="module")
 def merchant_h():
-    r = requests.post(f"{API}/auth/login", json={"email": "books@arrivewise.app", "password": "Books2026"}, headers=NOAUTH)
+    r = requests.post(f"{API}/auth/login", json={"email": "books@localdash.app", "password": "Books2026"}, headers=NOAUTH)
     if r.status_code != 200:
         pytest.skip("merchant login failed")
     return {"Authorization": f"Bearer {r.json()['token']}", **NOAUTH}
@@ -110,7 +110,7 @@ class TestReviewerKit:
         r = requests.post(f"{API}/admin/reviewer-kit", headers=admin_h)
         assert r.status_code == 200, r.text
         k = r.json()
-        assert k["exists"] and k["store_email"] == "review-store@arrivewise.app" and k["driver_phone"] == "+15195550199"
+        assert k["exists"] and k["store_email"] == "review-store@localdash.app" and k["driver_phone"] == "+15195550199"
         assert re.fullmatch(r"\d{6}", k["driver_pin"]) and len(k["store_password"]) >= 10
         assert [o["tracking_code"] for o in k["orders"]] == ["RV1001", "RV1002", "RV1003"]
         assert mdb.stops.count_documents({"route_id": "route-review"}) == 3

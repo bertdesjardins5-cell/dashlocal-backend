@@ -3,11 +3,11 @@ import { Text, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
-// ArriveWise mark: a forest-green D whose stem is a red arrow pointing up, next to the stacked ARRIVE / WISE wordmark.
+// LocalDash mark: a forest-green D whose stem is a red arrow pointing up, next to the stacked ARRIVE / WISE wordmark.
 export function LogoMark({ size = 40 }: { size?: number }) {
   const { colors } = useTheme();
   return (
-    <Svg width={size} height={size} viewBox="0 0 100 100" accessibilityLabel="ArriveWise">
+    <Svg width={size} height={size} viewBox="0 0 100 100" accessibilityLabel="LocalDash">
       <Path d="M36 14 H54 A36 36 0 0 1 54 86 H36 V67 H53 A17 17 0 0 0 53 33 H36 Z" fill={colors.brandForest} />
       <Path d="M14 90 H31 V46 H43 L22.5 10 L2 46 H14 Z" fill={colors.brandRed} />
     </Svg>
@@ -22,8 +22,8 @@ export default function Logo({ size = 40, inverse = false }: { size?: number; in
     <View style={s.row} testID="dashlocal-logo">
       <LogoMark size={size} />
       <View>
-        <Text style={[s.word, { fontSize: fs, lineHeight: fs * 1.02, color: inverse ? colors.onBrandCharcoal : colors.brandCharcoal }]}>ARRIVE</Text>
-        <Text style={[s.word, { fontSize: fs, lineHeight: fs * 1.02, color: colors.brandRed }]}>WISE</Text>
+        <Text style={[s.word, { fontSize: fs, lineHeight: fs * 1.02, color: inverse ? colors.onBrandCharcoal : colors.brandCharcoal }]}>LOCAL</Text>
+        <Text style={[s.word, { fontSize: fs, lineHeight: fs * 1.02, color: colors.brandRed }]}>DASH</Text>
       </View>
     </View>
   );

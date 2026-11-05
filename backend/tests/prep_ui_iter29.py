@@ -9,7 +9,7 @@ load_dotenv(Path(__file__).resolve().parents[2] / "frontend" / ".env")
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 API = (os.environ.get("EXPO_PUBLIC_BACKEND_URL") or os.environ["EXPO_BACKEND_URL"]).rstrip("/") + "/api"
 db = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
-h = {"Authorization": "Bearer " + requests.post(f"{API}/auth/login", json={"email": "bakery@arrivewise.app", "password": "Bakery2026"}).json()["token"], "X-No-Auto-Auth": "1"}
+h = {"Authorization": "Bearer " + requests.post(f"{API}/auth/login", json={"email": "bakery@localdash.app", "password": "Bakery2026"}).json()["token"], "X-No-Auto-Auth": "1"}
 ids = {i["number"]: i["id"] for i in db.invoices.find({"merchant_id": "mer-1", "number": {"$in": ["DL-000001", "DL-000002", "DL-000003"]}})}
 co = lambda nums: requests.post(f"{API}/merchants/mer-1/invoices/checkout", json={"ids": [ids[n] for n in nums]}, headers=h, timeout=60).json()
 a = co(["DL-000001", "DL-000002"])

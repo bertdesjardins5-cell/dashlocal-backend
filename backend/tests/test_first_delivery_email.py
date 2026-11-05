@@ -32,7 +32,7 @@ def _login(body):
 
 @pytest.fixture(scope="module")
 def admin_token():
-    return _login({"email": "admin@arrivewise.app", "password": "DashLocalAdmin2026"})
+    return _login({"email": "admin@localdash.app", "password": "DashLocalAdmin2026"})
 
 
 @pytest.fixture(scope="module")

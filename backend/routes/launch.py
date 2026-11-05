@@ -58,7 +58,7 @@ async def launch_cleanup(body: CleanupIn, request: Request):
 
 # ---------------------------------------------------------------- Play Store reviewer kit
 REVIEW_MID, REVIEW_DID, REVIEW_RID = "mer-review", "drv-review", "route-review"
-REVIEW_EMAIL, REVIEW_PHONE = "review-store@arrivewise.app", "+15195550199"  # 555-01xx = fictional: no real texts go out
+REVIEW_EMAIL, REVIEW_PHONE = "review-store@localdash.app", "+15195550199"  # 555-01xx = fictional: no real texts go out
 REVIEW_STOPS = [("RV1001", "Alex Morgan", "+15195550190", "200 King St W, Kitchener", 43.4516, -80.4925),
                 ("RV1002", "Jamie Lee", "+15195550191", "30 Duke St W, Kitchener", 43.4530, -80.4880),
                 ("RV1003", "Sam Taylor", "+15195550192", "105 Frederick St, Kitchener", 43.4545, -80.4850)]
@@ -88,7 +88,7 @@ async def make_reviewer_kit():
     """Create (or reset) the Play Store reviewer store, driver and a fresh 3-stop route for today.
     New password and PIN every time; they are shown once and never stored in plain text."""
     pw, pin = secrets.token_urlsafe(9), strong_pin()
-    await db.merchants.update_one({"id": REVIEW_MID}, {"$set": {"name": "ArriveWise Review Store", "contact": REVIEW_EMAIL, "business_type": "store",
+    await db.merchants.update_one({"id": REVIEW_MID}, {"$set": {"name": "LocalDash Review Store", "contact": REVIEW_EMAIL, "business_type": "store",
                                                                  "signature_required": False, "weekly_email": False}}, upsert=True)
     await db.users.update_one({"email": REVIEW_EMAIL}, {"$set": {
         "role": "merchant", "merchant_id": REVIEW_MID, "password_hash": hash_pw(pw), "disabled": False, "terms_consent": True,

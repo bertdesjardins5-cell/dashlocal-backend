@@ -162,7 +162,7 @@ export default function MerchantHome() {
             <Pressable testID="order-consent-checkbox" onPress={() => setConsent(!consent)} style={s.consentRow} accessibilityRole="checkbox" accessibilityState={{ checked: consent }}>
               <Checkbox value={consent} onValueChange={setConsent} color={consent ? colors.brandForest : undefined} />
               <Mono style={[s.meta, { flex: 1, color: colors.onSurface }]}>
-                I consent to ArriveWise and its designated independent drivers collecting and processing my name, address, and contact details solely for the purpose of same-day parcel/prescription fulfillment. I agree to the{" "}
+                I consent to LocalDash and its designated independent drivers collecting and processing my name, address, and contact details solely for the purpose of same-day parcel/prescription fulfillment. I agree to the{" "}
                 <Mono style={{ color: colors.brandForest, textDecorationLine: "underline", fontSize: 12 }} onPress={() => router.push("/privacy")} testID="order-privacy-link">Privacy Policy</Mono>.
               </Mono>
             </Pressable>

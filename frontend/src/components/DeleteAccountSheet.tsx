@@ -60,7 +60,7 @@ export default function DeleteAccountSheet({ role, onClose, onDeleted }: { role:
             <>
               <Mono style={s.body}>
                 {store
-                  ? "This closes your store on ArriveWise right away. Every login for the store stops working and your contact details and saved card are removed."
+                  ? "This closes your store on LocalDash right away. Every login for the store stops working and your contact details and saved card are removed."
                   : "This deletes your driver account right away. Your PIN stops working and your name and phone number are removed."}
               </Mono>
               <Mono style={s.meta}>Past delivery and billing records are kept without your personal details, as Canadian tax law requires. This can&apos;t be undone.</Mono>

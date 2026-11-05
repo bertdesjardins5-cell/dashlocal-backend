@@ -63,12 +63,12 @@ def cleanup(jids):
 
 @pytest.fixture(scope="module")
 def admin():
-    return login("admin@arrivewise.app", "DashLocalAdmin2026")
+    return login("admin@localdash.app", "DashLocalAdmin2026")
 
 
 @pytest.fixture(scope="module")
 def merch():
-    return login("books@arrivewise.app", "Books2026")
+    return login("books@localdash.app", "Books2026")
 
 
 @pytest.fixture(scope="module")

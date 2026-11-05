@@ -200,7 +200,7 @@ export default function AdminRoute() {
               </Pressable>
             </View>
             <View style={s.label} testID="parcel-label">
-              <QRCode value={`ARRIVEWISE:${sel.tracking_code}`} size={150} color={colors.onSurface} backgroundColor={colors.surface} />
+              <QRCode value={`LOCALDASH:${sel.tracking_code}`} size={150} color={colors.onSurface} backgroundColor={colors.surface} />
               <View style={{ flex: 1, gap: spacing.xs }}>
                 <Mono style={s.meta}>PARCEL LABEL</Mono>
                 <Display style={{ fontSize: 26 }}>{sel.tracking_code}</Display>

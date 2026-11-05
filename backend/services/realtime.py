@@ -142,7 +142,7 @@ async def _send_nearby_sms(stop: Stop, stops_away: int, driver_name: str) -> str
     if not (os.environ.get("TWILIO_ACCOUNT_SID") and os.environ.get("TWILIO_AUTH_TOKEN") and os.environ.get("TWILIO_PHONE_NUMBER")):
         return "not_configured"
     where = "you're next" if stops_away == 0 else f"{stops_away} stop{'s' if stops_away > 1 else ''} away"
-    body = f"ArriveWise: {driver_name.split(' ')[0]} is {where} with your delivery {stop.tracking_code}. Track live in the app."
+    body = f"LocalDash: {driver_name.split(' ')[0]} is {where} with your delivery {stop.tracking_code}. Track live in the app."
     try:
         tw = TwilioClient(os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"])
         res = await run_in_threadpool(lambda: tw.messages.create(to=stop.customer_phone, from_=stop_routes.twilio_number(), body=body))

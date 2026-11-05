@@ -30,7 +30,7 @@ def admin():
 
 @pytest.fixture(scope="module")
 def merchant():
-    return login("bakery@arrivewise.app", "Bakery2026")
+    return login("bakery@localdash.app", "Bakery2026")
 
 
 @pytest.fixture(scope="module")
@@ -71,7 +71,7 @@ def test_hsts_header():
     r = requests.get(f"{BASE_URL}/api/privacy/consent-text")
     assert r.status_code == 200
     assert "max-age" in r.headers.get("Strict-Transport-Security", "")
-    assert r.json()["text"].startswith("I consent to ArriveWise and its designated independent drivers")
+    assert r.json()["text"].startswith("I consent to LocalDash and its designated independent drivers")
 
 
 # --- encryption at rest
@@ -280,8 +280,8 @@ def test_import_requires_consent_and_stores_fields(merchant):
         time.sleep(1)
     try:
         assert found, "imported stop not created"
-        assert found["consent_given"] is True and found["consent_by"] == "bakery@arrivewise.app"
-        assert found["consent_text"].startswith("I consent to ArriveWise") and found["consent_at"]
+        assert found["consent_given"] is True and found["consent_by"] == "bakery@localdash.app"
+        assert found["consent_text"].startswith("I consent to LocalDash") and found["consent_at"]
     finally:
         db.stops.delete_many({"customer_name": "TEST_Consent One"})
         db.import_jobs.delete_many({"rows.customer_name": "TEST_Consent One"}) if "import_jobs" in db.list_collection_names() else None

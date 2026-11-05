@@ -34,12 +34,12 @@ def _login(body):
 
 @pytest.fixture(scope="module")
 def admin():
-    return _login({"email": "admin@arrivewise.app", "password": "DashLocalAdmin2026"})
+    return _login({"email": "admin@localdash.app", "password": "DashLocalAdmin2026"})
 
 
 @pytest.fixture(scope="module")
 def merchant():
-    return _login({"email": "bakery@arrivewise.app", "password": "Bakery2026"})
+    return _login({"email": "bakery@localdash.app", "password": "Bakery2026"})
 
 
 def _email():
@@ -94,9 +94,9 @@ class TestSignupPublic:
         assert db.signup_requests.count_documents({"email": email}) == 1
 
     def test_existing_account_no_doc(self):
-        _, r = _signup(email="bakery@arrivewise.app")
+        _, r = _signup(email="bakery@localdash.app")
         assert r.status_code == 200
-        assert db.signup_requests.count_documents({"email": "bakery@arrivewise.app"}) == 0
+        assert db.signup_requests.count_documents({"email": "bakery@localdash.app"}) == 0
 
     def test_rate_limit_429(self):
         codes = []
@@ -141,7 +141,7 @@ class TestSignupAdmin:
 
     def test_approve_existing_email_409(self, admin):
         sid = str(uuid.uuid4())
-        db.signup_requests.insert_one({"id": sid, "store_name": "TEST_Dup", "contact_name": "TEST", "email": "bakery@arrivewise.app",
+        db.signup_requests.insert_one({"id": sid, "store_name": "TEST_Dup", "contact_name": "TEST", "email": "bakery@localdash.app",
                                        "status": "pending", "ip": "x", "created_at": "2000-01-01T00:00:00+00:00"})
         r = requests.post(f"{BASE_URL}/api/admin/signup-requests/{sid}/approve", headers=admin)
         assert r.status_code == 409, r.text
@@ -213,7 +213,7 @@ class TestReviewRequests:
         r = requests.post(f"{BASE_URL}/api/admin/review-requests", json={"merchant_id": "mer-1"}, headers=admin)
         assert r.status_code == 200, r.text
         d = r.json()
-        assert d["status"] == "sent" and d["merchant_id"] == "mer-1" and d["emails"] == ["bakery@arrivewise.app"] and "_id" not in d
+        assert d["status"] == "sent" and d["merchant_id"] == "mer-1" and d["emails"] == ["bakery@localdash.app"] and "_id" not in d
         lst = requests.get(f"{BASE_URL}/api/admin/review-requests", headers=admin).json()
         assert any(x["id"] == d["id"] for x in lst)
         STATE["rr"] = d

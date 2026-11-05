@@ -28,17 +28,17 @@ def login(email, pw):
 
 @pytest.fixture(scope="module")
 def admin():
-    return login("admin@arrivewise.app", "DashLocalAdmin2026")
+    return login("admin@localdash.app", "DashLocalAdmin2026")
 
 
 @pytest.fixture(scope="module")
 def books():
-    return login("books@arrivewise.app", "Books2026")
+    return login("books@localdash.app", "Books2026")
 
 
 @pytest.fixture(scope="module")
 def bakery():
-    return login("bakery@arrivewise.app", "Bakery2026")
+    return login("bakery@localdash.app", "Bakery2026")
 
 
 @pytest.fixture(scope="module")

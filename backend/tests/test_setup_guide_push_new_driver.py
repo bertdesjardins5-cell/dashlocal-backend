@@ -28,7 +28,7 @@ def admin_h():
 
 @pytest.fixture(scope="module")
 def merchant_h():
-    return {"Authorization": f"Bearer {login('bakery@arrivewise.app', 'Bakery2026')}"}
+    return {"Authorization": f"Bearer {login('bakery@localdash.app', 'Bakery2026')}"}
 
 
 @pytest.fixture(scope="module")

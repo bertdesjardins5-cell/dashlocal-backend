@@ -26,7 +26,7 @@ def H(tok):
 
 @pytest.fixture(scope="module")
 def admin_tok():
-    r = requests.post(f"{API}/auth/login", json={"email": "admin@arrivewise.app", "password": "DashLocalAdmin2026"}, headers=NO)
+    r = requests.post(f"{API}/auth/login", json={"email": "admin@localdash.app", "password": "DashLocalAdmin2026"}, headers=NO)
     assert r.status_code == 200
     return r.json()["token"]
 
@@ -70,7 +70,7 @@ class TestDeleteCheckDemo:
         assert requests.get(f"{API}/me/delete-account", headers=NO).status_code == 401
 
     def test_books_check_shape(self):
-        r = requests.post(f"{API}/auth/login", json={"email": "books@arrivewise.app", "password": "Books2026"}, headers=NO)
+        r = requests.post(f"{API}/auth/login", json={"email": "books@localdash.app", "password": "Books2026"}, headers=NO)
         assert r.status_code == 200
         c = requests.get(f"{API}/me/delete-account", headers=H(r.json()["token"]))
         assert c.status_code == 200
@@ -131,7 +131,7 @@ class TestMerchantDeletion:
         assert requests.get(f"{API}/merchants/{t['mid']}", headers=H(tok)).status_code == 401
         assert mlogin(t).status_code == 401
         u = mdb.users.find_one({"id": t["muid"]})
-        assert u["disabled"] is True and "password_hash" not in u and u["email"].endswith("@deleted.arrivewise.invalid") and u["name"] == "Deleted account"
+        assert u["disabled"] is True and "password_hash" not in u and u["email"].endswith("@deleted.localdash.invalid") and u["name"] == "Deleted account"
         m = mdb.merchants.find_one({"id": t["mid"]})
         assert m["deleted"] is True and m["disabled"] is True and m["contact"] == "" and m["address"] == "" and m["name"].startswith("TEST_DelStore")
         assert mdb.invoices.find_one({"merchant_id": t["mid"]}) is not None  # billing records kept

@@ -28,7 +28,7 @@ const TYPES = [
   { k: "other", label: "Other" },
 ] as const;
 
-// Public: a shop requests a ArriveWise account; the admin approves and the shop gets a set-password email.
+// Public: a shop requests a LocalDash account; the admin approves and the shop gets a set-password email.
 export default function SignUp() {
   const f = useBrandForm();
   const s = useStyles();
@@ -71,7 +71,7 @@ export default function SignUp() {
           </View>
         ) : (
           <View style={f.card}>
-            <Kicker>Join ArriveWise</Kicker>
+            <Kicker>Join LocalDash</Kicker>
             <Text style={f.title}>Request a merchant account</Text>
             <Text style={f.hint}>Tell us about your shop. We&apos;ll get back to you by email, usually within a business day.</Text>
             {error ? <View style={f.err} testID="signup-error"><Text style={f.errText}>{error}</Text></View> : null}

@@ -15,7 +15,7 @@ db = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
 PHONE = "+15195550976"
 
 if sys.argv[1] == "setup":
-    t = requests.post(f"{BASE}/api/auth/login", json={"email": "books@arrivewise.app", "password": "Books2026"}).json()["token"]
+    t = requests.post(f"{BASE}/api/auth/login", json={"email": "books@localdash.app", "password": "Books2026"}).json()["token"]
     h = {"Authorization": f"Bearer {t}"}
     job = requests.post(f"{BASE}/api/merchants/mer-2/import?consent=true&run=evening", headers=h,
                         files={"file": ("TEST_erase_ui.csv", f"customer_name,phone,address\nTEST_UI Erase,{PHONE},100 Queen St S Kitchener\n", "text/csv")}).json()

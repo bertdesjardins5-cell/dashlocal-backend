@@ -26,7 +26,7 @@ def _login_driver(phone, pin):
 
 @pytest.fixture(scope="module")
 def admin():
-    r = requests.post(f"{BASE}/api/auth/login", json={"email": "admin@arrivewise.app", "password": "DashLocalAdmin2026"}, headers=NA)
+    r = requests.post(f"{BASE}/api/auth/login", json={"email": "admin@localdash.app", "password": "DashLocalAdmin2026"}, headers=NA)
     if r.status_code != 200:
         pytest.skip("admin login failed")
     return {"Authorization": f"Bearer {r.json()['token']}", **NA}

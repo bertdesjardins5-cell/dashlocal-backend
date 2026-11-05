@@ -28,18 +28,18 @@ def login(email, pw):
 
 @pytest.fixture(scope="module")
 def bakery():
-    return login("bakery@arrivewise.app", "Bakery2026")
+    return login("bakery@localdash.app", "Bakery2026")
 
 
 @pytest.fixture(scope="module")
 def books():
-    return login("books@arrivewise.app", "Books2026")
+    return login("books@localdash.app", "Books2026")
 
 
 def _fake_invoice(merchant_id, status, number):
     inv = {"id": f"TEST_{uuid.uuid4().hex[:10]}", "number": number, "merchant_id": merchant_id, "stop_id": f"TEST_stop_{uuid.uuid4().hex[:8]}",
            "date": f"{MONTH}-01", "issued_at": datetime.now(timezone.utc).isoformat(), "currency": "CAD",
-           "business": {"name": "ArriveWise", "address": "x", "hst_number": "x", "hst_pct": 13.0},
+           "business": {"name": "LocalDash", "address": "x", "hst_number": "x", "hst_pct": 13.0},
            "merchant": {"name": "x", "address": None},
            "delivery": {"tracking_code": "TESTX", "customer_name": "TEST_fake", "address": "x", "delivered_at": None, "delivered_local": "", "km": 1, "priority": False},
            "lines": [{"description": "Same-day delivery fee", "amount": 10.0}], "subtotal": 10.0, "hst_pct": 13.0, "hst": 1.3, "total": 11.3,

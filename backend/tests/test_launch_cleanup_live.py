@@ -59,7 +59,7 @@ def test_after_restart_nothing_reseeded():
     assert db.drivers.count_documents({}) == 0
     assert db.merchants.count_documents({}) == 0 and db.stops.count_documents({}) == 0
     assert db.users.count_documents({"role": {"$ne": "admin"}}) == 0
-    r = requests.post(f"{LOCAL}/api/auth/login", json={"email": "bakery@arrivewise.app", "password": "Bakery2026"}, headers=LIVE)
+    r = requests.post(f"{LOCAL}/api/auth/login", json={"email": "bakery@localdash.app", "password": "Bakery2026"}, headers=LIVE)
     assert r.status_code == 401, r.text
     tok = admin_tok()
     s = requests.get(f"{LOCAL}/api/admin/launch-cleanup", headers=H(tok)).json()

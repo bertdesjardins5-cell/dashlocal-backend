@@ -121,7 +121,7 @@ async def download_receipt(stop_id: str, token: str = ""):
         raise linkpages.LinkPageError("receipt", "missing", 404)
     pdf = await _pdf_for(st, store, await invoices.get_business())
     return Response(content=pdf, media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="ArriveWise-receipt-{st.tracking_code}.pdf"', "Cache-Control": "no-store"})
+                    headers={"Content-Disposition": f'attachment; filename="LocalDash-receipt-{st.tracking_code}.pdf"', "Cache-Control": "no-store"})
 
 
 # ---------------------------------------------------------------- receipt archive (store portal)
@@ -181,6 +181,6 @@ async def download_receipts_zip(merchant_id: str, token: str = ""):
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for st in stops:
             ref = re.sub(r"[^\w-]+", "_", st.matter_ref or "").strip("_")
-            z.writestr(f"ArriveWise-receipt-{(ref + '-') if ref else ''}{st.tracking_code}-{(st.delivered_at or '')[:10]}.pdf", await _pdf_for(st, store, biz))
+            z.writestr(f"LocalDash-receipt-{(ref + '-') if ref else ''}{st.tracking_code}-{(st.delivered_at or '')[:10]}.pdf", await _pdf_for(st, store, biz))
     return Response(content=buf.getvalue(), media_type="application/zip",
-                    headers={"Content-Disposition": f'attachment; filename="ArriveWise-signed-receipts-{datetime.now(TZ).date()}.zip"', "Cache-Control": "no-store"})
+                    headers={"Content-Disposition": f'attachment; filename="LocalDash-signed-receipts-{datetime.now(TZ).date()}.zip"', "Cache-Control": "no-store"})

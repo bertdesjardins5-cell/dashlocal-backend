@@ -14,9 +14,9 @@ export const TERMS: { h: string; p: string[] }[] = [
     "By accessing or using our mobile application, website, or local delivery platform, you agree to be bound by these terms.",
   ] },
   { h: "1. Platform Overview and Scope", p: [
-    "ArriveWise is a technology and dispatch platform designed to facilitate local delivery services, including multi-stop batch runs, retail fulfillment, and specialized courier routing in Ontario, Canada.",
-    "Independent Network: ArriveWise acts solely as an intermediary technology platform connecting Customers and Merchants with independent third-party Courier Contractors.",
-    "Not a Carrier: ArriveWise does not directly operate delivery vehicles, provide retail goods, or function as a traditional common carrier.",
+    "LocalDash is a technology and dispatch platform designed to facilitate local delivery services, including multi-stop batch runs, retail fulfillment, and specialized courier routing in Ontario, Canada.",
+    "Independent Network: LocalDash acts solely as an intermediary technology platform connecting Customers and Merchants with independent third-party Courier Contractors.",
+    "Not a Carrier: LocalDash does not directly operate delivery vehicles, provide retail goods, or function as a traditional common carrier.",
   ] },
   { h: "2. User Accounts & Security", p: [
     "Users must register an account to access core delivery or merchant management features.",
@@ -27,7 +27,7 @@ export const TERMS: { h: string; p: string[] }[] = [
   { h: "3. Orders, Pricing, and Payment Terms", p: [
     "All financial transactions are processed securely through integrated payment gateways (such as Square).",
     "Fee Structures: Delivery fees are calculated based on distance tiers, delivery speed (standard vs. express), and multi-stop batch parameters.",
-    "Payment Authorization: Customers pay for each order separately, by credit or debit card in the app, when they choose to pay. Stores (merchants) keep a card on file and authorize ArriveWise to charge it automatically: the monthly platform fee at the start of each month, and every Monday the deliveries completed the week before. All amounts are in Canadian dollars and include 13% Ontario HST, and a receipt is emailed after every charge.",
+    "Payment Authorization: Customers pay for each order separately, by credit or debit card in the app, when they choose to pay. Stores (merchants) keep a card on file and authorize LocalDash to charge it automatically: the monthly platform fee at the start of each month, and every Monday the deliveries completed the week before. All amounts are in Canadian dollars and include 13% Ontario HST, and a receipt is emailed after every charge.",
     "Cancellations & Refunds: Orders cancelled after dispatch may incur a partial fee to compensate couriers for travel time and effort.",
   ] },
   { h: "4. Independent Contractor Terms (For Drivers)", p: [
@@ -37,12 +37,12 @@ export const TERMS: { h: string; p: string[] }[] = [
     "Account Security: PIN-based sign-ins and forgot-PIN request workflows are monitored for security and compliance.",
   ] },
   { h: "5. Privacy, Data Protection, and Compliance (Ontario Standards)", p: [
-    "ArriveWise complies with applicable privacy laws in Ontario, Canada.",
+    "LocalDash complies with applicable privacy laws in Ontario, Canada.",
     "PIPEDA Compliance: Personal information (names, phone numbers, delivery addresses) is collected solely for fulfilling delivery transactions and improving platform dispatch efficiency.",
     "PHIPA Safeguards: For specialized services such as scheduled pharmacy batch runs, all couriers and platform handlers strictly adhere to privacy standards aligned with Ontario's Personal Health Information Protection Act to protect patient confidentiality.",
   ] },
   { h: "6. Limitation of Liability", p: [
-    "ArriveWise is not liable for indirect, incidental, or consequential damages arising from delivery delays, third-party merchant product defects, or force majeure events beyond reasonable control.",
+    "LocalDash is not liable for indirect, incidental, or consequential damages arising from delivery delays, third-party merchant product defects, or force majeure events beyond reasonable control.",
   ] },
 ];
 

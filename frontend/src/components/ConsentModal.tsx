@@ -46,12 +46,12 @@ export default function ConsentModal({ visible, role, onAgree, onClose, busy, er
             onContentSizeChange={(_, h) => h < 200 && setRead(true)} testID="consent-scroll">
             <Text style={s.h}>1. Collection of Personal & Health Information</Text>
             <Text style={s.p}>
-              In compliance with the Personal Information Protection and Electronic Documents Act (PIPEDA) and Ontario&apos;s Personal Health Information Protection Act (PHIPA), ArriveWise Inc. collects minimal necessary data (names, delivery addresses, contact details, and proof-of-delivery timestamps) to execute direct-fulfillment logistics. We never collect prescription names, diagnoses or other health details.
+              In compliance with the Personal Information Protection and Electronic Documents Act (PIPEDA) and Ontario&apos;s Personal Health Information Protection Act (PHIPA), LocalDash Inc. collects minimal necessary data (names, delivery addresses, contact details, and proof-of-delivery timestamps) to execute direct-fulfillment logistics. We never collect prescription names, diagnoses or other health details.
             </Text>
             <Text style={s.h}>2. Data Minimization & Role-Based Access</Text>
             <Text style={s.p}>
               {role === "merchant"
-                ? "As a health information custodian partner, you confirm that all transmitted customer manifests comply with patient consent standards before handoff to ArriveWise, and that order notes contain delivery instructions only — never medication or health details."
+                ? "As a health information custodian partner, you confirm that all transmitted customer manifests comply with patient consent standards before handoff to LocalDash, and that order notes contain delivery instructions only — never medication or health details."
                 : "As an independent driver, you acknowledge that delivery manifests contain confidential data. You agree strictly to data minimization: viewing only recipient names, street addresses and delivery notes required for drop execution, with zero disclosure of parcel contents."}
             </Text>
             <Text style={s.h}>3. Chain of Custody & Verification</Text>

@@ -74,7 +74,7 @@ async def download_statement_pdf(merchant_id: str, month: str, token: str = ""):
     owed = invoices.invoice_summary(await db.invoices.find({"merchant_id": merchant_id}, {"_id": 0, "status": 1, "total": 1}).to_list(10000))["outstanding"]
     pdf = await run_in_threadpool(statement_pdf, m, month, invs, await invoices.get_business(), owed)
     return Response(content=pdf, media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="ArriveWise-statement-{month}.pdf"', "Cache-Control": "no-store"})
+                    headers={"Content-Disposition": f'attachment; filename="LocalDash-statement-{month}.pdf"', "Cache-Control": "no-store"})
 
 
 @router.get("/rate-card")

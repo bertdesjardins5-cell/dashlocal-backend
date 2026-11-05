@@ -50,12 +50,12 @@ def _login(email, pw):
 
 @pytest.fixture(scope="module")
 def admin():
-    return _login("admin@arrivewise.app", "DashLocalAdmin2026")
+    return _login("admin@localdash.app", "DashLocalAdmin2026")
 
 
 @pytest.fixture(scope="module")
 def books():
-    return _login("books@arrivewise.app", "Books2026")
+    return _login("books@localdash.app", "Books2026")
 
 
 @pytest.fixture(scope="module")
@@ -223,7 +223,7 @@ class TestBatchAlerts:
         rec = db.batch_alerts.find_one({"id": "mer-2:2030-01-16:afternoon"})
         assert rec["recipients"], "no recipients recorded"
         r0 = rec["recipients"][0]
-        assert r0["login"] == "books@arrivewise.app" and r0["to"] == "delivered@resend.dev", rec["recipients"]
+        assert r0["login"] == "books@localdash.app" and r0["to"] == "delivered@resend.dev", rec["recipients"]
         print("recipient status:", [x["status"] for x in rec["recipients"]])
 
     def test_non_admin_forbidden(self, books, driver):

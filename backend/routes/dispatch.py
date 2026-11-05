@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api")
 # ---------------------------------------------------------------- endpoints
 @router.get("/")
 async def root():
-    return {"message": "ArriveWise API"}
+    return {"message": "LocalDash API"}
 
 
 @router.post("/admin/reset")

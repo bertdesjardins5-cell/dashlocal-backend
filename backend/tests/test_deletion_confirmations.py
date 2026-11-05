@@ -47,7 +47,7 @@ def test_confirm_store_sends_each_and_escapes(monkeypatch):
     monkeypatch.setattr(account.emails, "send_email", fake_send)
     run(account.confirm_store("TEST_<b>Shop</b> & Co", ["a@example.com", "bad@example.com", "c@example.com"], "2026-01-15T10:00:00+00:00"))
     assert [c[0] for c in calls] == ["a@example.com", "bad@example.com", "c@example.com"]
-    assert all(c[1] == "Your ArriveWise account was deleted" for c in calls)
+    assert all(c[1] == "Your LocalDash account was deleted" for c in calls)
     html = calls[0][2]
     assert "TEST_&lt;b&gt;Shop&lt;/b&gt; &amp; Co" in html and "<b>Shop</b>" not in html
     assert "2026-01-15" in html

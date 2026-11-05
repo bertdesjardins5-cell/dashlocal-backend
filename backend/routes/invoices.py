@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api")
 
 
 # ---------------------------------------------------------------- invoices with HST (one per completed delivery, CAD)
-BUSINESS_DEFAULT = {"name": "ArriveWise", "address": "Business address — set in Admin › Invoices", "hst_number": "HST # — set in Admin › Invoices", "hst_pct": 13.0}
+BUSINESS_DEFAULT = {"name": "LocalDash", "address": "Business address — set in Admin › Invoices", "hst_number": "HST # — set in Admin › Invoices", "hst_pct": 13.0}
 
 
 async def get_business() -> dict:
@@ -321,7 +321,7 @@ def invoice_pdf(inv: dict) -> bytes:
         ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
     ]))
     doc.build([head, Spacer(1, 14), meta, Spacer(1, 18), bill_to, Spacer(1, 12), deliv, Spacer(1, 16), t, Spacer(1, 24),
-               Paragraph("Thank you for delivering with ArriveWise. Stores with a card on file are charged automatically (monthly fee at the start of each month, "
+               Paragraph("Thank you for delivering with LocalDash. Stores with a card on file are charged automatically (monthly fee at the start of each month, "
                          "deliveries every Monday for the week before). Otherwise pay by card in the Merchant Portal, quoting the invoice number.", small)])
     return buf.getvalue()
 
@@ -336,7 +336,7 @@ async def download_invoice(invoice_id: str, token: str = ""):
         raise linkpages.LinkPageError("invoice", "missing", 404)
     pdf = await run_in_threadpool(invoice_pdf, inv)
     return Response(content=pdf, media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="ArriveWise-{inv["number"]}.pdf"', "Cache-Control": "no-store"})
+                    headers={"Content-Disposition": f'attachment; filename="LocalDash-{inv["number"]}.pdf"', "Cache-Control": "no-store"})
 
 
 @router.get("/admin/invoices", dependencies=ADMIN_ONLY)

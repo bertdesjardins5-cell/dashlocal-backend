@@ -11,7 +11,7 @@ API = (os.environ.get("EXPO_PUBLIC_BACKEND_URL") or os.environ["EXPO_BACKEND_URL
 db = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
 SIG = "M10 10 L20 20 L30 15"
 tok = lambda e, p: {"Authorization": "Bearer " + requests.post(f"{API}/auth/login", json={"email": e, "password": p}).json()["token"]}
-admin, bakery = tok("admin@arrivewise.app", "DashLocalAdmin2026"), tok("bakery@arrivewise.app", "Bakery2026")
+admin, bakery = tok("admin@localdash.app", "DashLocalAdmin2026"), tok("bakery@localdash.app", "Bakery2026")
 r101 = db.routes.find_one({"status": "active", "driver_id": "drv-1"}, {"_id": 0})
 rid = "TEST_INV_route_ui"
 db.routes.delete_one({"id": rid})
