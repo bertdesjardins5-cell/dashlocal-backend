@@ -295,6 +295,40 @@ class PhoneIn(BaseModel):
     phone: str
 
 
+class DispatchTextIn(BaseModel):
+    message: str
+
+
+@router.post("/stops/{stop_id}/dispatch-text", dependencies=ADMIN_ONLY)
+async def dispatch_text(stop_id: str, body: DispatchTextIn):
+    """Masked text from dispatch: sent from the Twilio number, so the customer never sees a personal number."""
+    stop = await dispatch.get_stop_or_404(stop_id)
+    text = " ".join(body.message.split())
+    if not text:
+        raise HTTPException(400, "Type a message first")
+    if len(text) > 480:
+        raise HTTPException(400, "Keep the message under 480 characters")
+    if not E164.match(stop.customer_phone or ""):
+        raise HTTPException(400, "This customer has no valid phone number")
+    if not text.lower().startswith("localdash"):
+        text = f"LocalDash: {text}"
+    proxy = twilio_number()
+    log = {"id": str(uuid.uuid4()), "stop_id": stop_id, "channel": "sms", "by": "dispatch", "message": text, "proxy_number": proxy, "created_at": now_iso()}
+    if FICTIONAL_NUMBER.match(stop.customer_phone):  # 555-01xx test numbers: never sent
+        log.update(twilio_sid=None, status="skipped_fictional")
+    else:
+        tw = twilio_client()
+        try:
+            res = await run_in_threadpool(lambda: tw.messages.create(to=stop.customer_phone, from_=proxy, body=text))
+        except TwilioRestException as e:
+            logger.error(f"Twilio error: {e}")
+            raise HTTPException(502, f"Twilio: {e.msg}")
+        log.update(twilio_sid=res.sid, status=res.status)
+    await db.contact_logs.insert_one({**log})
+    log.pop("_id", None)
+    return log
+
+
 @router.post("/stops/{stop_id}/dispatch-call", dependencies=ADMIN_ONLY)
 async def dispatch_call(stop_id: str):
     """Masked call for dispatch: Twilio rings the dispatch phone, then bridges to the customer.

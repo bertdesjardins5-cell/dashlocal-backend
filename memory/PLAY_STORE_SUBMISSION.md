@@ -1,10 +1,10 @@
-# ArriveWise — Google Play Submission Pack
+# LocalDash — Google Play Submission Pack
 
-Package: `com.emergent.arrivewise.ue3on3` · App name: ArriveWise · Version 1.0.0
+Package: `com.emergent.arrivewise.ue3on3` · App name: LocalDash · Version 1.0.0
 
 ## 1. Links to fill in on Play Console
-- Privacy policy URL: `https://<your-published-domain>/privacy`
-- Terms of Service URL: `https://<your-published-domain>/terms`
+- Privacy policy URL: `https://localdash.ca/privacy`
+- Terms of Service URL: `https://localdash.ca/terms`
 - Account deletion: users ask from the in-app Privacy screen or email your support address. Play requires a web link, so use the privacy page URL above.
 
 ## 2. Data Safety form (answers)
@@ -19,7 +19,7 @@ Data is encrypted in transit (HTTPS): **Yes**. Users can ask for their data to b
 | Phone number | Yes | Shared with Twilio only to send SMS; calls and texts are masked | App functionality, communications | Required |
 | Physical address (delivery address) | Yes | Shared with the assigned driver | App functionality | Required |
 | Photos (proof of delivery) | Yes | Shown to the merchant and customer for that order | App functionality | Required for drivers |
-| Payment info (card) | Yes, entered into Square's secure form. ArriveWise never stores card numbers | Shared with Square (payment processor) | Payments | Required to pay |
+| Payment info (card) | Yes, entered into Square's secure form. LocalDash never stores card numbers | Shared with Square (payment processor) | Payments | Required to pay |
 | Purchase history | Yes | No | App functionality, billing | Required |
 | Crash logs / diagnostics | Yes | No | Analytics (app stability) | Collected automatically |
 | Device IDs (push token) | Yes | Shared with Firebase/Expo to send notifications | App functionality | Optional |
@@ -30,11 +30,11 @@ Third parties to declare as processors: Square (payments), Twilio (SMS), Firebas
 **Feature:** Drivers' live delivery tracking and automatic stop arrival.
 
 **Justification text (paste in Play Console):**
-> ArriveWise is a delivery app for drivers. While a driver has an active delivery route, the app uses location in the background so (1) customers can see the driver's live position and an accurate arrival time, and (2) stops are marked "arrived" automatically when the driver reaches the address, even with the phone locked or in a pocket. Tracking starts only when the driver starts a route and stops when the route ends or the driver goes off duty. A clear in-app notice explains this before Android asks for permission, and a persistent notification is shown while tracking runs. Customers and store accounts never have their location collected.
+> LocalDash is a delivery app for drivers. While a driver has an active delivery route, the app uses location in the background so (1) customers can see the driver's live position and an accurate arrival time, and (2) stops are marked "arrived" automatically when the driver reaches the address, even with the phone locked or in a pocket. Tracking starts only when the driver starts a route and stops when the route ends or the driver goes off duty. A clear in-app notice explains this before Android asks for permission, and a persistent notification is shown while tracking runs. Customers and store accounts never have their location collected.
 
 **Video (required):** record a 30-second screen capture on a phone:
 1. Sign in as a driver → open the active route.
-2. Show the ArriveWise location notice → tap Continue → Android permission prompt → "Allow all the time".
+2. Show the LocalDash location notice → tap Continue → Android permission prompt → "Allow all the time".
 3. Show the persistent tracking notification, lock the phone, then open the customer tracking page so the map updates.
 Upload it to YouTube (unlisted) and paste the link.
 
@@ -55,7 +55,8 @@ Don't give the reviewer the main admin password.
 - **Camera:** used for proof-of-delivery photos and label scanning only. No audio is recorded.
 
 ## 6. Before you submit
-- Switch Square to live keys (real card charges). In preview it shows "Square test mode" until the keys change.
+- Square is already on live keys (real card charges).
+- Make sure https://localdash.ca/privacy and /terms open in a browser (domain linked to the published app).
 - Publish, then build a new Android App Bundle (AAB) from the Publish button.
 - Upload to Internal testing first and run one real delivery end to end.
 
@@ -69,4 +70,4 @@ Don't give the reviewer the main admin password.
 - app.json: ITSAppUsesNonExemptEncryption=false (no export-compliance prompt), iPhone-only (supportsTablet=false → no iPad screenshots needed), no microphone permission requested.
 - Needs: Apple Developer account, then Publish → iOS build → TestFlight.
 - Review notes: give the reviewer kit logins (Admin → PLAY STORE REVIEWER) and say "Location is only used for drivers during an active route."
-- Privacy policy URL: https://<your-published-domain>/privacy
+- Privacy policy URL: https://localdash.ca/privacy

@@ -172,6 +172,10 @@ export default function AdminRoute() {
                   const r = await api<{ proxy_number: string }>(`/stops/${id}/dispatch-call`, { method: "POST" });
                   return `RINGING YOUR DISPATCH PHONE FROM ${r.proxy_number} — ANSWER TO CONNECT`;
                 }}
+                onText={async (id, message) => {
+                  const r = await api<{ proxy_number: string; status: string }>(`/stops/${id}/dispatch-text`, { method: "POST", body: { message } });
+                  return r.status === "skipped_fictional" ? "TEST NUMBER · NOT SENT (555-01XX NUMBERS ARE NEVER TEXTED)" : `TEXT SENT FROM ${r.proxy_number}`;
+                }}
               />
               <View style={s.actions}>
                 <Btn testID="route-optimize-button" label="OPTIMIZE" icon="git-network" variant="dark" loading={busy === "opt"} onPress={() => run("opt", `/routes/${id}/optimize`, "ROUTE OPTIMIZED")} style={{ flex: 1 }} />
