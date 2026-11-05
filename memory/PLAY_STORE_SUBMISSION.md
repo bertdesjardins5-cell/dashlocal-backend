@@ -3,8 +3,8 @@
 Package: `com.emergent.arrivewise.ue3on3` · App name: LocalDash · Version 1.0.0
 
 ## 1. Links to fill in on Play Console
-- Privacy policy URL: `https://localdash.ca/privacy`
-- Terms of Service URL: `https://localdash.ca/terms`
+- Privacy policy URL: `https://arrivewise.emergent.host/api/privacy-policy`
+- Terms of Service URL: `https://localdash.ca/terms (or the in-app Terms screen)`
 - Account deletion: users ask from the in-app Privacy screen or email your support address. Play requires a web link, so use the privacy page URL above.
 
 ## 2. Data Safety form (answers)
@@ -56,7 +56,7 @@ Don't give the reviewer the main admin password.
 
 ## 6. Before you submit
 - Square is already on live keys (real card charges).
-- Make sure https://localdash.ca/privacy and /terms open in a browser (domain linked to the published app).
+- Make sure https://arrivewise.emergent.host/api/privacy-policy and /terms open in a browser (domain linked to the published app).
 - Publish, then build a new Android App Bundle (AAB) from the Publish button.
 - Upload to Internal testing first and run one real delivery end to end.
 
@@ -64,10 +64,10 @@ Don't give the reviewer the main admin password.
 - In app: Merchant Portal → bottom "DELETE MY STORE ACCOUNT"; Driver screen → bottom "DELETE MY ACCOUNT". Confirms with password / PIN.
 - Immediate: login stops working, contact details + saved card removed. Billing & delivery records kept without personal details (tax law).
 - Blocked (with a clear message) while a store has unpaid bills or open deliveries, or a driver has an assigned route.
-- Play Console "Data deletion" URL: use the privacy page; deletion is also available in the app.
+- Play Console "Data deletion" URL: https://arrivewise.emergent.host/api/delete-account (deletion is also available in the app).
 
 ## 8. iPhone / TestFlight (App Store Connect)
 - app.json: ITSAppUsesNonExemptEncryption=false (no export-compliance prompt), iPhone-only (supportsTablet=false → no iPad screenshots needed), no microphone permission requested.
 - Needs: Apple Developer account, then Publish → iOS build → TestFlight.
 - Review notes: give the reviewer kit logins (Admin → PLAY STORE REVIEWER) and say "Location is only used for drivers during an active route."
-- Privacy policy URL: https://localdash.ca/privacy
+- Privacy policy URL: https://arrivewise.emergent.host/api/privacy-policy

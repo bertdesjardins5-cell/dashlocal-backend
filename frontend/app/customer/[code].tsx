@@ -105,7 +105,7 @@ export default function TrackOrder() {
 
   return (
     <View style={s.root} testID="customer-tracking-screen">
-      <Header title={`ORDER ${code}`} subtitle={wsUp ? "● LIVE · WEBSOCKET" : "○ POLLING"} />
+      <Header title={`ORDER ${code}`} subtitle={wsUp ? "● LIVE" : "○ UPDATING EVERY FEW SECONDS"} />
       {!t && q.isLoading ? <Loading /> : !t ? <ErrorBlock message={(q.error as Error)?.message ?? "Not found"} onRetry={q.refetch} /> : (
         <View style={{ flex: 1 }}>
           <View style={{ flex: 1, minHeight: 180 }}>

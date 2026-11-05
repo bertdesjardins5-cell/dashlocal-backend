@@ -359,7 +359,7 @@ export default function Manifest() {
             </View>
           ) : route.status === "active" ? (
             <View style={s.modeRow}>
-              {(["off", "gps", "sim"] as Mode[]).map((m) => (
+              {((__DEV__ ? ["off", "gps", "sim"] : ["off", "gps"]) as Mode[]).map((m) => (
                 <Pressable key={m} testID={`tracking-mode-${m}`} onPress={() => selectMode(m)} style={[s.modeBtn, mode === m && { backgroundColor: colors.surfaceInverse }]}>
                   <Mono style={[s.modeText, mode === m && { color: colors.onSurfaceInverse }]}>{m === "off" ? "PAUSED" : m === "gps" ? "LIVE GPS" : "SIMULATE"}</Mono>
                 </Pressable>

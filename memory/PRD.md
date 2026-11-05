@@ -232,3 +232,5 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - Driver badge "5-STAR MONTH" (scorecards.five_star_month): ≥4.8★ avg over last 30 days, min 5 ratings; shows in driver scorecard, admin scorecards and triggers the badge celebration.
 - Driver of the Month (routes/awards.py): on the 1st at 08:00 Eastern, emails ADMIN_NOTIFY_EMAIL/ADMIN_EMAIL last month's top-rated driver (min 5 ratings), best 4-5★ comments, top compliments, runners-up. Admin card DriverAwardCard with "Email it now" (5-min cooldown). GET /api/admin/driver-award, POST /api/admin/driver-award/send-now.
 - Fixed leftover ARRIVEWISE logos in emails, PDFs (invoices/receipts/payments) and link error pages → LOCALDASH.
+- Public legal pages (routes/legal.py): GET /api/privacy-policy and GET /api/delete-account (HTML, no sign-in) for Play/App Store links. Prod: https://arrivewise.emergent.host/api/privacy-policy and /api/delete-account.
+- SIMULATE tracking mode now only in dev builds (__DEV__); customer tracking header says "● LIVE" instead of "LIVE · WEBSOCKET".

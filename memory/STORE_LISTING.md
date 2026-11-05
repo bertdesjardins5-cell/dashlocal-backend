@@ -58,4 +58,4 @@ First release of LocalDash: live delivery tracking, proof of delivery, smart rou
 
 ## Contact
 Website: https://localdash.ca · Email: admin@localdash.app
-Privacy policy: https://localdash.ca/privacy
+Privacy policy: https://arrivewise.emergent.host/api/privacy-policy
