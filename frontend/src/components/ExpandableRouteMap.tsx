@@ -3,22 +3,37 @@ import { Modal, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import RouteMap from "@/src/components/RouteMap";
-import { Display, Mono, Pill, statusTone } from "@/src/ui";
+import { Btn, Display, Mono, Pill, statusTone } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
 
 export type StopDetail = { title: string; address: string; status: string; extra?: string };
-type Props = ComponentProps<typeof RouteMap> & { title?: string; details?: Record<string, StopDetail> };
+type Props = ComponentProps<typeof RouteMap> & { title?: string; details?: Record<string, StopDetail>; onCall?: (id: string) => Promise<string> };
 
 // Route map with a fullscreen button. Fullscreen supports pinch-to-zoom; tapping a numbered stop shows its details.
-export default function ExpandableRouteMap({ title = "ROUTE MAP", testID = "route-map", details, ...map }: Props) {
+export default function ExpandableRouteMap({ title = "ROUTE MAP", testID = "route-map", details, onCall, ...map }: Props) {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [full, setFull] = useState(false);
   const [sel, setSel] = useState<string | null>(null);
+  const [calling, setCalling] = useState(false);
+  const [callMsg, setCallMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const d = sel && details ? details[sel] : null;
   const label = sel ? map.markers.find((m) => m.id === sel)?.label : null;
-  const close = () => { setFull(false); setSel(null); };
+  const close = () => { setFull(false); setSel(null); setCallMsg(null); };
+  const pick = (id: string) => { setSel(id); setCallMsg(null); };
+  const call = async () => {
+    if (!sel || !onCall || calling) return;
+    setCalling(true);
+    setCallMsg(null);
+    try {
+      setCallMsg({ text: await onCall(sel), ok: true });
+    } catch (e: any) {
+      setCallMsg({ text: e.message, ok: false });
+    } finally {
+      setCalling(false);
+    }
+  };
 
   return (
     <View>
@@ -36,7 +51,7 @@ export default function ExpandableRouteMap({ title = "ROUTE MAP", testID = "rout
               </Pressable>
             </View>
             <View style={{ flex: 1 }}>
-              <RouteMap {...map} height="100%" testID={`${testID}-full`} onMarkerPress={details ? setSel : undefined} />
+              <RouteMap {...map} height="100%" testID={`${testID}-full`} onMarkerPress={details ? pick : undefined} />
             </View>
             {d ? (
               <View style={[s.card, { paddingBottom: insets.bottom + spacing.md }]} testID="map-stop-details">
@@ -51,6 +66,12 @@ export default function ExpandableRouteMap({ title = "ROUTE MAP", testID = "rout
                   <Pill label={d.status} tone={statusTone(d.status)} />
                   {d.extra ? <Mono style={s.meta}>{d.extra}</Mono> : null}
                 </View>
+                {onCall ? (
+                  <>
+                    <Btn testID="map-stop-call-button" label="CALL CUSTOMER (MASKED)" icon="call" loading={calling} disabled={calling} onPress={call} />
+                    {callMsg ? <Mono testID="map-stop-call-status" style={[s.meta, { color: callMsg.ok ? colors.success : colors.brandPrimary }]}>{callMsg.text}</Mono> : null}
+                  </>
+                ) : null}
               </View>
             ) : <View style={{ height: insets.bottom }} />}
           </View>

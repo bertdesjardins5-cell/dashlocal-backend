@@ -295,6 +295,32 @@ class PhoneIn(BaseModel):
     phone: str
 
 
+@router.post("/stops/{stop_id}/dispatch-call", dependencies=ADMIN_ONLY)
+async def dispatch_call(stop_id: str):
+    """Masked call for dispatch: Twilio rings the dispatch phone, then bridges to the customer.
+    Both sides only ever see the Twilio number."""
+    from routes.auth import dispatch_phone  # auth imports this module
+    stop = await dispatch.get_stop_or_404(stop_id)
+    if not E164.match(stop.customer_phone or ""):
+        raise HTTPException(400, "This customer has no valid phone number")
+    to = await dispatch_phone()
+    if not to or not E164.match(to):
+        raise HTTPException(400, "Set your dispatch phone first (Admin › Driver accounts › Dispatch phone)")
+    tw, proxy = twilio_client(), twilio_number()
+    twiml = (f"<Response><Say>LocalDash dispatch. Connecting you to {xml_escape(stop.customer_name)}, order {xml_escape(stop.tracking_code)}.</Say>"
+             f"<Dial callerId=\"{proxy}\">{stop.customer_phone}</Dial></Response>")
+    try:
+        res = await run_in_threadpool(lambda: tw.calls.create(to=to, from_=proxy, twiml=twiml))
+    except TwilioRestException as e:
+        logger.error(f"Twilio error: {e}")
+        raise HTTPException(502, f"Twilio: {e.msg}")
+    log = {"id": str(uuid.uuid4()), "stop_id": stop_id, "channel": "call", "by": "dispatch", "proxy_number": proxy,
+           "twilio_sid": res.sid, "status": res.status, "created_at": now_iso()}
+    await db.contact_logs.insert_one({**log})
+    log.pop("_id", None)
+    return log
+
+
 @router.put("/stops/{stop_id}/phone", dependencies=ADMIN_ONLY)  # drivers never see or edit customer numbers
 async def set_customer_phone(stop_id: str, body: PhoneIn):
     phone = re.sub(r"[\s\-()]", "", body.phone)

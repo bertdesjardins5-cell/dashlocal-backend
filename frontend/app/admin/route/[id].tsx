@@ -168,6 +168,10 @@ export default function AdminRoute() {
                 markers={stops.map((x, i) => ({ id: x.id, lat: x.lat, lng: x.lng, label: String(i + 1), tone: x.status === "delivered" ? "green" : x.id === route.next_stop_id ? "red" : "dark" }))}
                 details={Object.fromEntries(stops.map((x) => [x.id, { title: x.customer_name, address: x.address, status: x.status,
                   extra: [x.tracking_code, x.window_start ? windowLabel(x) : null].filter(Boolean).join(" · ") }]))}
+                onCall={async (id) => {
+                  const r = await api<{ proxy_number: string }>(`/stops/${id}/dispatch-call`, { method: "POST" });
+                  return `RINGING YOUR DISPATCH PHONE FROM ${r.proxy_number} — ANSWER TO CONNECT`;
+                }}
               />
               <View style={s.actions}>
                 <Btn testID="route-optimize-button" label="OPTIMIZE" icon="git-network" variant="dark" loading={busy === "opt"} onPress={() => run("opt", `/routes/${id}/optimize`, "ROUTE OPTIMIZED")} style={{ flex: 1 }} />
