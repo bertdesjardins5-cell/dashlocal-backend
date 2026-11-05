@@ -59,3 +59,4 @@ First release of DashLocal: live delivery tracking, proof of delivery, smart rou
 ## Contact
 Website: https://dashlocal.ca · Email: admin@dashlocal.app
 Privacy policy: https://arrivewise.emergent.host/api/privacy-policy
+Terms of Service: https://arrivewise.emergent.host/api/terms

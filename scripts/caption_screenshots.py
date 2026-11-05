@@ -69,4 +69,6 @@ with zipfile.ZipFile(f"{SRC}/DashLocal_store_screenshots.zip", "w") as z:
         z.write(f, f"plain/{os.path.basename(f)}")
     for f in sorted(glob.glob(f"{OUT}/*/*.png")):
         z.write(f, f"captioned/{os.path.relpath(f, OUT)}")
+    for f in glob.glob(f"{SRC}/feature/*.png"):
+        z.write(f, f"feature_graphic/{os.path.basename(f)}")
 print("zip ready")

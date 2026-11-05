@@ -31,6 +31,10 @@ def unlock(code, last4):
 async def act(page, action):
     try:
         if action == "notnow":
+            keep = page.get_by_text("KEEP IT UP", exact=True)
+            if await keep.count():
+                await keep.first.click()
+                await page.wait_for_timeout(1500)
             await page.get_by_text("NOT NOW", exact=True).first.click(timeout=5000)
             # store builds have no SIMULATE mode (dev-only), so match the release screen
             await page.evaluate("() => { const e = document.querySelector('[data-testid=tracking-mode-sim]'); if (e) e.style.display = 'none'; }")

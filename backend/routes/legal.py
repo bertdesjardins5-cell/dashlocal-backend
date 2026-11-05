@@ -56,16 +56,60 @@ async def officer() -> tuple:
     return escape(o["officer_name"]), escape(o["officer_email"])
 
 
+TERMS_UPDATED = "October 2026"  # keep in step with frontend/app/terms.tsx
+TERMS_SECTIONS = [
+    ("Agreement", ["By accessing or using our mobile application, website, or local delivery platform, you agree to be bound by these terms."]),
+    ("1. Platform Overview and Scope", [
+        "DashLocal is a technology and dispatch platform designed to facilitate local delivery services, including multi-stop batch runs, retail fulfillment, and specialized courier routing in Ontario, Canada.",
+        "Independent Network: DashLocal acts solely as an intermediary technology platform connecting Customers and Merchants with independent third-party Courier Contractors.",
+        "Not a Carrier: DashLocal does not directly operate delivery vehicles, provide retail goods, or function as a traditional common carrier."]),
+    ("2. User Accounts & Security", [
+        "Users must register an account to access core delivery or merchant management features.",
+        "Customer — Registration requirement: valid phone number & email. Responsibility: accurate delivery addresses and contact availability.",
+        "Merchant — Registration requirement: business verification & banking details. Responsibility: accurate product listing, inventory, and compliance with local retail laws.",
+        "Courier / Driver — Registration requirement: valid driver licence, insurance & PIN setup. Responsibility: maintaining equipment security, vehicle roadworthiness, and secure PIN access."]),
+    ("3. Orders, Pricing, and Payment Terms", [
+        "All financial transactions are processed securely through integrated payment gateways (such as Square).",
+        "Fee Structures: Delivery fees are calculated based on distance tiers, delivery speed (standard vs. express), and multi-stop batch parameters.",
+        "Payment Authorization: Customers pay for each order separately, by credit or debit card in the app, when they choose to pay. Stores (merchants) keep a card on file and authorize DashLocal to charge it automatically: the monthly platform fee at the start of each month, and every Monday the deliveries completed the week before. All amounts are in Canadian dollars and include 13% Ontario HST, and a receipt is emailed after every charge.",
+        "Cancellations & Refunds: Orders cancelled after dispatch may incur a partial fee to compensate couriers for travel time and effort."]),
+    ("4. Independent Contractor Terms (For Drivers)", [
+        "Couriers utilizing the platform enter into an independent contractor relationship rather than an employment contract.",
+        "Expenses & Taxes: Couriers are solely responsible for all vehicle maintenance, fuel, insurance, and tax withholdings.",
+        "Service Standards: Couriers agree to maintain device notification access for urgent dispatch runs and adhere to strict delivery timelines.",
+        "Account Security: PIN-based sign-ins and forgot-PIN request workflows are monitored for security and compliance."]),
+    ("5. Privacy, Data Protection, and Compliance (Ontario Standards)", [
+        "DashLocal complies with applicable privacy laws in Ontario, Canada.",
+        "PIPEDA Compliance: Personal information (names, phone numbers, delivery addresses) is collected solely for fulfilling delivery transactions and improving platform dispatch efficiency.",
+        "PHIPA Safeguards: For specialized services such as scheduled pharmacy batch runs, all couriers and platform handlers strictly adhere to privacy standards aligned with Ontario's Personal Health Information Protection Act to protect patient confidentiality."]),
+    ("6. Limitation of Liability", [
+        "DashLocal is not liable for indirect, incidental, or consequential damages arising from delivery delays, third-party merchant product defects, or force majeure events beyond reasonable control."]),
+]
+
+
+def cards(sections) -> str:
+    return "".join(f'<div class="card"><h2>{escape(h)}</h2>{"".join(f"<p>{escape(t)}</p>" for t in ps)}</div>' for h, ps in sections)
+
+
+@router.get("/terms", response_class=HTMLResponse)
+async def terms_page():
+    name, email = await officer()
+    body = (f'<h1>Terms of Service</h1><p class="upd">Last updated {TERMS_UPDATED} · Customers, merchants and couriers</p>{cards(TERMS_SECTIONS)}'
+            f'<div class="card"><h2>Contact</h2><p>Questions about these terms: <a href="mailto:{email}">{email}</a>. '
+            'See also our <a href="privacy-policy">Privacy Policy</a> and <a href="delete-account">how to delete your account</a>.</p></div>')
+    return page("Terms of Service", body)
+
+
 @router.get("/privacy-policy", response_class=HTMLResponse)
 async def privacy_policy_page():
     name, email = await officer()
-    cards = "".join(f'<div class="card"><h2>{escape(h)}</h2>{"".join(f"<p>{escape(t)}</p>" for t in ps)}</div>' for h, ps in PRIVACY_SECTIONS)
-    cards += ('<div class="card" id="delete"><h2>Deleting your account and data</h2>'
+    cards_html = cards(PRIVACY_SECTIONS)
+    cards_html += ('<div class="card" id="delete"><h2>Deleting your account and data</h2>'
               '<p>Stores and drivers can delete their account inside the app at any time, or from the web. '
               '<a href="delete-account">See how to delete your account</a>.</p></div>'
               f'<div class="card"><h2>Contact</h2><p>{name}, Privacy Officer, DashLocal Inc. · '
               f'<a href="mailto:{email}">{email}</a>. We reply within 30 days.</p></div>')
-    return page("Privacy Policy", f'<h1>Privacy Policy</h1><p class="upd">Last updated {UPDATED} · PIPEDA &amp; PHIPA (Ontario)</p>{cards}')
+    return page("Privacy Policy", f'<h1>Privacy Policy</h1><p class="upd">Last updated {UPDATED} · PIPEDA &amp; PHIPA (Ontario)</p>{cards_html}')
 
 
 @router.get("/delete-account", response_class=HTMLResponse)

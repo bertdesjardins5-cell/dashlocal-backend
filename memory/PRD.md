@@ -235,3 +235,4 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - Public legal pages (routes/legal.py): GET /api/privacy-policy and GET /api/delete-account (HTML, no sign-in) for Play/App Store links. Prod: https://arrivewise.emergent.host/api/privacy-policy and /api/delete-account.
 - SIMULATE tracking mode now only in dev builds (__DEV__); customer tracking header says "● LIVE" instead of "LIVE · WEBSOCKET".
 - Renamed LocalDash → DashLocal (Nov 2026): app name, logos (DASH red + LOCAL black), emails, PDFs, web pages, store text; logins @dashlocal.app (auth.seed_users migrates @localdash/@arrivewise.app); domain dashlocal.ca. App ID unchanged. QR labels accept DASHLOCAL:/LOCALDASH:/MULTIDROP:.
+- Public Terms page GET /api/terms (legal.py, mirrors app/terms.tsx). Play feature graphic 1024x500 via scripts/play_feature_graphic.py → store_screenshots/feature/, included in DashLocal_store_screenshots.zip (feature_graphic/).

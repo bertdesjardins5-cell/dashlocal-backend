@@ -4,7 +4,7 @@ Package: `com.emergent.arrivewise.ue3on3` · App name: DashLocal · Version 1.0.
 
 ## 1. Links to fill in on Play Console
 - Privacy policy URL: `https://arrivewise.emergent.host/api/privacy-policy`
-- Terms of Service URL: `https://dashlocal.ca/terms (or the in-app Terms screen)`
+- Terms of Service URL: `https://arrivewise.emergent.host/api/terms`
 - Account deletion: users ask from the in-app Privacy screen or email your support address. Play requires a web link, so use the privacy page URL above.
 
 ## 2. Data Safety form (answers)
@@ -56,7 +56,7 @@ Don't give the reviewer the main admin password.
 
 ## 6. Before you submit
 - Square is already on live keys (real card charges).
-- Make sure https://arrivewise.emergent.host/api/privacy-policy and /terms open in a browser (domain linked to the published app).
+- Make sure https://arrivewise.emergent.host/api/privacy-policy, /api/terms and /api/delete-account open in a browser.
 - Publish, then build a new Android App Bundle (AAB) from the Publish button.
 - Upload to Internal testing first and run one real delivery end to end.
 
