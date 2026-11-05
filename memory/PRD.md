@@ -228,3 +228,5 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - STORE_LISTING.md: app name, short/full descriptions, subtitle, keywords, category, what's new.
 - Store screenshots: scripts/store_screenshots.py → /app/store_screenshots (android 1080x1920, iphone 1290x2796), zip at GET /api/store-screenshots.zip.
 - Ratings: customer comment box (300 chars) on RatingPrompt; RatingsCard (store via GET /api/merchants/{id}/ratings, admin via GET /api/admin/ratings, latest 5 + show all, date+time); drivers see comments in their feedback card. Trends reasons now from rating_tags only.
+- Captioned screenshots: scripts/caption_screenshots.py → /app/store_screenshots/captioned/{android,iphone}; zip (plain/ + captioned/) at GET /api/store-screenshots.zip.
+- Driver badge "5-STAR MONTH" (scorecards.five_star_month): ≥4.8★ avg over last 30 days, min 5 ratings; shows in driver scorecard, admin scorecards and triggers the badge celebration.

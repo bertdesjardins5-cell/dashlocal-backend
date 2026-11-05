@@ -7,14 +7,15 @@ import type { Badge } from "@/src/components/Badges";
 import { Btn, Display, Mono } from "@/src/ui";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
 
-const ICONS: Record<string, React.ComponentProps<typeof Ionicons>["name"]> = { on_time: "time", top_rated: "star", speed: "flash", volume: "cube" };
+const ICONS: Record<string, React.ComponentProps<typeof Ionicons>["name"]> = { on_time: "time", top_rated: "star", speed: "flash", volume: "cube", five_star_month: "trophy" };
 const BLURB: Record<string, string> = {
   on_time: "Best on-time rate of the week. Customers got their parcels inside their windows.",
   top_rated: "Highest customer rating of the week. People loved your deliveries.",
   speed: "Fastest pace of the week, measured in drops per hour.",
   volume: "Most drops delivered this week. Absolute machine.",
+  five_star_month: "4.8★ or better from customers over the last 30 days. Keep it up!",
 };
-const fmt = (b: Badge) => (b.key === "on_time" ? `${b.value}%` : b.key === "top_rated" ? `${b.value}★` : b.key === "speed" ? `${b.value}/HR` : `${b.value} DROPS`);
+const fmt = (b: Badge) => (b.key === "on_time" ? `${b.value}%` : b.key === "top_rated" || b.key === "five_star_month" ? `${b.value}★` : b.key === "speed" ? `${b.value}/HR` : `${b.value} DROPS`);
 
 function Confetti({ i, color }: { i: number; color: string }) {
   const { width, height } = Dimensions.get("window");

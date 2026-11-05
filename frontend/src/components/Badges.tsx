@@ -11,6 +11,7 @@ const ICONS: Record<string, React.ComponentProps<typeof Ionicons>["name"]> = {
   top_rated: "star",
   speed: "flash",
   volume: "cube",
+  five_star_month: "trophy",
 };
 
 export default function Badges({ badges, testIDPrefix = "badge" }: { badges: Badge[]; testIDPrefix?: string }) {

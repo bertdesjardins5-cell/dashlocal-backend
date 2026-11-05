@@ -142,6 +142,10 @@ async def all_scorecards(days: int = 7):
         sc = await scorecard_data(d["id"], days)
         out.append({"driver": sc["driver"], **sc["totals"], "trend": [r["delivered"] for r in sc["days"]]})
     award_badges(out)
+    for c in out:
+        b = await five_star_month(c["driver"]["id"])
+        if b:
+            c["badges"].append(b)
     return sorted(out, key=lambda x: (-(x["on_time_rate"] if x["on_time_rate"] is not None else -1), -x["drops_per_hour"]))
 
 
@@ -152,6 +156,21 @@ BADGES = [
     ("speed", "FASTEST PACE", "drops_per_hour", ("delivered", 5)),
     ("volume", "MOST DROPS", "delivered", ("delivered", 1)),
 ]
+
+
+FIVE_STAR_AVG, FIVE_STAR_MIN, FIVE_STAR_DAYS = 4.8, 5, 30
+
+
+async def five_star_month(driver_id: str) -> Optional[dict]:
+    """'5-STAR MONTH': customer average of 4.8★ or more over the last 30 days (at least 5 ratings)."""
+    since = (datetime.now(timezone.utc) - timedelta(days=FIVE_STAR_DAYS)).isoformat()
+    rids = [r["id"] for r in await db.routes.find({"driver_id": driver_id}, {"_id": 0, "id": 1}).to_list(5000)]
+    rated = [s["rating"] for s in await db.stops.find({"route_id": {"$in": rids}, "rating": {"$ne": None}, "rated_at": {"$gte": since}},
+                                                     {"_id": 0, "rating": 1}).to_list(5000)]
+    if len(rated) < FIVE_STAR_MIN:
+        return None
+    avg = round(sum(rated) / len(rated), 2)
+    return {"key": "five_star_month", "label": "5-STAR MONTH", "value": avg} if avg >= FIVE_STAR_AVG else None
 
 
 def award_badges(cards: list):
