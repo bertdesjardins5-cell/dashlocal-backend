@@ -219,18 +219,19 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - iOS prep: app.json ITSAppUsesNonExemptEncryption false, usesNonExemptEncryption false, supportsTablet false, camera/image-picker microphonePermission false.
 - Delete lockout: 5 wrong secrets per 15-min window (delete_fails {n, since}, atomic $inc) → 429. Wrong secret = 403 (not 401, so api.ts doesn't sign out). Driver deletion forgets remembered phone.
 - Deletion confirmations: store → branded email to its inboxes (read before wipe); driver → Twilio SMS (skips fictional 555 numbers). Map stop details: onMarkerPress on all RouteMap variants (native Marker, web Pressable map-marker-{id}, Android Leaflet postMessage); ExpandableRouteMap 'details' shows bottom card (map-stop-details) in fullscreen; admin route passes customer/address/status/code/window.
-- 2026-11 Rebrand ArriveWise -> LocalDash (all text, logo LOCAL/DASH, emails @localdash.app logins, contact @localdash.ca, domain localdash.ca). Package/bundle ID kept com.emergent.arrivewise.ue3on3. auth.py migration renames @dashlocal/@arrivewise.app logins to @localdash.app (parks disabled holders as retired+id@retired.localdash.invalid). ADMIN_EMAIL + EMAIL_FROM_NAME secrets need updating to admin@localdash.app / LocalDash.
+- 2026-11 Rebrand ArriveWise -> DashLocal (all text, logo LOCAL/DASH, emails @dashlocal.app logins, contact @dashlocal.ca, domain dashlocal.ca). Package/bundle ID kept com.emergent.arrivewise.ue3on3. auth.py migration renames @dashlocal/@arrivewise.app logins to @dashlocal.app (parks disabled holders as retired+id@retired.dashlocal.invalid). ADMIN_EMAIL + EMAIL_FROM_NAME secrets need updating to admin@dashlocal.app / DashLocal.
 - Call From Map: POST /api/stops/{id}/dispatch-call (ADMIN_ONLY) rings settings.dispatch_phone via Twilio and bridges to customer (masked). ExpandableRouteMap onCall prop → 'CALL CUSTOMER (MASKED)' in stop card (admin route only).
-- Text From Map: POST /api/stops/{id}/dispatch-text {message} (ADMIN_ONLY, ≤480 chars, 'LocalDash: ' prefix, 555-01xx skipped_fictional, logged in contact_logs). Card: CALL + TEXT buttons, quick replies, KeyboardStickyView.
+- Text From Map: POST /api/stops/{id}/dispatch-text {message} (ADMIN_ONLY, ≤480 chars, 'DashLocal: ' prefix, 555-01xx skipped_fictional, logged in contact_logs). Card: CALL + TEXT buttons, quick replies, KeyboardStickyView.
 
 ## Update — Store submission kit + Delivery ratings (Nov 2026)
-- PLAY_STORE_SUBMISSION.md rebranded to LocalDash, links set to https://localdash.ca/privacy and /terms.
+- PLAY_STORE_SUBMISSION.md rebranded to DashLocal, links set to https://dashlocal.ca/privacy and /terms.
 - STORE_LISTING.md: app name, short/full descriptions, subtitle, keywords, category, what's new.
 - Store screenshots: scripts/store_screenshots.py → /app/store_screenshots (android 1080x1920, iphone 1290x2796), zip at GET /api/store-screenshots.zip.
 - Ratings: customer comment box (300 chars) on RatingPrompt; RatingsCard (store via GET /api/merchants/{id}/ratings, admin via GET /api/admin/ratings, latest 5 + show all, date+time); drivers see comments in their feedback card. Trends reasons now from rating_tags only.
 - Captioned screenshots: scripts/caption_screenshots.py → /app/store_screenshots/captioned/{android,iphone}; zip (plain/ + captioned/) at GET /api/store-screenshots.zip.
 - Driver badge "5-STAR MONTH" (scorecards.five_star_month): ≥4.8★ avg over last 30 days, min 5 ratings; shows in driver scorecard, admin scorecards and triggers the badge celebration.
 - Driver of the Month (routes/awards.py): on the 1st at 08:00 Eastern, emails ADMIN_NOTIFY_EMAIL/ADMIN_EMAIL last month's top-rated driver (min 5 ratings), best 4-5★ comments, top compliments, runners-up. Admin card DriverAwardCard with "Email it now" (5-min cooldown). GET /api/admin/driver-award, POST /api/admin/driver-award/send-now.
-- Fixed leftover ARRIVEWISE logos in emails, PDFs (invoices/receipts/payments) and link error pages → LOCALDASH.
+- Fixed leftover ARRIVEWISE logos in emails, PDFs (invoices/receipts/payments) and link error pages → DASHLOCAL.
 - Public legal pages (routes/legal.py): GET /api/privacy-policy and GET /api/delete-account (HTML, no sign-in) for Play/App Store links. Prod: https://arrivewise.emergent.host/api/privacy-policy and /api/delete-account.
 - SIMULATE tracking mode now only in dev builds (__DEV__); customer tracking header says "● LIVE" instead of "LIVE · WEBSOCKET".
+- Renamed LocalDash → DashLocal (Nov 2026): app name, logos (DASH red + LOCAL black), emails, PDFs, web pages, store text; logins @dashlocal.app (auth.seed_users migrates @localdash/@arrivewise.app); domain dashlocal.ca. App ID unchanged. QR labels accept DASHLOCAL:/LOCALDASH:/MULTIDROP:.

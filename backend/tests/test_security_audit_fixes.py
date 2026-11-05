@@ -15,7 +15,7 @@ BASE_URL = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/")
 LOCAL = "http://localhost:8001"
 LIVE = {"Host": "dashlocal.app", "X-No-Auto-Auth": "1"}
 NA = {"X-No-Auto-Auth": "1"}
-PREVIEW_BASE = "https://localdash.preview.emergentagent.com"
+PREVIEW_BASE = "https://dashlocal.preview.emergentagent.com"
 db = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
 ADMIN = (os.environ["ADMIN_EMAIL"], os.environ["ADMIN_PASSWORD"])
 
@@ -60,13 +60,13 @@ def _cleanup():
 # ---------- SEC-001 demo secrets
 class TestDemoSecrets:
     def test_merchant_demo_works_on_preview(self):
-        r = login("bakery@localdash.app", "Bakery2026")
+        r = login("bakery@dashlocal.app", "Bakery2026")
         assert r.status_code == 200 and r.json()["user"]["merchant_id"] == "mer-1"
 
     def test_merchant_demo_blocked_on_live(self):
-        r = login("bakery@localdash.app", "Bakery2026", LOCAL, LIVE)
+        r = login("bakery@dashlocal.app", "Bakery2026", LOCAL, LIVE)
         assert r.status_code == 401 and r.json()["detail"] == "Wrong email or password"
-        r2 = login("books@localdash.app", "Books2026", LOCAL, LIVE)
+        r2 = login("books@dashlocal.app", "Books2026", LOCAL, LIVE)
         assert r2.status_code == 401
 
     def test_admin_works_on_live(self):
@@ -115,9 +115,9 @@ class TestPublicBase:
 
     def test_http_scheme_and_lookalike_rejected(self):
         restore_base()
-        login(*ADMIN, base=LOCAL, headers={**NA, "Host": "localdash.preview.emergentagent.com.evil.com"})
+        login(*ADMIN, base=LOCAL, headers={**NA, "Host": "dashlocal.preview.emergentagent.com.evil.com"})
         assert public_base() == PREVIEW_BASE
-        login(*ADMIN, base=LOCAL, headers={**NA, "X-Forwarded-Host": "evil.com, localdash.preview.emergentagent.com"})
+        login(*ADMIN, base=LOCAL, headers={**NA, "X-Forwarded-Host": "evil.com, dashlocal.preview.emergentagent.com"})
         assert public_base() == PREVIEW_BASE
 
     def test_normal_preview_login_keeps_preview(self):
@@ -133,8 +133,8 @@ JPEG = b"\xff\xd8\xff\xe0" + b"TESTPHOTO" * 50 + b"\xff\xd9"
 @pytest.fixture(scope="class")
 def toks():
     clear_locks()
-    return {"admin": tok(login(*ADMIN)), "mer1": tok(login("bakery@localdash.app", "Bakery2026")),
-            "mer2": tok(login("books@localdash.app", "Books2026")),
+    return {"admin": tok(login(*ADMIN)), "mer1": tok(login("bakery@dashlocal.app", "Bakery2026")),
+            "mer2": tok(login("books@dashlocal.app", "Books2026")),
             "drv1": tok(dlogin("+15195550101", "482913")), "drv2": tok(dlogin("+15195550102", "730516")),
             "drv3": tok(dlogin("+15195550103", "264871"))}
 

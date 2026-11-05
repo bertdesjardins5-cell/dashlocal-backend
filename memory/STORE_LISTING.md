@@ -1,7 +1,7 @@
-# LocalDash — Store Listing Text (ready to paste)
+# DashLocal — Store Listing Text (ready to paste)
 
 ## App name (max 30)
-LocalDash: Local Delivery
+DashLocal: Local Delivery
 
 ## Google Play short description (max 80)
 Same-day local delivery with live tracking, proof of delivery and smart routes.
@@ -13,7 +13,7 @@ Same-day local delivery
 Track your delivery live, see your driver's arrival time, and get photo proof at the door. Stores send orders in seconds; drivers get the fastest route.
 
 ## Full description (Google Play max 4000 / App Store max 4000)
-LocalDash is same-day local delivery for neighbourhood stores, pharmacies and offices, with live tracking for customers and simple tools for drivers.
+DashLocal is same-day local delivery for neighbourhood stores, pharmacies and offices, with live tracking for customers and simple tools for drivers.
 
 FOR CUSTOMERS
 • Live tracking: watch your driver on the map with an arrival time that updates as they go
@@ -44,8 +44,8 @@ FOR DRIVERS
 PRIVACY FIRST
 Phone numbers stay private with masked calling and texting. Driver location is only used during an active delivery route. Customers and stores are never tracked. You can delete your account at any time from inside the app.
 
-LocalDash serves local businesses and their customers in Canada.
-Questions? Visit https://localdash.ca
+DashLocal serves local businesses and their customers in Canada.
+Questions? Visit https://dashlocal.ca
 
 ## Keywords (App Store, max 100, comma separated)
 delivery,courier,same day,tracking,local,pharmacy,driver,route,proof of delivery,dispatch
@@ -54,8 +54,8 @@ delivery,courier,same day,tracking,local,pharmacy,driver,route,proof of delivery
 Primary: Business (Google Play: Business) · Secondary (App Store): Navigation
 
 ## What's new (version 1.0.0)
-First release of LocalDash: live delivery tracking, proof of delivery, smart routes, store ordering and customer ratings.
+First release of DashLocal: live delivery tracking, proof of delivery, smart routes, store ordering and customer ratings.
 
 ## Contact
-Website: https://localdash.ca · Email: admin@localdash.app
+Website: https://dashlocal.ca · Email: admin@dashlocal.app
 Privacy policy: https://arrivewise.emergent.host/api/privacy-policy

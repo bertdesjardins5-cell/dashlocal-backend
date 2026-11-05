@@ -17,7 +17,7 @@ export const rememberedPhone = {
   del: () => (Platform.OS === "web" ? AsyncStorage.removeItem(PHONE_KEY) : SecureStore.deleteItemAsync(PHONE_KEY)),
 };
 
-// Driver sign-in: phone number + 6-digit PIN set by dispatch (LocalDash brand styling).
+// Driver sign-in: phone number + 6-digit PIN set by dispatch (DashLocal brand styling).
 export default function DriverSignInForm({ onSignedIn, initialPhone = "", notice, scroll = true }: { onSignedIn?: (u: SessionUser) => void; initialPhone?: string; notice?: string | null; scroll?: boolean }) {
   const s = useBrandForm();
   const { colors } = useTheme();

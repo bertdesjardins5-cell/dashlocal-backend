@@ -41,7 +41,7 @@ def db():
 
 @pytest.fixture(scope="module")
 def admin(db):
-    r = requests.post(f"{API}/auth/login", json={"email": "admin@localdash.app", "password": "DashLocalAdmin2026"})
+    r = requests.post(f"{API}/auth/login", json={"email": "admin@dashlocal.app", "password": "DashLocalAdmin2026"})
     assert r.status_code == 200, r.text
     h = H(r.json()["token"])
     assert requests.post(f"{API}/admin/reset", headers=h).status_code == 200
@@ -56,7 +56,7 @@ def admin(db):
 # ---------------- Bill payment note
 @pytest.fixture(scope="module")
 def pastbill(admin, db):
-    t = requests.post(f"{API}/auth/login", json={"email": "bakery@localdash.app", "password": "Bakery2026"}).json()["token"]
+    t = requests.post(f"{API}/auth/login", json={"email": "bakery@dashlocal.app", "password": "Bakery2026"}).json()["token"]
     r = requests.post(f"{API}/merchants/mer-1/import?consent=true", headers=H(t),
                       files={"file": ("p.csv", b"customer_name,phone,address\nTEST_Note,5195550193,200 King St W Kitchener\n", "text/csv")})
     assert r.status_code == 200, r.text
@@ -86,7 +86,7 @@ class TestPaymentNote:
         r = requests.put(pastbill, json={"paid": True, "note": "  TEST_ e-Transfer #A1B2  "}, headers=admin)
         assert r.status_code == 200, r.text
         p = r.json()["payment"]
-        assert p["note"] == "TEST_ e-Transfer #A1B2" and p["amount"] == r.json()["total"] > 0 and p["by"] == "admin@localdash.app"
+        assert p["note"] == "TEST_ e-Transfer #A1B2" and p["amount"] == r.json()["total"] > 0 and p["by"] == "admin@dashlocal.app"
         s = {x["id"]: x for x in requests.get(f"{API}/admin/billing", params={"week": LAST_MON}, headers=admin).json()["stores"]}["mer-1"]
         assert s["payment"]["note"] == "TEST_ e-Transfer #A1B2"
 

@@ -7,7 +7,7 @@ import { makeStyles, spacing, useTheme } from "@/src/theme";
 
 const POINTS: { icon: any; title: string; body: string }[] = [
   { icon: "location", title: "What we collect", body: "Your phone's location (GPS), every few seconds." },
-  { icon: "phone-portrait", title: "Even when the app is closed", body: "LocalDash collects your location in the background, including when the app is closed or your phone is locked, but only while you have an active route." },
+  { icon: "phone-portrait", title: "Even when the app is closed", body: "DashLocal collects your location in the background, including when the app is closed or your phone is locked, but only while you have an active route." },
   { icon: "flag", title: "Why", body: "So each stop marks ARRIVED automatically when you're within 50 m, and customers get an accurate live ETA." },
   { icon: "people", title: "Who sees it", body: "Dispatch, and each customer only while their own delivery is on the way. It is never sold or used for ads." },
   { icon: "stop-circle", title: "When it stops", body: "As soon as your route ends or you sign out. A notification shows whenever it's on, and you can turn it off anytime in your phone's Settings." },

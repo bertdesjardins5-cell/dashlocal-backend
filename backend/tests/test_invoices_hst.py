@@ -30,17 +30,17 @@ def _login(email, pw):
 
 @pytest.fixture(scope="module")
 def admin():
-    return _login("admin@localdash.app", "DashLocalAdmin2026")
+    return _login("admin@dashlocal.app", "DashLocalAdmin2026")
 
 
 @pytest.fixture(scope="module")
 def bakery():
-    return _login("bakery@localdash.app", "Bakery2026")
+    return _login("bakery@dashlocal.app", "Bakery2026")
 
 
 @pytest.fixture(scope="module")
 def books():
-    return _login("books@localdash.app", "Books2026")
+    return _login("books@dashlocal.app", "Books2026")
 
 
 def _cleanup():
@@ -96,13 +96,13 @@ class TestBusiness:
     def test_defaults_and_auth(self, admin, bakery):
         db.settings.delete_one({"key": "business"})
         d = requests.get(f"{API}/admin/business", headers=admin).json()
-        assert d["name"] == "LocalDash" and d["hst_pct"] == 13 and "set in Admin" in d["address"] and "set in Admin" in d["hst_number"]
+        assert d["name"] == "DashLocal" and d["hst_pct"] == 13 and "set in Admin" in d["address"] and "set in Admin" in d["hst_number"]
         assert requests.get(f"{API}/admin/business", headers=bakery).status_code == 403
         assert requests.put(f"{API}/admin/business", json={**d}, headers=bakery).status_code == 403
 
     @pytest.mark.parametrize("patch", [{"name": "  "}, {"address": ""}, {"hst_number": " "}, {"hst_pct": -1}, {"hst_pct": 31}])
     def test_validation(self, admin, patch):
-        base = {"name": "LocalDash", "address": "1 King St W, Toronto ON", "hst_number": "123456789RT0001", "hst_pct": 13}
+        base = {"name": "DashLocal", "address": "1 King St W, Toronto ON", "hst_number": "123456789RT0001", "hst_pct": 13}
         r = requests.put(f"{API}/admin/business", json={**base, **patch}, headers=admin)
         assert r.status_code == 400, (patch, r.text)
 
@@ -155,7 +155,7 @@ class TestInvoiceCreation:
         assert inv["total"] == round(inv["subtotal"] + inv["hst"], 2)
         assert inv["status"] == "unpaid" and inv["currency"] == "CAD"
         assert inv["merchant"]["name"] == "Mission Bakery Co."
-        assert inv["business"]["name"] == "LocalDash" and inv["business"]["hst_pct"] == 13
+        assert inv["business"]["name"] == "DashLocal" and inv["business"]["hst_pct"] == 13
         assert inv["delivery"]["tracking_code"] == st["tracking_code"]
         S["inv_a"] = inv
 
@@ -255,7 +255,7 @@ class TestPdf:
         assert p.content[:4] == b"%PDF"
         from pypdf import PdfReader
         text = " ".join(pg.extract_text() for pg in PdfReader(io.BytesIO(p.content)).pages)
-        for needle in ("LocalDash", inv["number"], "Mission Bakery Co.", "Subtotal", "HST (13%, Ontario)", f"{inv['total']:,.2f}"):
+        for needle in ("DashLocal", inv["number"], "Mission Bakery Co.", "Subtotal", "HST (13%, Ontario)", f"{inv['total']:,.2f}"):
             assert needle in text, (needle, text[:600])
         S["pdf_tok"] = path.split("token=")[1]
 
@@ -329,15 +329,15 @@ class TestBusinessSnapshot:
     def test_update_affects_new_only(self, admin):
         if "d" not in S:
             pytest.skip("no stops")
-        v = {"name": "LocalDash Inc.", "address": "1 King St W, Toronto ON", "hst_number": "123456789RT0001", "hst_pct": 13}
+        v = {"name": "DashLocal Inc.", "address": "1 King St W, Toronto ON", "hst_number": "123456789RT0001", "hst_pct": 13}
         r = requests.put(f"{API}/admin/business", json=v, headers=admin)
-        assert r.status_code == 200 and r.json()["name"] == "LocalDash Inc."
+        assert r.status_code == 200 and r.json()["name"] == "DashLocal Inc."
         assert requests.get(f"{API}/admin/business", headers=admin).json()["hst_number"] == "123456789RT0001"
         r = requests.post(f"{API}/stops/{S['d']}/deliver", json={"signature": SIG}, headers=admin)
         assert r.status_code == 200, r.text
         new = _invs(S["d"])[0]
-        assert new["business"]["name"] == "LocalDash Inc." and new["business"]["hst_number"] == "123456789RT0001"
-        assert db.invoices.find_one({"id": S["inv_a"]["id"]})["business"]["name"] == "LocalDash"
+        assert new["business"]["name"] == "DashLocal Inc." and new["business"]["hst_number"] == "123456789RT0001"
+        assert db.invoices.find_one({"id": S["inv_a"]["id"]})["business"]["name"] == "DashLocal"
 
 
 # ---- regression: weekly report email

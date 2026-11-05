@@ -29,7 +29,7 @@ def driver():
 
 @pytest.fixture(scope="module")
 def merchant_h():
-    r = requests.post(f"{BASE_URL}/api/auth/login", json={"email": "bakery@localdash.app", "password": "Bakery2026"})
+    r = requests.post(f"{BASE_URL}/api/auth/login", json={"email": "bakery@dashlocal.app", "password": "Bakery2026"})
     assert r.status_code == 200, r.text
     return {**NA, "Authorization": f"Bearer {r.json()['token']}"}
 

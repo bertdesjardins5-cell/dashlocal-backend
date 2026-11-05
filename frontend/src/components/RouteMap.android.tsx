@@ -45,7 +45,7 @@ export default function RouteMap({ markers, path = [], driver, height = 260, geo
     geo: geofence ? [geofence.lat, geofence.lng] : null,
     c: { line: colors.surfaceInverse, red: colors.brandPrimary, geoFill: colors.brandTertiary },
   });
-  const source = useMemo(() => ({ html: HTML, baseUrl: "https://localdash.ca/" }), []);
+  const source = useMemo(() => ({ html: HTML, baseUrl: "https://dashlocal.ca/" }), []);
 
   useEffect(() => {
     if (ready) ref.current?.injectJavaScript(`window.render && window.render(${data}); true;`);

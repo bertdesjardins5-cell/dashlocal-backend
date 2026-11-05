@@ -34,12 +34,12 @@ def login(email, pw):
 
 @pytest.fixture(scope="module")
 def admin():
-    return login("admin@localdash.app", "DashLocalAdmin2026")
+    return login("admin@dashlocal.app", "DashLocalAdmin2026")
 
 
 @pytest.fixture(scope="module")
 def merch():
-    return login("books@localdash.app", "Books2026")
+    return login("books@dashlocal.app", "Books2026")
 
 
 @pytest.fixture(scope="module")
@@ -202,7 +202,7 @@ class TestLeftStoreSMS:
         name = db.merchants.find_one({"id": "mer-2"})["name"]
         for s in (a, b):
             m = logs[s["id"]]["message"]
-            assert m == (f"LocalDash: your delivery {s['tracking_code']} from {name} has left the store and is on its way. "
+            assert m == (f"DashLocal: your delivery {s['tracking_code']} from {name} has left the store and is on its way. "
                          f"Expected today 5:30 PM–8:30 PM (Eastern time). Someone will need to sign for it."), m
             assert not BANNED.search(m)
             assert logs[s["id"]]["status"] == "skipped_fictional" and logs[s["id"]]["channel"] == "sms"

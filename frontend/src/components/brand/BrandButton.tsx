@@ -6,7 +6,7 @@ import { fonts, makeStyles, useTheme } from "@/src/theme";
 type Variant = "primary" | "dark" | "outline" | "gold";
 type Props = { label: string; onPress: () => void; variant?: Variant; icon?: React.ComponentProps<typeof Ionicons>["name"]; loading?: boolean; disabled?: boolean; testID?: string; style?: ViewStyle };
 
-// Rounded LocalDash brand button for the landing and sign-in screens.
+// Rounded DashLocal brand button for the landing and sign-in screens.
 export default function BrandButton({ label, onPress, variant = "primary", icon, loading, disabled, testID, style }: Props) {
   const s = useStyles();
   const { colors } = useTheme();

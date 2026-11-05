@@ -10,8 +10,8 @@ type Props = { visible: boolean; onAgree: (timestamp: string) => void; onClose: 
 
 // Non-pharmacy sign-up (and re-acceptance after an update): scroll to the end of the Terms of Service, tick the box, then accept.
 export default function TermsModal({ visible, onAgree, onClose, busy, onOpenTerms, sub = "Please review and accept our terms to send your request.",
-  cancelLabel = "Cancel", acceptLabel = "Accept & Send", title = "LocalDash Terms of Service",
-  agreeLabel = "I have read and agree to the LocalDash Terms of Service on behalf of my business." }: Props) {
+  cancelLabel = "Cancel", acceptLabel = "Accept & Send", title = "DashLocal Terms of Service",
+  agreeLabel = "I have read and agree to the DashLocal Terms of Service on behalf of my business." }: Props) {
   const s = useStyles();
   const { colors } = useTheme();
   const [read, setRead] = useState(false);

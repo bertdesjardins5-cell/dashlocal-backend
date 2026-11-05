@@ -105,7 +105,7 @@ async def send_apology_sms(stop: "Stop") -> str:
     if not (os.environ.get("TWILIO_ACCOUNT_SID") and os.environ.get("TWILIO_AUTH_TOKEN") and os.environ.get("TWILIO_PHONE_NUMBER")):
         return "not_configured"
     first = stop.customer_name.split(" ")[0]
-    body = (f"LocalDash: Sorry {first}, delivery {stop.tracking_code} wasn't up to standard. "
+    body = (f"DashLocal: Sorry {first}, delivery {stop.tracking_code} wasn't up to standard. "
             f"Here's {APOLOGY_DISCOUNT_PCT}% off your next delivery with code {stop.apology_code}. Our team will follow up.")
     try:
         tw = TwilioClient(os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"])
@@ -146,10 +146,10 @@ async def ratings_summary(q: dict) -> dict:
 @router.get("/store-screenshots.zip")
 async def store_screenshots():
     """Store-listing screenshots (Play 1080x1920 + App Store 1290x2796) made by scripts/store_screenshots.py."""
-    path = "/app/store_screenshots/LocalDash_store_screenshots.zip"
+    path = "/app/store_screenshots/DashLocal_store_screenshots.zip"
     if not os.path.exists(path):
         raise HTTPException(404, "Screenshots not generated yet")
-    return FileResponse(path, media_type="application/zip", filename="LocalDash_store_screenshots.zip")
+    return FileResponse(path, media_type="application/zip", filename="DashLocal_store_screenshots.zip")
 
 
 @router.get("/merchants/{merchant_id}/ratings")
@@ -344,7 +344,7 @@ header{{background:#0A0A0A;color:#fff;padding:20px}}h1{{font-family:Arial,sans-s
 .k{{color:#E60000;font-weight:bold;letter-spacing:2px;font-size:12px}}main{{padding:20px;max-width:560px}}
 .box{{border:2px solid #0A0A0A;margin:12px 0;padding:12px}}img{{width:100%;display:block}}svg{{width:100%;height:180px}}
 .ok{{background:#008000;color:#fff;padding:12px;font-weight:bold}}.m{{font-size:13px;margin:4px 0}}</style></head><body>
-<header><div class="k">LOCALDASH · PROOF OF DELIVERY</div><h1>{esc(st.tracking_code)}</h1></header><main>
+<header><div class="k">DASHLOCAL · PROOF OF DELIVERY</div><h1>{esc(st.tracking_code)}</h1></header><main>
 <p class="m"><b>{esc(st.customer_name)}</b></p><p class="m">{esc(st.address)}</p><p class="m">DELIVERED {esc(when)} (EASTERN TIME)</p>
 {f'<div class="box">{photo}</div>' if photo else ''}{f'<div class="box"><div class="m">SIGNATURE</div>{sig}</div>' if sig else ''}{qr}
 </main></body></html>"""

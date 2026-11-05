@@ -16,12 +16,12 @@ def login(email, pw):
 
 @pytest.fixture(scope="module")
 def books():
-    return login("books@localdash.app", "Books2026")
+    return login("books@dashlocal.app", "Books2026")
 
 
 @pytest.fixture(scope="module")
 def admin():
-    return login("admin@localdash.app", "DashLocalAdmin2026")
+    return login("admin@dashlocal.app", "DashLocalAdmin2026")
 
 
 BASE = {"customer_name": "TEST API Customer", "phone": "519 555 0179", "address": "105 Frederick St"}

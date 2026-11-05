@@ -34,9 +34,9 @@ export default function PrivacyOfficerForm({ notify }: { notify: (m: string, ton
   };
   return (
     <View style={s.block} testID="privacy-officer-form">
-      <Mono style={s.meta}>Shown as the contact on the public Privacy Policy page. Use the person accountable for privacy at LocalDash.</Mono>
+      <Mono style={s.meta}>Shown as the contact on the public Privacy Policy page. Use the person accountable for privacy at DashLocal.</Mono>
       <TextInput testID="privacy-officer-name" value={name} onChangeText={setName} placeholder="Full name" placeholderTextColor={colors.muted} style={s.input} />
-      <TextInput testID="privacy-officer-email" value={email} onChangeText={setEmail} placeholder="privacy@localdash.ca" autoCapitalize="none" keyboardType="email-address" placeholderTextColor={colors.muted} style={s.input} />
+      <TextInput testID="privacy-officer-email" value={email} onChangeText={setEmail} placeholder="privacy@dashlocal.ca" autoCapitalize="none" keyboardType="email-address" placeholderTextColor={colors.muted} style={s.input} />
       <Btn testID="privacy-officer-save" label="SAVE" loading={busy} disabled={!changed || name.trim().length < 2} onPress={save} />
     </View>
   );

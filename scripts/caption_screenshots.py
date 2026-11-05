@@ -16,7 +16,7 @@ CAPTIONS = {  # screen key: (kicker, headline)
     "4_ratings": ("RATINGS", "See how every driver is doing"),
     "5_store_new_delivery": ("FOR STORES", "Send a delivery in seconds"),
     "6_dispatch_route": ("DISPATCH", "Plan and optimize routes instantly"),
-    "7_home": ("LOCALDASH", "Same-day local delivery, done right"),
+    "7_home": ("DASHLOCAL", "Same-day local delivery, done right"),
 }
 
 
@@ -64,7 +64,7 @@ files = sorted(p for p in glob.glob(f"{SRC}/*.png"))
 for f in files:
     caption(f)
     print("captioned", f)
-with zipfile.ZipFile(f"{SRC}/LocalDash_store_screenshots.zip", "w") as z:
+with zipfile.ZipFile(f"{SRC}/DashLocal_store_screenshots.zip", "w") as z:
     for f in files:
         z.write(f, f"plain/{os.path.basename(f)}")
     for f in sorted(glob.glob(f"{OUT}/*/*.png")):

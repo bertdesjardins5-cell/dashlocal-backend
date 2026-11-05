@@ -35,7 +35,7 @@ export default function WelcomeChecklist({ merchantId, refreshKey, notify }: { m
     <View style={s.box} testID="welcome-checklist">
       <View style={s.head}>
         <View style={{ flex: 1, gap: 2 }}>
-          <Mono style={s.title}>{all ? "YOU'RE ALL SET" : "WELCOME TO LOCALDASH"}</Mono>
+          <Mono style={s.title}>{all ? "YOU'RE ALL SET" : "WELCOME TO DASHLOCAL"}</Mono>
           <Mono style={s.meta} testID="welcome-checklist-progress">{q.data.done} OF {q.data.total} FIRST STEPS DONE</Mono>
         </View>
         <Pressable testID="welcome-checklist-hide" onPress={hide} disabled={hiding} style={s.hide} accessibilityLabel="Hide checklist">

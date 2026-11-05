@@ -34,7 +34,7 @@ def toks():
     db.login_attempts.delete_many({})
     lg = lambda e, p: requests.post(f"{BASE_URL}/api/auth/login", json={"email": e, "password": p}, headers=NA)
     dl = lambda ph, pin: requests.post(f"{BASE_URL}/api/auth/driver-login", json={"phone": ph, "pin": pin}, headers=NA)
-    return {"admin": _tok(lg(*ADMIN)), "drv1": _tok(dl("+15195550101", "482913")), "m1": _tok(lg("bakery@localdash.app", "Bakery2026"))}
+    return {"admin": _tok(lg(*ADMIN)), "drv1": _tok(dl("+15195550101", "482913")), "m1": _tok(lg("bakery@dashlocal.app", "Bakery2026"))}
 
 
 @pytest.fixture(scope="module", autouse=True)

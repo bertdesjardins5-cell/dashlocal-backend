@@ -57,7 +57,7 @@ async def text_patients_left_store(manifest_id: str, route_id: str):
         st = Stop(**d)
         if await db.contact_logs.find_one({"stop_id": st.id, "kind": "left_store"}, {"_id": 1}):
             continue
-        body = (f"LocalDash: your delivery {st.tracking_code} from {store} has left the store and is on its way. "
+        body = (f"DashLocal: your delivery {st.tracking_code} from {store} has left the store and is on its way. "
                 f"Expected today {window} (Eastern time). Someone will need to sign for it.")
         status = "skipped_fictional" if stop_routes.FICTIONAL_NUMBER.match(st.customer_phone or "") else "not_configured"
         sid = None

@@ -54,7 +54,7 @@ async def verify_qr(stop_id: str, body: QrIn, u: dict = Depends(require_stop_dri
         raise HTTPException(400, f"Stop is already {stop.status}")
     await seed.ensure_stop_actionable_today(stop)
     scanned = body.code.strip().upper()
-    if scanned.startswith(("LOCALDASH:", "DASHLOCAL:", "MULTIDROP:")):  # labels printed before the rename still scan
+    if scanned.startswith(("DASHLOCAL:", "LOCALDASH:", "MULTIDROP:")):  # labels printed before the rename still scan
         scanned = scanned.split(":", 1)[1]
     if scanned != stop.tracking_code:
         raise HTTPException(400, f"Wrong parcel — scanned {scanned[:20]}, expected {stop.tracking_code}")
@@ -86,9 +86,9 @@ async def send_booking_sms(stop: "Stop", kind: str) -> str:
     if stop.window_end:
         when = f"{seed.nice_date(stop.window_date or today_str())}, {stop.window_start}-{stop.window_end}"
         verb = "is booked for" if kind == "booked" else "has moved to"
-        body = f"LocalDash: your delivery {stop.tracking_code} {verb} {when} (Eastern time). Reply or track your order in the app."
+        body = f"DashLocal: your delivery {stop.tracking_code} {verb} {when} (Eastern time). Reply or track your order in the app."
     else:
-        body = f"LocalDash: the delivery window for {stop.tracking_code} was cleared. We'll deliver at any time on your route day."
+        body = f"DashLocal: the delivery window for {stop.tracking_code} was cleared. We'll deliver at any time on your route day."
     try:
         tw = TwilioClient(os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"])
         res = await run_in_threadpool(lambda: tw.messages.create(to=stop.customer_phone, from_=twilio_number(), body=body))
@@ -279,7 +279,7 @@ async def contact(stop_id: str, body: ContactIn):
                      f"<Dial callerId=\"{proxy}\">{stop.customer_phone}</Dial></Response>")
             res = await run_in_threadpool(lambda: tw.calls.create(to=driver.phone, from_=proxy, twiml=twiml))
         else:
-            text = (body.message or "").strip() or f"LocalDash: your driver {driver.name if driver else ''} is on the way with order {stop.tracking_code}."
+            text = (body.message or "").strip() or f"DashLocal: your driver {driver.name if driver else ''} is on the way with order {stop.tracking_code}."
             res = await run_in_threadpool(lambda: tw.messages.create(to=stop.customer_phone, from_=proxy, body=text[:600]))
     except TwilioRestException as e:
         logger.error(f"Twilio error: {e}")
@@ -310,8 +310,8 @@ async def dispatch_text(stop_id: str, body: DispatchTextIn):
         raise HTTPException(400, "Keep the message under 480 characters")
     if not E164.match(stop.customer_phone or ""):
         raise HTTPException(400, "This customer has no valid phone number")
-    if not text.lower().startswith("localdash"):
-        text = f"LocalDash: {text}"
+    if not text.lower().startswith("dashlocal"):
+        text = f"DashLocal: {text}"
     proxy = twilio_number()
     log = {"id": str(uuid.uuid4()), "stop_id": stop_id, "channel": "sms", "by": "dispatch", "message": text, "proxy_number": proxy, "created_at": now_iso()}
     if FICTIONAL_NUMBER.match(stop.customer_phone):  # 555-01xx test numbers: never sent
@@ -341,7 +341,7 @@ async def dispatch_call(stop_id: str):
     if not to or not E164.match(to):
         raise HTTPException(400, "Set your dispatch phone first (Admin › Driver accounts › Dispatch phone)")
     tw, proxy = twilio_client(), twilio_number()
-    twiml = (f"<Response><Say>LocalDash dispatch. Connecting you to {xml_escape(stop.customer_name)}, order {xml_escape(stop.tracking_code)}.</Say>"
+    twiml = (f"<Response><Say>DashLocal dispatch. Connecting you to {xml_escape(stop.customer_name)}, order {xml_escape(stop.tracking_code)}.</Say>"
              f"<Dial callerId=\"{proxy}\">{stop.customer_phone}</Dial></Response>")
     try:
         res = await run_in_threadpool(lambda: tw.calls.create(to=to, from_=proxy, twiml=twiml))

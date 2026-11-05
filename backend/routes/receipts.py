@@ -52,7 +52,7 @@ def receipt_pdf(st: Stop, store: dict, biz: dict, driver: str) -> bytes:
                             title=f"Signed delivery receipt {st.tracking_code}", author=biz["name"])
     body = ParagraphStyle("b", parent=getSampleStyleSheet()["Normal"], fontName="Helvetica", fontSize=10, leading=14, textColor=rl.HexColor("#333335"))
     e = lambda v: escape(str(v or ""))  # noqa: E731
-    head = Table([[Paragraph('<font name="Helvetica-Bold" size="18" color="#333335">LOCAL</font><font name="Helvetica-Bold" size="18" color="#D7262E">DASH</font>', body),
+    head = Table([[Paragraph('<font name="Helvetica-Bold" size="18" color="#D7262E">DASH</font><font name="Helvetica-Bold" size="18" color="#333335">LOCAL</font>', body),
                    Paragraph('<para alignment="right"><font name="Helvetica-Bold" size="16">SIGNED DELIVERY RECEIPT</font></para>', body)]],
                  colWidths=[3.2 * inch, 3.7 * inch])
     rows = [("Sender", store["name"])] + ([("Matter / file no.", st.matter_ref)] if st.matter_ref else []) + [("Tracking code", st.tracking_code), ("Delivered to", st.customer_name), ("Address", st.address),
@@ -121,7 +121,7 @@ async def download_receipt(stop_id: str, token: str = ""):
         raise linkpages.LinkPageError("receipt", "missing", 404)
     pdf = await _pdf_for(st, store, await invoices.get_business())
     return Response(content=pdf, media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="LocalDash-receipt-{st.tracking_code}.pdf"', "Cache-Control": "no-store"})
+                    headers={"Content-Disposition": f'attachment; filename="DashLocal-receipt-{st.tracking_code}.pdf"', "Cache-Control": "no-store"})
 
 
 # ---------------------------------------------------------------- receipt archive (store portal)
@@ -181,6 +181,6 @@ async def download_receipts_zip(merchant_id: str, token: str = ""):
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for st in stops:
             ref = re.sub(r"[^\w-]+", "_", st.matter_ref or "").strip("_")
-            z.writestr(f"LocalDash-receipt-{(ref + '-') if ref else ''}{st.tracking_code}-{(st.delivered_at or '')[:10]}.pdf", await _pdf_for(st, store, biz))
+            z.writestr(f"DashLocal-receipt-{(ref + '-') if ref else ''}{st.tracking_code}-{(st.delivered_at or '')[:10]}.pdf", await _pdf_for(st, store, biz))
     return Response(content=buf.getvalue(), media_type="application/zip",
-                    headers={"Content-Disposition": f'attachment; filename="LocalDash-signed-receipts-{datetime.now(TZ).date()}.zip"', "Cache-Control": "no-store"})
+                    headers={"Content-Disposition": f'attachment; filename="DashLocal-signed-receipts-{datetime.now(TZ).date()}.zip"', "Cache-Control": "no-store"})

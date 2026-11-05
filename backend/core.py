@@ -167,7 +167,7 @@ def driver_consented(u: dict) -> dict:
     if u["role"] == "driver" and not (u.get("phipa_consent_given") and u.get("consent_version") == CONSENT_VERSION):
         raise HTTPException(403, "Accept the privacy & compliance terms to continue")
     if u["role"] == "driver" and u.get("driver_terms_version") != DRIVER_TERMS_VERSION:
-        raise HTTPException(403, "Accept the LocalDash courier terms to continue")
+        raise HTTPException(403, "Accept the DashLocal courier terms to continue")
     return u
 
 
@@ -183,7 +183,7 @@ def merchant_terms_ok(u: dict, request: Request):
         return
     if any(p in request.url.path for p in TERMS_EXEMPT):
         return
-    raise HTTPException(403, "Accept the updated LocalDash Terms of Service to send or change deliveries")
+    raise HTTPException(403, "Accept the updated DashLocal Terms of Service to send or change deliveries")
 
 
 async def require_driver_self(driver_id: str, request: Request):

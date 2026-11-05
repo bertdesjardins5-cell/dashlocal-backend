@@ -46,19 +46,19 @@ export default function WriteReview() {
           {q.isLoading ? <ActivityIndicator color={colors.brandForest} /> : q.error ? (
             <>
               <Text style={f.title}>Link not valid</Text>
-              <Text style={f.hint} testID="review-link-error">{(q.error as Error).message}. Ask LocalDash to send a new one.</Text>
+              <Text style={f.hint} testID="review-link-error">{(q.error as Error).message}. Ask DashLocal to send a new one.</Text>
             </>
           ) : used ? (
             <View style={{ gap: 10 }} testID="review-thanks">
               <Ionicons name="heart" size={40} color={colors.brandRed} />
               <Text style={f.title}>Thank you!</Text>
-              <Text style={f.hint}>Your review was sent to the LocalDash team. We&apos;ll check it before it appears on our website.</Text>
-              <BrandButton label="Visit LocalDash" variant="outline" onPress={() => router.replace("/")} />
+              <Text style={f.hint}>Your review was sent to the DashLocal team. We&apos;ll check it before it appears on our website.</Text>
+              <BrandButton label="Visit DashLocal" variant="outline" onPress={() => router.replace("/")} />
             </View>
           ) : (
             <>
               <Kicker>{q.data!.shop}</Kicker>
-              <Text style={f.title}>How is LocalDash working for you?</Text>
+              <Text style={f.title}>How is DashLocal working for you?</Text>
               <Text style={f.hint}>A sentence or two is perfect. With your OK, it may be shown on our website, with your shop name.</Text>
               {error ? <View style={f.err} testID="review-error"><Text style={f.errText}>{error}</Text></View> : null}
               <Text style={f.label}>Your review</Text>

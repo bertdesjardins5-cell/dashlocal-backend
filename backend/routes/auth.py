@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api")
 
 LOGIN_MAX_FAILS = 5
 LOGIN_LOCK_MIN = 15
-DEMO_MERCHANT_USERS = [("mer-1", "bakery@localdash.app", "Bakery2026"), ("mer-2", "books@localdash.app", "Books2026")]
+DEMO_MERCHANT_USERS = [("mer-1", "bakery@dashlocal.app", "Bakery2026"), ("mer-2", "books@dashlocal.app", "Books2026")]
 DEMO_DRIVER_PINS = {"drv-1": "482913", "drv-2": "730516", "drv-3": "264871"}
 
 
@@ -49,18 +49,18 @@ async def seed_users(demo: bool = True):
             await db.users.insert_one({"id": str(uuid.uuid4()), "role": "driver", "driver_id": did, "pin_hash": hash_pw(pin),
                                        "disabled": False, "created_at": now_iso()})
     email, pw = os.environ["ADMIN_EMAIL"].strip().lower(), os.environ["ADMIN_PASSWORD"]
-    # renames DashLocal -> ArriveWise -> LocalDash: move old logins to @localdash.app (update only, never deletes)
-    for u in await db.users.find({"email": {"$regex": r"@(dashlocal|arrivewise)\.app$"}}, {"_id": 0, "id": 1, "email": 1}).to_list(100):
-        new = re.sub(r"@(dashlocal|arrivewise)\.app$", "@localdash.app", u["email"])
+    # renames DashLocal -> ArriveWise -> LocalDash -> DashLocal: move old logins to @dashlocal.app (update only, never deletes)
+    for u in await db.users.find({"email": {"$regex": r"@(localdash|arrivewise)\.app$"}}, {"_id": 0, "id": 1, "email": 1}).to_list(100):
+        new = re.sub(r"@(localdash|arrivewise)\.app$", "@dashlocal.app", u["email"])
         old = await db.users.find_one({"email": new}, {"_id": 0, "id": 1, "disabled": 1})
         if old and old.get("disabled"):  # an old switched-off login holds the name: park it under a retired address
-            await db.users.update_one({"id": old["id"]}, {"$set": {"email": f"retired+{old['id']}@retired.localdash.invalid"}})
+            await db.users.update_one({"id": old["id"]}, {"$set": {"email": f"retired+{old['id']}@retired.dashlocal.invalid"}})
             old = None
         if not old:
             await db.users.update_one({"id": u["id"]}, {"$set": {"email": new}})
     admin = await db.users.find_one({"email": email})
     # an admin login left over from an old brand name (same password) is switched off once the new one exists
-    await db.users.update_many({"role": "admin", "email": {"$regex": r"@(dashlocal|arrivewise)\.app$", "$ne": email}, "disabled": {"$ne": True}},
+    await db.users.update_many({"role": "admin", "email": {"$regex": r"@(localdash|arrivewise)\.app$", "$ne": email}, "disabled": {"$ne": True}},
                                {"$set": {"disabled": True, "disabled_reason": "renamed"}})
     if not admin:
         await db.users.insert_one({"id": str(uuid.uuid4()), "email": email, "password_hash": hash_pw(pw), "role": "admin",
@@ -240,9 +240,9 @@ async def create_driver(body: NewDriverIn, request: Request):
 
 async def send_driver_invite(d: Driver, pin: str, base: str, reset: bool = False) -> str:
     """Welcome text with the sign-in link, phone and PIN (owner's choice). Never blocks creating the driver."""
-    body = (f"LocalDash: {d.name.split()[0]}, your driver PIN was reset. New PIN {pin}. Sign in at {base}/sign-in/staff "
+    body = (f"DashLocal: {d.name.split()[0]}, your driver PIN was reset. New PIN {pin}. Sign in at {base}/sign-in/staff "
             f"(Driver tab) with this phone number. Keep your PIN private.") if reset else (
-            f"Welcome to LocalDash, {d.name.split()[0]}! Sign in to the driver app at {base}/sign-in/staff "
+            f"Welcome to DashLocal, {d.name.split()[0]}! Sign in to the driver app at {base}/sign-in/staff "
             f"(Driver tab) with this phone number and PIN {pin}. Keep your PIN private.")
     try:
         tw = stop_routes.twilio_client()
@@ -319,7 +319,7 @@ async def driver_forgot_pin(body: ForgotPinIn, request: Request):
     limits = [(f"pinreq:{ip}", 10)]
     atts = await check_lockout(limits)
     await record_failure(limits, atts)  # every request counts towards the per-device limit
-    ok = {"ok": True, "message": "If this number belongs to a LocalDash driver, dispatch has been asked to reset your PIN. You'll get a text with a new one."}
+    ok = {"ok": True, "message": "If this number belongs to a DashLocal driver, dispatch has been asked to reset your PIN. You'll get a text with a new one."}
     phone = merchant_routes.normalize_phone(body.phone)
     d = await db.drivers.find_one({"phone": phone}, {"_id": 0}) if phone else None
     if not d:
@@ -341,7 +341,7 @@ async def tell_dispatch_pin_request(d: dict, base: str):
         try:
             tw = stop_routes.twilio_client()
             await run_in_threadpool(lambda: tw.messages.create(to=to, from_=stop_routes.twilio_number(),
-                                    body=f"LocalDash: driver {d['name']} ({d['phone']}) forgot their PIN. Tap to text them a new one: {link}"))
+                                    body=f"DashLocal: driver {d['name']} ({d['phone']}) forgot their PIN. Tap to text them a new one: {link}"))
         except Exception as e:
             logger.warning(f"Forgot-PIN text to dispatch failed: {e}")
     await onboarding.notify_admin(f"{d['name']} forgot their driver PIN",
@@ -546,13 +546,13 @@ async def terms_remind(merchant_id: str, request: Request):
     base = await onboarding.app_base(request)
     demo = {em for _, em, _ in DEMO_MERCHANT_USERS}
     html = onboarding.brand_email("Please review our updated Terms of Service",
-                                  f"<p>Hi {escape(m['name'])}, we updated the LocalDash Terms of Service ({escape(onboarding.TERMS_VERSION)}), including how payments work. "
+                                  f"<p>Hi {escape(m['name'])}, we updated the DashLocal Terms of Service ({escape(onboarding.TERMS_VERSION)}), including how payments work. "
                                   "Please sign in to your Merchant Portal and accept them to keep sending deliveries.</p>",
                                   ("Review & accept", f"{base}/merchant"))
     sent = []
     for to in dict.fromkeys(emails.TEST_INBOX if x["email"] in demo else x["email"] for x in pending):
         try:
-            await emails.send_email(to=to, subject="Action needed: accept LocalDash's updated Terms of Service", html=html)
+            await emails.send_email(to=to, subject="Action needed: accept DashLocal's updated Terms of Service", html=html)
             sent.append(to)
         except Exception as e:
             logger.warning(f"Terms reminder to {to}: {e}")

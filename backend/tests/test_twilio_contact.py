@@ -89,7 +89,7 @@ def test_driver_phone_404(api):
 def test_sms_real_send(api, stop):
     phone = api.get(f"{API}/stops/{stop['id']}").json()["customer_phone"]
     assert phone.startswith("+1519555"), "safety: only send to fictional seeded numbers"
-    r = api.post(f"{API}/stops/{stop['id']}/contact", json={"channel": "sms", "message": "TEST_ LocalDash test message"})
+    r = api.post(f"{API}/stops/{stop['id']}/contact", json={"channel": "sms", "message": "TEST_ DashLocal test message"})
     print("SMS response:", r.status_code, r.text[:300])
     assert r.status_code == 200, r.text
     body = r.json()

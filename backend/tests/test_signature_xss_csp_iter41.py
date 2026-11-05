@@ -39,7 +39,7 @@ def toks():
     db.login_attempts.delete_many({})
     lg = lambda e, p: requests.post(f"{BASE_URL}/api/auth/login", json={"email": e, "password": p}, headers=NA)
     dl = lambda ph, pin: requests.post(f"{BASE_URL}/api/auth/driver-login", json={"phone": ph, "pin": pin}, headers=NA)
-    return {"admin": _tok(lg(*ADMIN)), "drv1": _tok(dl("+15195550101", "482913")), "m1": _tok(lg("bakery@localdash.app", "Bakery2026"))}
+    return {"admin": _tok(lg(*ADMIN)), "drv1": _tok(dl("+15195550101", "482913")), "m1": _tok(lg("bakery@dashlocal.app", "Bakery2026"))}
 
 
 @pytest.fixture(scope="module")
@@ -204,11 +204,11 @@ class TestReportCsvHost:
 
     def test_forged_forwarded_host_public(self, toks, ctx):
         links = self._links(self._rows(toks, {"X-Forwarded-Host": "evil.com"}))
-        assert links and all(lk.startswith("https://localdash.preview.emergentagent.com/api/proof/") for lk in links), links
+        assert links and all(lk.startswith("https://dashlocal.preview.emergentagent.com/api/proof/") for lk in links), links
 
     def test_forged_host_internal(self, toks, ctx):
         # ingress may rewrite headers; hit the backend directly with forged Host + X-Forwarded-Host
         links = self._links(self._rows(toks, {"Host": "evil.com", "X-Forwarded-Host": "evil.com", "X-Forwarded-Proto": "https"},
                                        base="http://localhost:8001"))
-        assert links and all(lk.startswith("https://localdash.preview.emergentagent.com/api/proof/") for lk in links), links
-        assert db.settings.find_one({"key": "public_base"})["value"] == "https://localdash.preview.emergentagent.com"
+        assert links and all(lk.startswith("https://dashlocal.preview.emergentagent.com/api/proof/") for lk in links), links
+        assert db.settings.find_one({"key": "public_base"})["value"] == "https://dashlocal.preview.emergentagent.com"

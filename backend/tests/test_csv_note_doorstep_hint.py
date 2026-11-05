@@ -74,9 +74,9 @@ def saved_for(m, phone):
 @pytest.fixture(scope="module")
 def ctx():
     cleanup()
-    a = login("admin@localdash.app", "DashLocalAdmin2026")
+    a = login("admin@dashlocal.app", "DashLocalAdmin2026")
     requests.post(f"{API}/admin/reset", headers=a)
-    m1 = login("bakery@localdash.app", "Bakery2026")
+    m1 = login("bakery@dashlocal.app", "Bakery2026")
     yield {"a": a, "m1": m1}
     cleanup()
     requests.post(f"{API}/admin/reset", headers=a)

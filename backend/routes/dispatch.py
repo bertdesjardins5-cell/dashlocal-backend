@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api")
 # ---------------------------------------------------------------- endpoints
 @router.get("/")
 async def root():
-    return {"message": "LocalDash API"}
+    return {"message": "DashLocal API"}
 
 
 @router.post("/admin/reset")

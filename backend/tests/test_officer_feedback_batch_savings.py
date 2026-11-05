@@ -34,7 +34,7 @@ def driver_login(phone, pin):
 
 @pytest.fixture(scope="module")
 def admin():
-    return login("admin@localdash.app", "DashLocalAdmin2026")
+    return login("admin@dashlocal.app", "DashLocalAdmin2026")
 
 
 @pytest.fixture(scope="module")
@@ -63,7 +63,7 @@ class TestPrivacyOfficer:
         body = {"officer_name": "TEST Jane", "officer_email": "jane@x.com"}
         assert requests.put(f"{API}/admin/privacy/officer", json=body, headers=NO).status_code == 401
         assert requests.put(f"{API}/admin/privacy/officer", json=body, headers=drv1).status_code == 403
-        m = login("bakery@localdash.app", "Bakery2026")
+        m = login("bakery@dashlocal.app", "Bakery2026")
         assert requests.put(f"{API}/admin/privacy/officer", json=body, headers=m).status_code == 403
 
     @pytest.mark.parametrize("body,code", [
@@ -143,7 +143,7 @@ class TestDriverFeedback:
         assert requests.get(f"{API}/drivers/drv-1/feedback", headers=drv2).status_code == 403
         assert requests.get(f"{API}/drivers/drv-1/feedback", headers=NO).status_code == 401
         assert requests.get(f"{API}/drivers/drv-1/feedback", headers=admin).status_code == 200
-        m = login("bakery@localdash.app", "Bakery2026")
+        m = login("bakery@dashlocal.app", "Bakery2026")
         assert requests.get(f"{API}/drivers/drv-1/feedback", headers=m).status_code == 403
 
     def test_unknown_driver_404(self, admin):
@@ -169,7 +169,7 @@ class TestBatchSavings:
         db.invoices.delete_many({"id": {"$in": TEST_INV}})
 
     def test_mer2_savings(self):
-        h = login("books@localdash.app", "Books2026")
+        h = login("books@dashlocal.app", "Books2026")
         r = requests.get(f"{API}/merchants/mer-2/invoices", headers=h)
         assert r.status_code == 200, r.text
         bs = r.json()["batch_savings"]
@@ -180,10 +180,10 @@ class TestBatchSavings:
         assert bs["label"] == datetime.now(TZ).strftime("%B %Y")
 
     def test_mer1_no_savings(self):
-        h = login("bakery@localdash.app", "Bakery2026")
+        h = login("bakery@dashlocal.app", "Bakery2026")
         r = requests.get(f"{API}/merchants/mer-1/invoices", headers=h)
         assert r.status_code == 200 and "batch_savings" not in r.json()
 
     def test_cross_merchant_forbidden(self):
-        h = login("bakery@localdash.app", "Bakery2026")
+        h = login("bakery@dashlocal.app", "Bakery2026")
         assert requests.get(f"{API}/merchants/mer-2/invoices", headers=h).status_code == 403

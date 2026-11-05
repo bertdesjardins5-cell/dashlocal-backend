@@ -13,8 +13,8 @@ API = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/") + "/api"
 TZ = ZoneInfo("America/Los_Angeles")
 today = datetime.now(TZ).date()
 last_mon = today - timedelta(days=today.weekday()) - timedelta(weeks=1)
-a = {"Authorization": "Bearer " + requests.post(f"{API}/auth/login", json={"email": "admin@localdash.app", "password": "DashLocalAdmin2026"}).json()["token"]}
-m = {"Authorization": "Bearer " + requests.post(f"{API}/auth/login", json={"email": "bakery@localdash.app", "password": "Bakery2026"}).json()["token"]}
+a = {"Authorization": "Bearer " + requests.post(f"{API}/auth/login", json={"email": "admin@dashlocal.app", "password": "DashLocalAdmin2026"}).json()["token"]}
+m = {"Authorization": "Bearer " + requests.post(f"{API}/auth/login", json={"email": "bakery@dashlocal.app", "password": "Bakery2026"}).json()["token"]}
 assert requests.post(f"{API}/admin/reset", headers=a).status_code == 200
 for d, z in {"drv-1": "North", "drv-2": None, "drv-3": None}.items():
     requests.put(f"{API}/admin/drivers/{d}/compass-zone", json={"zone": z}, headers=a)

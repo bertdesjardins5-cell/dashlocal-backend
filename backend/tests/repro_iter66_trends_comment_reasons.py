@@ -16,7 +16,7 @@ try:
     tok = requests.post(f"{BASE}/api/track/TS9903/verify", json={"last4": "0172"}).json()["token"]
     r = requests.post(f"{BASE}/api/stops/{sid}/rating", json={"stars": 1, "comment": "TEST_ parcel was soaked, driver never knocked"}, headers={"X-Order-Token": tok})
     print("rate", r.status_code, r.json().get("apology_sms_status"))
-    adm = requests.post(f"{BASE}/api/auth/login", json={"email": "admin@localdash.app", "password": "DashLocalAdmin2026"}).json()["token"]
+    adm = requests.post(f"{BASE}/api/auth/login", json={"email": "admin@dashlocal.app", "password": "DashLocalAdmin2026"}).json()["token"]
     t = requests.get(f"{BASE}/api/alerts/trends?days=7", headers={"Authorization": f"Bearer {adm}"}).json()
     for row in t["by_driver"]:
         if row["key"] == "drv-1":

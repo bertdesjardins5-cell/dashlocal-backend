@@ -19,12 +19,12 @@ def login(email, pw):
 
 @pytest.fixture(scope="module")
 def admin():
-    return login("admin@localdash.app", "DashLocalAdmin2026")
+    return login("admin@dashlocal.app", "DashLocalAdmin2026")
 
 
 @pytest.fixture(scope="module")
 def bakery():
-    return login("bakery@localdash.app", "Bakery2026")
+    return login("bakery@dashlocal.app", "Bakery2026")
 
 
 @pytest.fixture(scope="module")

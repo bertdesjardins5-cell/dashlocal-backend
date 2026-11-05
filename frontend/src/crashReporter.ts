@@ -3,9 +3,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 
 // Tiny crash reporter (no third-party service): any uncaught JS error is saved on the phone and sent to
-// LocalDash (Admin › Crash reports), right away if possible, otherwise on the next launch.
+// DashLocal (Admin › Crash reports), right away if possible, otherwise on the next launch.
 // Imported first in app/_layout.tsx so it also catches errors thrown while the rest of the app loads.
-const KEY = "localdash_pending_crash";
+const KEY = "dashlocal_pending_crash";
 const URL_BASE = (process.env.EXPO_PUBLIC_BACKEND_URL || "").replace(/\/$/, "");
 
 function device() {

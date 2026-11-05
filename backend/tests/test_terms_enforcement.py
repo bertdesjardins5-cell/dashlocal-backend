@@ -3,7 +3,7 @@ import os
 import requests
 from pymongo import MongoClient
 
-BASE = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://localdash.preview.emergentagent.com").rstrip("/")
+BASE = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://dashlocal.preview.emergentagent.com").rstrip("/")
 users = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]].users
 NO = {"X-No-Auto-Auth": "1"}
 
@@ -28,10 +28,10 @@ def test_driver_blocked_until_terms_accepted():
 
 
 def test_store_reads_ok_writes_blocked_payments_allowed():
-    u = users.find_one({"email": "books@localdash.app"}, {"_id": 0, "id": 1, "terms_version": 1})
+    u = users.find_one({"email": "books@dashlocal.app"}, {"_id": 0, "id": 1, "terms_version": 1})
     users.update_one({"id": u["id"]}, {"$unset": {"terms_version": ""}})
     try:
-        h = login("login", {"email": "books@localdash.app", "password": "Books2026"})
+        h = login("login", {"email": "books@dashlocal.app", "password": "Books2026"})
         assert requests.get(f"{BASE}/api/merchants/mer-2", headers=h).status_code == 200
         r = requests.put(f"{BASE}/api/merchants/mer-2/stops/nope/amount-due", json={"amount": 5}, headers=h)
         assert r.status_code == 403 and "Terms of Service" in r.json()["detail"]

@@ -16,7 +16,7 @@ mid = f"mer-2:{today}:afternoon"
 db.pickups.insert_one({"manifest_id": mid, "merchant_id": "mer-2", "route_id": "TEST", "driver_id": "drv-1", "picked_up_at": datetime.utcnow().isoformat() + "Z",
                        "parcel_count": 3, "expected": 3, "on_time": True, "TEST": True})
 try:
-    t = requests.post(f"{BASE}/api/auth/login", json={"email": "books@localdash.app", "password": "Books2026"}).json()["token"]
+    t = requests.post(f"{BASE}/api/auth/login", json={"email": "books@dashlocal.app", "password": "Books2026"}).json()["token"]
     m = requests.get(f"{BASE}/api/merchants/mer-2", headers={"Authorization": f"Bearer {t}"}).json()
     aft = [r for r in m["runs"] if r["key"] == "afternoon"][0]
     print("now", datetime.now(ZoneInfo("America/Toronto")).strftime("%H:%M"), "| afternoon run date:", aft["date"], "today:", aft["today"], "| pickup:", aft["pickup"])

@@ -77,7 +77,7 @@ class TestInvoiceLocks:
         finally:
             db.square_locks.delete_many({"key": f"inv:{inv['id']}"})
         # manual pay now succeeds, then autopay must not charge it again
-        b = requests.post(f"{API}/auth/login", json={"email": "bakery@localdash.app", "password": "Bakery2026"}, headers=NOAUTH).json()["token"]
+        b = requests.post(f"{API}/auth/login", json={"email": "bakery@dashlocal.app", "password": "Bakery2026"}, headers=NOAUTH).json()["token"]
         h = {"Authorization": f"Bearer {b}", **NOAUTH}
         link = requests.post(f"{API}/merchants/mer-1/invoices/square-pay", json={"ids": [inv["id"]]}, headers=h, timeout=30).json()["url"]
         r = complete(tok(link))

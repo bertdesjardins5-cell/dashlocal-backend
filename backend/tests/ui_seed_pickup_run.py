@@ -13,7 +13,7 @@ BASE = (os.environ.get("EXPO_PUBLIC_BACKEND_URL") or os.environ.get("EXPO_BACKEN
 db = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
 
 if sys.argv[1] == "setup":
-    t = requests.post(f"{BASE}/api/auth/login", json={"email": "books@localdash.app", "password": "Books2026"}).json()["token"]
+    t = requests.post(f"{BASE}/api/auth/login", json={"email": "books@dashlocal.app", "password": "Books2026"}).json()["token"]
     h = {"Authorization": f"Bearer {t}"}
     job = requests.post(f"{BASE}/api/merchants/mer-2/import?run=evening&consent=true", headers=h,
                         files={"file": ("TEST_ui.csv", "customer_name,phone,address\nTEST_UI Pharmacy,+15195550189,200 King St W Kitchener\n", "text/csv")}).json()

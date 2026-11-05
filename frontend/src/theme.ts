@@ -85,7 +85,7 @@ const light = {
   divider: "#0A0A0A", // subtle list separators
 
   // ---------------------------------------------------------------------------
-  // LocalDash brand (landing page + sign-in screens only; dashboards keep the tokens above)
+  // DashLocal brand (landing page + sign-in screens only; dashboards keep the tokens above)
   // ---------------------------------------------------------------------------
   brandCharcoal: "#333335",
   onBrandCharcoal: "#FFFFFF",
@@ -99,7 +99,7 @@ const light = {
   onBrandGold: "#333335",
   brandCream: "#FBF7E6", // style-guide cream (the #F9F000 code renders as bright yellow, so the swatch's pale cream is used)
   onBrandCream: "#333335",
-  brandRed: "#D7262E", // logo arrow + "LOCAL"
+  brandRed: "#D7262E", // logo arrow + "DASH"
   brandMuted: "#5C5C5E",
   brandLine: "#E5E5E5",
 };

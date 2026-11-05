@@ -1,4 +1,4 @@
-"""Capture store-listing screenshots of LocalDash at phone size (Play: 1080x1920, App Store 6.7": 1290x2796)."""
+"""Capture store-listing screenshots of DashLocal at phone size (Play: 1080x1920, App Store 6.7": 1290x2796)."""
 import asyncio
 import json
 import os
@@ -9,8 +9,8 @@ from playwright.async_api import async_playwright
 BASE = sys.argv[1].rstrip("/")
 OUT = "/app/store_screenshots"
 SIZES = {"android": (360, 640), "iphone": (430, 932)}
-STORE = ("staff", {"email": "bakery@localdash.app", "password": "Bakery2026"})
-ADMIN = ("staff", {"email": "admin@localdash.app", "password": "DashLocalAdmin2026"})
+STORE = ("staff", {"email": "bakery@dashlocal.app", "password": "Bakery2026"})
+ADMIN = ("staff", {"email": "admin@dashlocal.app", "password": "DashLocalAdmin2026"})
 SHOTS = [  # (file, path, login, (tracking code, last4) to unlock, action)
     ("1_track_live", "/customer/MD1001", None, ("MD1001", "0100"), None),
     ("2_rate_delivery", "/customer/MH2088", None, ("MH2088", "0195"), "rate"),
@@ -32,6 +32,8 @@ async def act(page, action):
     try:
         if action == "notnow":
             await page.get_by_text("NOT NOW", exact=True).first.click(timeout=5000)
+            # store builds have no SIMULATE mode (dev-only), so match the release screen
+            await page.evaluate("() => { const e = document.querySelector('[data-testid=tracking-mode-sim]'); if (e) e.style.display = 'none'; }")
         elif action == "rate":
             await page.get_by_test_id("rating-star-5").click(timeout=5000)
             await page.get_by_test_id("rating-tag-on-time").click()
