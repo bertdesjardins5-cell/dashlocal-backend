@@ -39,7 +39,7 @@ def brand_email(title: str, body_html: str, cta: Optional[tuple] = None) -> str:
            f'border-radius:10px;text-decoration:none;font-family:Arial,sans-serif;font-weight:bold">{escape(cta[0])}</a></p>') if cta else ""
     return (f'<!doctype html><html><body style="margin:0;background:#F5F5F5;padding:24px">'
             f'<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:16px;padding:28px;color:#333335">'
-            f'<div style="font-family:Arial,sans-serif;font-weight:bold;font-size:20px"><span style="color:#333335">ARRIVE</span><span style="color:#D7262E">WISE</span></div>'
+            f'<div style="font-family:Arial,sans-serif;font-weight:bold;font-size:20px"><span style="color:#333335">LOCAL</span><span style="color:#D7262E">DASH</span></div>'
             f'<h1 style="font-family:Arial,sans-serif;font-size:22px;margin:20px 0 8px">{escape(title)}</h1>'
             f'<div style="font-family:Georgia,serif;font-size:16px;line-height:1.6">{body_html}</div>{btn}'
             f'<p style="font-family:Georgia,serif;font-size:13px;color:#5C5C5E">Same-day local delivery for small businesses.</p></div></body></html>')

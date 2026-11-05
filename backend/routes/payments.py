@@ -43,7 +43,7 @@ def statement_pdf(m: dict, month: str, invs: list, biz: dict, owed: float) -> by
     e = lambda v: escape(str(v or ""))
     money = lambda n: f"CA${n:,.2f}"
     label = datetime.strptime(month, "%Y-%m").strftime("%B %Y")
-    head = Table([[Paragraph('<font name="Helvetica-Bold" size="18" color="#333335">ARRIVE</font><font name="Helvetica-Bold" size="18" color="#D7262E">WISE</font>', body),
+    head = Table([[Paragraph('<font name="Helvetica-Bold" size="18" color="#333335">LOCAL</font><font name="Helvetica-Bold" size="18" color="#D7262E">DASH</font>', body),
                    Paragraph(f'<para alignment="right"><font name="Helvetica-Bold" size="18">MONTHLY STATEMENT</font><br/>{e(label)}</para>', body)]], colWidths=[3.5 * inch, 3.6 * inch])
     who = Table([[Paragraph(f"<b>{e(biz['name'])}</b><br/>{e(biz['address'])}<br/>HST Reg. No. {e(biz['hst_number'])}", body),
                   Paragraph(f"<para alignment='right'><b>FOR</b><br/>{e(m['name'])}<br/>{e(m.get('address') or 'Address not on file')}</para>", body)]], colWidths=[3.5 * inch, 3.6 * inch])

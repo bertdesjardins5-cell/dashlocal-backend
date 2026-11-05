@@ -298,7 +298,7 @@ def invoice_pdf(inv: dict) -> bytes:
     e = lambda v: escape(str(v or ""))
     money = lambda n: f"CA${n:,.2f}"
     biz, mer, d = inv["business"], inv["merchant"], inv["delivery"]
-    logo = Paragraph('<font name="Helvetica-Bold" size="18" color="#333335">ARRIVE</font><font name="Helvetica-Bold" size="18" color="#D7262E">WISE</font>', body)
+    logo = Paragraph('<font name="Helvetica-Bold" size="18" color="#333335">LOCAL</font><font name="Helvetica-Bold" size="18" color="#D7262E">DASH</font>', body)
     head = Table([[logo, Paragraph("INVOICE", ParagraphStyle("r", parent=h, alignment=2))]], colWidths=[3.45 * inch, 3.45 * inch])
     meta = Table([
         [Paragraph(f"<b>{e(biz['name'])}</b><br/>{e(biz['address'])}<br/>HST Reg. No. {e(biz['hst_number'])}", body),

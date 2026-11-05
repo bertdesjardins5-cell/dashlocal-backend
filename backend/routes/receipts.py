@@ -52,7 +52,7 @@ def receipt_pdf(st: Stop, store: dict, biz: dict, driver: str) -> bytes:
                             title=f"Signed delivery receipt {st.tracking_code}", author=biz["name"])
     body = ParagraphStyle("b", parent=getSampleStyleSheet()["Normal"], fontName="Helvetica", fontSize=10, leading=14, textColor=rl.HexColor("#333335"))
     e = lambda v: escape(str(v or ""))  # noqa: E731
-    head = Table([[Paragraph('<font name="Helvetica-Bold" size="18" color="#333335">ARRIVE</font><font name="Helvetica-Bold" size="18" color="#D7262E">WISE</font>', body),
+    head = Table([[Paragraph('<font name="Helvetica-Bold" size="18" color="#333335">LOCAL</font><font name="Helvetica-Bold" size="18" color="#D7262E">DASH</font>', body),
                    Paragraph('<para alignment="right"><font name="Helvetica-Bold" size="16">SIGNED DELIVERY RECEIPT</font></para>', body)]],
                  colWidths=[3.2 * inch, 3.7 * inch])
     rows = [("Sender", store["name"])] + ([("Matter / file no.", st.matter_ref)] if st.matter_ref else []) + [("Tracking code", st.tracking_code), ("Delivered to", st.customer_name), ("Address", st.address),

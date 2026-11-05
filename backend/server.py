@@ -6,7 +6,7 @@ import time
 import uuid
 import re
 from core import ENC_FIELDS, HTML_CSP, client, db, enc_str, init_storage, logger, now_iso
-from routes import alerts, auth, billing, dispatch, emails, feedback, invoices, launch, merchants as merchant_routes, onboarding, payments, pickups as pickup_routes, privacy, push, receipts, setup, linkpages, scorecards, square, crashes, account, stops as stop_routes
+from routes import alerts, auth, awards, billing, dispatch, emails, feedback, invoices, launch, merchants as merchant_routes, onboarding, payments, pickups as pickup_routes, privacy, push, receipts, setup, linkpages, scorecards, square, crashes, account, stops as stop_routes
 from services import realtime
 from services import seed
 
@@ -46,6 +46,7 @@ async def startup():
     for did, z in (("drv-1", "North"), ("drv-2", "South"), ("drv-3", "East")) if demo else ():  # demo coverage for auto dispatch
         await db.drivers.update_one({"id": did, "compass_zone": {"$exists": False}}, {"$set": {"compass_zone": z}})
     realtime.spawn(emails.weekly_scheduler())
+    realtime.spawn(awards.award_scheduler())
     realtime.spawn(alerts.late_alert_watcher())
     realtime.spawn(onboarding.review_reminder_watcher())
     realtime.spawn(invoices.backfill_invoices())
@@ -96,7 +97,7 @@ async def audit_and_security_headers(request: Request, call_next):
     return resp
 
 
-for module in (pickup_routes, dispatch, stop_routes, feedback, scorecards, auth, merchant_routes, emails, alerts, billing, invoices, payments, onboarding, privacy, launch, setup, push, receipts, square, crashes, account):
+for module in (pickup_routes, dispatch, stop_routes, feedback, scorecards, auth, merchant_routes, emails, alerts, billing, invoices, payments, onboarding, privacy, launch, setup, push, receipts, square, crashes, account, awards):
     app.include_router(module.router)
 
 # Only the app's own web addresses may call the API from a browser (phone apps send no Origin and are unaffected).

@@ -230,3 +230,5 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - Ratings: customer comment box (300 chars) on RatingPrompt; RatingsCard (store via GET /api/merchants/{id}/ratings, admin via GET /api/admin/ratings, latest 5 + show all, date+time); drivers see comments in their feedback card. Trends reasons now from rating_tags only.
 - Captioned screenshots: scripts/caption_screenshots.py → /app/store_screenshots/captioned/{android,iphone}; zip (plain/ + captioned/) at GET /api/store-screenshots.zip.
 - Driver badge "5-STAR MONTH" (scorecards.five_star_month): ≥4.8★ avg over last 30 days, min 5 ratings; shows in driver scorecard, admin scorecards and triggers the badge celebration.
+- Driver of the Month (routes/awards.py): on the 1st at 08:00 Eastern, emails ADMIN_NOTIFY_EMAIL/ADMIN_EMAIL last month's top-rated driver (min 5 ratings), best 4-5★ comments, top compliments, runners-up. Admin card DriverAwardCard with "Email it now" (5-min cooldown). GET /api/admin/driver-award, POST /api/admin/driver-award/send-now.
+- Fixed leftover ARRIVEWISE logos in emails, PDFs (invoices/receipts/payments) and link error pages → LOCALDASH.

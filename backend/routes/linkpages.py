@@ -48,7 +48,7 @@ h1{{font-family:Arial,sans-serif;font-size:22px;margin:0 0 8px}}p{{font-size:16p
 .how{{background:#F1F6F2;border-left:4px solid #1F5130;padding:12px 14px;border-radius:6px}}
 .btn{{display:inline-block;background:#1F5130;color:#fff;text-decoration:none;font-family:Arial,sans-serif;font-weight:700;
 padding:14px 20px;border-radius:8px;margin-top:6px}}.foot{{font-size:13px;color:#77777A;margin-top:18px}}</style></head>
-<body><div class="wrap" data-testid="link-error-page"><div class="logo">ARRIVE<span>WISE</span></div><div class="card">
+<body><div class="wrap" data-testid="link-error-page"><div class="logo">LOCAL<span>DASH</span></div><div class="card">
 <h1>{escape(title)}</h1><p>{escape(why)}</p><p class="how"><b>How to get a new one:</b> {how}</p>{btn}
 <p class="foot">Need help? Email hello@localdash.ca.</p></div></div></body></html>"""
     return HTMLResponse(html, status_code=exc.status, headers={"Content-Security-Policy": HTML_CSP, "Cache-Control": "no-store"})
