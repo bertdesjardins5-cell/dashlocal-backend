@@ -1,5 +1,4 @@
 import { Platform } from "react-native";
-import Constants from "expo-constants";
 import * as Device from "expo-device";
 import { api } from "@/src/api";
 import { Notifications } from "@/src/notifications";
@@ -15,10 +14,7 @@ export async function registerForPush(userId: string) {
     if (status !== "granted" && current.canAskAgain) status = (await N.requestPermissionsAsync()).status;
     if (status !== "granted") return;
     const token = await N.getDevicePushTokenAsync();
-    // Expo push token only exists in builds linked to your own Expo (EAS) project (self-hosting); skipped otherwise.
-    const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
-    const expo = projectId ? await N.getExpoPushTokenAsync({ projectId }).catch(() => null) : null;
-    await api("/register-push", { method: "POST", body: { user_id: userId, platform: Platform.OS, device_token: String(token.data), expo_token: expo?.data ?? null } });
+    await api("/register-push", { method: "POST", body: { user_id: userId, platform: Platform.OS, device_token: String(token.data) } });
   } catch (e) {
     console.log("push registration skipped", e);
   }

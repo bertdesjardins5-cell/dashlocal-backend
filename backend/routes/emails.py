@@ -29,9 +29,6 @@ EMAIL_BASE_URL = "https://integrations.emergentagent.com"  # constant on purpose
 EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY", "")
 EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "DashLocal")
 EMAIL_REPLY_TO = os.environ.get("EMAIL_REPLY_TO")
-# Own Resend account when RESEND_API_KEY is set (self-hosting); otherwise Emergent managed email.
-RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "").strip()
-EMAIL_FROM_ADDRESS = os.environ.get("EMAIL_FROM_ADDRESS", "").strip()  # must be on your Resend-verified domain
 TEST_INBOX = "delivered@resend.dev"  # seeded demo store logins are not real inboxes
 WEEKLY_SEND_HOUR = 8  # Monday 08:00 depot (Eastern) time
 WEEKLY_LINK_DAYS = 7
@@ -110,30 +107,9 @@ def _assert_safe_email(subject: str, html: str) -> None:
                 raise ValueError(f"Anchor text {m.group(1)!r} ≠ real link host {real!r} (G3)")
 
 
-async def send_via_resend(to: str, subject: str, html: str) -> str:
-    payload = {"from": f"{EMAIL_FROM_NAME} <{EMAIL_FROM_ADDRESS}>", "to": [to], "subject": subject, "html": html}
-    if EMAIL_REPLY_TO:
-        payload["reply_to"] = [EMAIL_REPLY_TO]
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0)) as c:
-            resp = await c.post("https://api.resend.com/emails", json=payload,
-                                headers={"Authorization": f"Bearer {RESEND_API_KEY}", "User-Agent": "dashlocal-api/1.0"})
-    except httpx.HTTPError as e:
-        logger.error(f"Resend send error: {e}")
-        raise RuntimeError("Email service unreachable")
-    if resp.status_code >= 400:
-        logger.error(f"Resend send failed: {resp.status_code} {resp.text[:300]}")
-        raise RuntimeError("Email paused: rate or quota limit" if resp.status_code == 429 else f"Email provider error {resp.status_code}")
-    return resp.json().get("id") or ""
-
-
 async def send_email(*, to: str, subject: str, html: str) -> str:
     """Returns the provider id; raises RuntimeError with a short reason on failure."""
     _assert_safe_email(subject, html)
-    if RESEND_API_KEY:
-        if not EMAIL_FROM_ADDRESS:
-            raise RuntimeError("EMAIL_FROM_ADDRESS is not set")
-        return await send_via_resend(to, subject, html)
     payload = {"to": [to], "subject": subject, "html": html, "from_name": EMAIL_FROM_NAME}
     if EMAIL_REPLY_TO:
         payload["contact_email"] = EMAIL_REPLY_TO
