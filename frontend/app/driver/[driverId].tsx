@@ -369,7 +369,7 @@ export default function Manifest() {
           {route.status === "active" && mode === "gps" ? (
             <View style={{ paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, gap: spacing.xs }}>
               <Mono style={s.meta} testID="gps-status">
-                {locked ? "AUTO ARRIVAL ON · WORKS WITH THE PHONE LOCKED" : "AUTO ARRIVAL ON · KEEP THE APP OPEN (ALLOW \"ALWAYS\" LOCATION FOR LOCKED PHONE)"}
+                {locked ? "AUTO ARRIVAL ON · WORKS WITH THE PHONE LOCKED" : bgState === "unsupported" ? "AUTO ARRIVAL ON · KEEP DASHLOCAL OPEN ON SCREEN" : "AUTO ARRIVAL ON · KEEP THE APP OPEN (ALLOW \"ALWAYS\" LOCATION FOR LOCKED PHONE)"}
               </Mono>
               {!locked && bgState === "ask" ? (
                 <Pressable testID="bg-location-enable" onPress={() => setDisclose(true)} style={{ minHeight: 44, justifyContent: "center" }}>

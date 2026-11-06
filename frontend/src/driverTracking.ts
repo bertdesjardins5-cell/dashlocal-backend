@@ -4,11 +4,13 @@ import * as TaskManager from "expo-task-manager";
 import { api } from "@/src/api";
 import { ensureSession, getSessionUser } from "@/src/session";
 
-// Locked-phone location for drivers: the OS keeps sending positions so stops still auto-mark ARRIVED within 50 m.
+// Locked-phone location for drivers (iPhone only): the OS keeps sending positions so stops still auto-mark ARRIVED within 50 m.
+// Android is app-open only (no background location permission), so this is skipped there.
 // Needs an installed app build; Expo Go and the web preview fall back to tracking only while the app is open.
 export const BG_TASK = "dashlocal-driver-location";
+const BG_SUPPORTED = Platform.OS === "ios";
 
-if (Platform.OS !== "web") {
+if (BG_SUPPORTED) {
   TaskManager.defineTask<{ locations: Location.LocationObject[] }>(BG_TASK, async ({ data, error }) => {
     const loc = data?.locations?.[data.locations.length - 1];
     if (error || !loc) return;
@@ -26,7 +28,7 @@ export type BgStatus = "granted" | "ask" | "blocked" | "unsupported";
 
 /** "Always" location state, without prompting (so the app can show its disclosure first). */
 export async function backgroundStatus(): Promise<BgStatus> {
-  if (Platform.OS === "web") return "unsupported";
+  if (!BG_SUPPORTED) return "unsupported";
   try {
     const bg = await Location.getBackgroundPermissionsAsync();
     return bg.granted ? "granted" : bg.canAskAgain ? "ask" : "blocked";
@@ -37,7 +39,7 @@ export async function backgroundStatus(): Promise<BgStatus> {
 
 /** Start OS location updates. Only asks for "Always" when `ask` is true — call it after the driver read the disclosure. */
 export async function startBackgroundTracking(ask = false): Promise<boolean> {
-  if (Platform.OS === "web") return false;
+  if (!BG_SUPPORTED) return false;
   try {
     let bg = await Location.getBackgroundPermissionsAsync();
     if (!bg.granted && bg.canAskAgain && ask) bg = await Location.requestBackgroundPermissionsAsync();
@@ -62,7 +64,7 @@ export async function startBackgroundTracking(ask = false): Promise<boolean> {
 }
 
 export async function stopBackgroundTracking() {
-  if (Platform.OS === "web") return;
+  if (!BG_SUPPORTED) return;
   try {
     if (await Location.hasStartedLocationUpdatesAsync(BG_TASK)) await Location.stopLocationUpdatesAsync(BG_TASK);
   } catch {}

@@ -26,17 +26,12 @@ Data is encrypted in transit (HTTPS): **Yes**. Users can ask for their data to b
 
 Third parties to declare as processors: Square (payments), Twilio (SMS), Firebase/Expo (push), Resend (email).
 
-## 3. Background location permission declaration
-**Feature:** Drivers' live delivery tracking and automatic stop arrival.
+## 3. Location permissions (Android: no background location)
+The Android app only uses location **while it is open on screen** (ACCESS_FINE_LOCATION / ACCESS_COARSE_LOCATION).
+ACCESS_BACKGROUND_LOCATION and FOREGROUND_SERVICE_LOCATION are blocked in `app.json`, so **no background location declaration or video is needed** in Play Console.
+If Play Console still shows an old background location declaration from an earlier draft, answer "No, the app does not access location in the background".
 
-**Justification text (paste in Play Console):**
-> DashLocal is a delivery app for drivers. While a driver has an active delivery route, the app uses location in the background so (1) customers can see the driver's live position and an accurate arrival time, and (2) stops are marked "arrived" automatically when the driver reaches the address, even with the phone locked or in a pocket. Tracking starts only when the driver starts a route and stops when the route ends or the driver goes off duty. A clear in-app notice explains this before Android asks for permission, and a persistent notification is shown while tracking runs. Customers and store accounts never have their location collected.
-
-**Video (required):** record a 30-second screen capture on a phone:
-1. Sign in as a driver → open the active route.
-2. Show the DashLocal location notice → tap Continue → Android permission prompt → "Allow all the time".
-3. Show the persistent tracking notification, lock the phone, then open the customer tracking page so the map updates.
-Upload it to YouTube (unlisted) and paste the link.
+Location use (for the Data safety form): precise location, collected only from drivers during an active route while the app is open, used for live delivery tracking and arrival times. Customers and stores are never located.
 
 ## 4. Reviewer access (App access section)
 Choose "All or some functionality is restricted" and give:

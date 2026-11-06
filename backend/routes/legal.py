@@ -15,7 +15,7 @@ PRIVACY_SECTIONS = [
     ("What we collect", [
         "Recipients: name, delivery address, phone number, delivery instructions (for example a gate code or \"leave at side door\"), the delivery time window, and proof of delivery (a doorstep photo or signature, and the time it was delivered). We may also keep a rating and comment if you choose to leave one.",
         "Shops and pharmacies: business name, contact name, work email, phone, store and pickup address, and billing records. Card details are entered into Square's secure form; DashLocal never stores card numbers.",
-        "Drivers: name, phone number, vehicle, and location while a route is active. Location is only collected during an active delivery route, including in the background so stops are marked arrived with the phone locked.",
+        "Drivers: name, phone number, vehicle, and location while a route is active. Location is only collected during an active delivery route. On Android it is collected only while the DashLocal app is open on screen; on iPhone, a driver can also allow it in the background so stops are marked arrived with the phone locked.",
         "Device and app data: a push notification token and crash reports, used only to send delivery alerts and fix problems.",
         "What we do not collect: prescription names, medications, dosages, diagnoses or any other health details. Shops are told never to put these in order notes."]),
     ("Why we collect it", [
