@@ -58,7 +58,7 @@ Do **not** raise the replica count above 1. The billing, email and alert jobs ru
 | `EMAIL_FROM_NAME` | `DashLocal` |
 | `EMAIL_REPLY_TO` | Optional reply-to address |
 | `ADMIN_NOTIFY_EMAIL` | Where admin alerts go |
-| `EMERGENT_EMAIL_KEY` | Emergent-only; see section 5 |
+| `EMERGENT_EMAIL_KEY` | Not needed once `RESEND_API_KEY` is set (section 5) |
 
 ### Optional
 `NOMINATIM_USER_AGENT` (address lookup, e.g. `dashlocal/1.0 (ops@dashlocal.ca)`), `SKIP_TWILIO_SEND`, `LAUNCH_CLEANUP_PHASE`, `LAUNCH_CLEANUP_DESTRUCTIVE`
@@ -66,14 +66,37 @@ Do **not** raise the replica count above 1. The billing, email and alert jobs ru
 ### Not needed on Railway
 `STRIPE_API_KEY` (unused), `EXPO_PACKAGER_*`, `EXPO_TUNNEL_SUBDOMAIN`, `METRO_CACHE_ROOT`. `PORT` is set by Railway automatically.
 
-## 5. Not working on Railway until replaced (Emergent-only services)
-| Feature | Today | Replace with | Variable today |
-|---|---|---|---|
-| Doorstep photos, signatures, uploads | Emergent storage (`core.py` put_object/get_object) | Cloudflare R2 / AWS S3 | `EMERGENT_LLM_KEY`, `INTEGRATION_PROXY_URL` |
-| All emails (receipts, alerts, invites) | Emergent managed Resend (`routes/emails.py`) | Your own Resend account | `EMERGENT_EMAIL_KEY` |
-| Push alerts to phones | Emergent push (`routes/push.py`) | Expo push service or Firebase | `EMERGENT_PUSH_KEY` |
+## 5. Your own photo storage, email and push alerts
+The app switches to these automatically when you set their settings. If they aren't set, it keeps using Emergent's services, so the live Emergent app is unchanged.
 
-Until these three are replaced, deliveries, tracking, logins, billing and texts work, but photo uploads, emails and push alerts fail.
+### Photo and signature storage: Cloudflare R2 or AWS S3
+| Name | What it is |
+|---|---|
+| `S3_BUCKET` | Bucket name (setting this turns on your own storage) |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Access keys with read and write rights on that bucket only |
+| `S3_ENDPOINT_URL` | R2 only: `https://<account-id>.r2.cloudflarestorage.com` (leave empty for AWS) |
+| `S3_REGION` | AWS region, e.g. `ca-central-1` (R2 uses `auto` automatically) |
+- [ ] Keep the bucket **private** (no public access); the app serves files to signed-in users itself.
+- [ ] Copy existing files from the Emergent export into the bucket **with the same paths** (they start with `multidrop-delivery/uploads/...`), or old photos won't open.
+
+### Email: your own Resend account
+| Name | What it is |
+|---|---|
+| `RESEND_API_KEY` | Resend "sending access" API key (setting this turns on Resend) |
+| `EMAIL_FROM_ADDRESS` | Sender address on your verified Resend domain, e.g. `notifications@dashlocal.ca` |
+| `EMAIL_FROM_NAME` / `EMAIL_REPLY_TO` | Already in use: sender name and reply-to |
+- [ ] In Resend → Domains, add `dashlocal.ca` and its DNS records (SPF/DKIM); wait until it shows Verified.
+- [ ] Free plan: 100 emails/day, 3,000/month. Pick a paid plan if you send more.
+
+### Push alerts: Expo push service (free)
+| Name | What it is |
+|---|---|
+| `PUSH_PROVIDER` | `expo` (turns on Expo push) |
+- [ ] The phone apps must be built from **your own Expo project** (`npx eas init`, section 6), so each phone gets an Expo push token.
+- [ ] In expo.dev → your project → Credentials, upload the Firebase key (Android, FCM V1 service account) and let EAS create the Apple push key (iOS).
+- [ ] Phones register again the next time someone opens the new app version; alerts start reaching them from then on.
+
+`EMERGENT_LLM_KEY`, `EMERGENT_EMAIL_KEY`, `EMERGENT_PUSH_KEY` and `INTEGRATION_PROXY_URL` aren't needed on Railway once these are set.
 
 ## 6. Point the phone apps at Railway
 - [ ] Create your own Expo account, then in `frontend/` run `npx eas init` (keep the app ID `com.emergent.arrivewise.ue3on3`).

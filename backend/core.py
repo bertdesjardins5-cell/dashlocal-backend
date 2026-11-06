@@ -270,11 +270,33 @@ MIN_PACE_HOURS = 0.5  # pace (drops/hr) never divides by less than 30 min, so a 
 OPT_BUFFER_MIN = 10  # optimizer aims to arrive at least this long before a window closes
 
 # ---------------------------------------------------------------- object storage
+# Own S3 / Cloudflare R2 when S3_BUCKET is set (self-hosting, e.g. Railway); otherwise Emergent managed storage.
+S3_BUCKET = (os.environ.get("S3_BUCKET") or "").strip()
 STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
 STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
 EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
 APP_NAME = "multidrop-delivery"
 storage_key = None
+_s3 = None
+
+
+def s3_client():
+    global _s3
+    if _s3 is None:
+        import boto3
+        _s3 = boto3.client("s3", endpoint_url=os.environ.get("S3_ENDPOINT_URL") or None,
+                           region_name=os.environ.get("S3_REGION") or ("auto" if os.environ.get("S3_ENDPOINT_URL") else None))
+    return _s3
+
+
+def _s3_call(fn):
+    """Run an S3 call; turn its errors into requests.HTTPError so callers handle both providers the same way."""
+    from botocore.exceptions import BotoCoreError, ClientError
+    try:
+        return fn()
+    except (BotoCoreError, ClientError) as e:
+        logger.error(f"S3 storage error: {e}")
+        raise requests.HTTPError(str(e))
 
 
 def init_storage():
@@ -288,6 +310,9 @@ def init_storage():
 
 
 def put_object(path: str, data: bytes, content_type: str) -> dict:
+    if S3_BUCKET:
+        _s3_call(lambda: s3_client().put_object(Bucket=S3_BUCKET, Key=path, Body=data, ContentType=content_type))
+        return {"path": path, "size": len(data)}
     key = init_storage()
     resp = requests.put(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key, "Content-Type": content_type}, data=data, timeout=120)
     resp.raise_for_status()
@@ -295,6 +320,9 @@ def put_object(path: str, data: bytes, content_type: str) -> dict:
 
 
 def get_object(path: str):
+    if S3_BUCKET:
+        obj = _s3_call(lambda: s3_client().get_object(Bucket=S3_BUCKET, Key=path))
+        return obj["Body"].read(), obj.get("ContentType") or "application/octet-stream"
     key = init_storage()
     resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
     resp.raise_for_status()
