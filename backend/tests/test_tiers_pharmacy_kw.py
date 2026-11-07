@@ -113,10 +113,10 @@ def _deliver(admin, sid):
 class TestRateCard:
     def test_rate_card_tiers_pharmacy(self):
         d = requests.get(f"{API}/rate-card", headers=NOAUTH).json()
-        assert d["base_fee"] == 8.99 and d["priority_fee"] == 16 and d["included_km"] == 5 and d["per_km"] == 1.25
+        assert d["base_fee"] == 8.99 and d["priority_fee"] == 16 and d["included_km"] == 3 and d["per_km"] == 1.25
         assert [(t["min_drops"], t["max_drops"], t["rate"]) for t in d["tiers"]] == [(1, 4, 8.99), (5, 9, 7.49), (10, 14, 6.49), (15, None, 5.99)]
         ph = d["pharmacy"]
-        assert ph["batch_rate"] == 6.25 and ph["standard_rate"] == 8.99 and ph["min_drops"] == 10 and ph["included_km"] == 8 and ph["monthly_fee"] == 25
+        assert ph["batch_rate"] == 6.25 and ph["standard_rate"] == 8.99 and ph["min_drops"] == 10 and ph["included_km"] == 3 and ph["monthly_fee"] == 25
         runs = {r["key"]: r for r in ph["runs"]}
         assert runs["afternoon"]["cutoff_label"] == "1:30 PM" and runs["afternoon"]["pickup_label"] == "2:00 PM – 2:30 PM"
         assert runs["evening"]["cutoff_label"] == "4:30 PM" and runs["evening"]["window_label"] == "5:30 PM – 8:30 PM"

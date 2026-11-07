@@ -12,7 +12,7 @@ import requests
 
 BASE_URL = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/")
 API = f"{BASE_URL}/api"
-DEFAULTS = {"base_fee": 8.99, "included_km": 5, "per_km": 1.25, "priority_fee": 16, "charge_failed": True, "tax_pct": 0}
+DEFAULTS = {"base_fee": 8.99, "included_km": 3, "per_km": 1.25, "priority_fee": 16, "charge_failed": True, "tax_pct": 0}
 CUSTOM = {"base_fee": 10, "included_km": 1, "per_km": 2, "priority_fee": 5, "charge_failed": True, "tax_pct": 13}
 DEPOT = {"lat": 43.4516, "lng": -80.4925}
 NOAUTH = {"X-No-Auto-Auth": "1"}

@@ -118,7 +118,7 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - Priority rush $16. Standard per-drop $8.99.
 - Daily volume tiers (per shop, delivered drops that day): 1-4 $8.99, 5-9 $7.49, 10-14 $6.49, 15+ $5.99; unpaid same-day invoices re-rated; distance + priority on top; custom base_fee stores keep flat fee.
 - Depot/clock: Kitchener-Waterloo, America/Toronto; geocoding bounded to KW; seed zones Downtown/Uptown/Westmount/Stanley Park.
-- Pharmacy partners (admin toggle + pickup address in Store Rates sheet): $6.25/drop if pickup manifest has 10+ drops else $8.99; 8 km from pharmacy included then $1.25/km; must pick Afternoon (cut-off 1:30, window 2:30-6) or Evening (cut-off 4:30, window 5:30-8:30) run on upload; after cut-off books tomorrow's run; $25/month platform fee invoice (+HST) for pharmacy partners only.
+- Pharmacy partners (admin toggle + pickup address in Store Rates sheet): $6.25/drop if pickup manifest has 10+ drops else $8.99; 3 km from pharmacy included then $1.25/km (was 8 km until Nov 2026); must pick Afternoon (cut-off 1:30, window 2:30-6) or Evening (cut-off 4:30, window 5:30-8:30) run on upload; after cut-off books tomorrow's run; $25/month platform fee invoice (+HST) for pharmacy partners only.
 - Backlog: geofence auto-arrival, West compass zone has no default driver in KW seed.
 
 ## 2026-06 — Driver run labels, auto arrival, privacy & compliance (PIPEDA/PHIPA)
@@ -239,3 +239,4 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 
 - Railway migration cancelled by user; deploy/ kit and self-host switches (S3/Resend/Expo push) removed. App uses Emergent storage, email and push only.
 - Android background location removed (Nov 2026): app.json blocks ACCESS_BACKGROUND_LOCATION + FOREGROUND_SERVICE_LOCATION, expo-location Android bg/foreground-service off; driverTracking background only on iOS. Privacy text + Play guide updated.
+- Shared/standard delivery: 3 km included (was 5 km) for all delivery types; PRICING_DEFAULT + saved pricing setting updated. Admin can still change it in Pricing; per-store custom overrides still apply.

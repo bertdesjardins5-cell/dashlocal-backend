@@ -40,7 +40,7 @@ export default function PharmacyPartnerCard({ merchantId, enabled, pickup, onCha
       <View style={s.row}>
         <View style={{ flex: 1, gap: 2 }}>
           <Mono style={s.label}>PHARMACY BATCH CONTRACT</Mono>
-          <Mono style={s.meta}>$6.25/drop with 10+ drops per pickup, else $8.99 · 8 km included from the pharmacy, then $1.25/km · $25/month platform fee. Replaces the rates below.</Mono>
+          <Mono style={s.meta}>$6.25/drop with 10+ drops per pickup, else $8.99 · 3 km included from the pharmacy, then $1.25/km · $25/month platform fee. Replaces the rates below.</Mono>
         </View>
         <Switch testID="pharmacy-switch" value={on} disabled={busy} onValueChange={save}
           trackColor={{ true: colors.brandPrimary, false: colors.surfaceSecondary }} />

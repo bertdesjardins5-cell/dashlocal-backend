@@ -35,7 +35,7 @@ def volume_tier(count: int, base_fee: float) -> dict:
     return {"name": name, "rate": round(rate, 2)}
 
 
-PRICING_DEFAULT = {"currency": "CAD", "base_fee": 8.99, "included_km": 5.0, "per_km": 1.25, "priority_fee": 16.00,
+PRICING_DEFAULT = {"currency": "CAD", "base_fee": 8.99, "included_km": 3.0, "per_km": 1.25, "priority_fee": 16.00,
                    "charge_failed": True, "tax_pct": 0.0, "monthly_fee": 25.00}
 PRICING_LIMITS = {"base_fee": 1000, "included_km": 500, "per_km": 100, "priority_fee": 1000, "tax_pct": 30, "monthly_fee": 5000}
 PRICING_NAMES = {"base_fee": "Per-delivery fee", "included_km": "Km included", "per_km": "Extra per km", "monthly_fee": "Monthly platform fee",
@@ -57,7 +57,7 @@ async def get_pricing(merchant_id: Optional[str] = None) -> dict:
 
 
 # ---------------------------------------------------------------- pharmacy batch contract (Addendum A)
-PHARMACY = {"batch_rate": 6.25, "standard_rate": 8.99, "min_drops": 10, "included_km": 8.0, "per_km": 1.25, "monthly_fee": 25.00}
+PHARMACY = {"batch_rate": 6.25, "standard_rate": 8.99, "min_drops": 10, "included_km": 3.0, "per_km": 1.25, "monthly_fee": 25.00}
 
 
 def runs_today() -> list:

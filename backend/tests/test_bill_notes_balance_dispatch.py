@@ -19,7 +19,7 @@ TZ = ZoneInfo("America/Toronto")
 TODAY = datetime.now(TZ).date()
 THIS_MON = TODAY - timedelta(days=TODAY.weekday())
 LAST_MON = (THIS_MON - timedelta(weeks=1)).isoformat()
-DEFAULTS = {"base_fee": 8.99, "included_km": 5, "per_km": 1.25, "priority_fee": 16, "charge_failed": True, "tax_pct": 0}
+DEFAULTS = {"base_fee": 8.99, "included_km": 3, "per_km": 1.25, "priority_fee": 16, "charge_failed": True, "tax_pct": 0}
 DEFAULT_COV = {"drv-1": "North", "drv-2": "South", "drv-3": "East"}
 DEPOT = {"lat": 43.4516, "lng": -80.4925}
 
