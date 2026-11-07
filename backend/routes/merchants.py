@@ -343,7 +343,11 @@ async def merchant_detail(merchant_id: str, _: dict = Depends(merchant_access)):
             r["pickup"] = await merchant_pickup(merchant_id, r)
         recent = await db.pickups.find({"merchant_id": merchant_id}, {"_id": 0}).sort("picked_up_at", -1).to_list(5)
         m = {**m, "runs": runs, "pharmacy_terms": billing.PHARMACY, "recent_pickups": recent}
-    return {**m, "orders": [Stop(**o).model_dump() for o in orders], "flagged": flagged, "jobs": jobs,
+    p = await billing.get_pricing(merchant_id)
+    origin = p.get("origin") or billing.DEPOT  # distance is measured from the pharmacy pickup, else from the depot
+    free_zone = {"lat": origin["lat"], "lng": origin["lng"], "km": p["included_km"], "per_km": p["per_km"],
+                 "from": "pharmacy" if p.get("origin") else "depot"}
+    return {**m, "orders": [Stop(**o).model_dump() for o in orders], "flagged": flagged, "jobs": jobs, "free_zone": free_zone,
             "counts": {"orders": len(orders), "pending": sum(1 for o in orders if o["status"] in ("pending", "arrived")),
                        "delivered": sum(1 for o in orders if o["status"] == "delivered"), "failed": sum(1 for o in orders if o["status"] == "failed"),
                        "flagged": len(flagged)}}

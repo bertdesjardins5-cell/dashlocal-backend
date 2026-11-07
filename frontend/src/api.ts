@@ -59,6 +59,14 @@ export const pickupRunText = (p: PickupRun) =>
 
 export type Driver = { id: string; name: string; phone: string; vehicle: string; lat: number; lng: number };
 export type LatLng = { lat: number; lng: number };
+export type Zone = LatLng & { km: number };
+
+// North/south/east/west edge points of a zone circle, so maps can fit the whole circle in view.
+export const zoneEdges = (z: Zone): LatLng[] => {
+  const dLat = z.km / 111.32;
+  const dLng = z.km / (111.32 * Math.cos((z.lat * Math.PI) / 180));
+  return [{ lat: z.lat + dLat, lng: z.lng }, { lat: z.lat - dLat, lng: z.lng }, { lat: z.lat, lng: z.lng + dLng }, { lat: z.lat, lng: z.lng - dLng }];
+};
 
 export type RouteDetail = {
   pickups?: (PickupRun & { manifest_id: string; drops: number; picked_up_at: string | null; parcel_count: number | null; on_time: boolean | null })[];

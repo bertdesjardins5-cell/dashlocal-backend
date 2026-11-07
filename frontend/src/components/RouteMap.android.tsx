@@ -4,11 +4,11 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import { WebView } from "react-native-webview";
 import { useTheme } from "@/src/theme";
-import type { LatLng } from "@/src/api";
+import type { LatLng, Zone } from "@/src/api";
 
 export type MapMarker = LatLng & { id: string; label: string; tone: "red" | "dark" | "green" | "light" };
 type Props = { markers: MapMarker[]; path?: LatLng[]; driver?: LatLng | null; height?: number | `${number}%`; geofence?: LatLng | null; testID?: string;
-  onMarkerPress?: (id: string) => void };
+  onMarkerPress?: (id: string) => void; zone?: Zone | null };
 
 const HTML = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -20,6 +20,8 @@ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribu
 var layer=L.layerGroup().addTo(map),lastKey='';
 window.render=function(d){layer.clearLayers();var pts=[];
  if(d.path.length>1)L.polyline(d.path,{color:d.c.line,weight:4,dashArray:'8 6'}).addTo(layer);
+ if(d.zone){var zc=L.circle([d.zone.lat,d.zone.lng],{radius:d.zone.km*1000,color:d.c.red,weight:2,fillColor:d.c.geoFill,fillOpacity:0.3}).addTo(layer);
+  var zb=zc.getBounds();pts.push([zb.getNorth(),zb.getEast()],[zb.getSouth(),zb.getWest()])}
  if(d.geo)L.circle(d.geo,{radius:50,color:d.c.red,weight:2,fillColor:d.c.geoFill,fillOpacity:0.4}).addTo(layer);
  d.markers.forEach(function(m){pts.push([m.lat,m.lng]);var w=Math.max(28,10+m.label.length*8);
   L.marker([m.lat,m.lng],{icon:L.divIcon({className:'',iconSize:[w,28],iconAnchor:[w/2,14],
@@ -30,7 +32,7 @@ window.render=function(d){layer.clearLayers();var pts=[];
  if(pts.length&&d.key!==lastKey){lastKey=d.key;if(pts.length===1)map.setView(pts[0],15);else map.fitBounds(pts,{padding:[40,40]})}};
 true;</script></body></html>`;
 
-export default function RouteMap({ markers, path = [], driver, height = 260, geofence, testID = "route-map", onMarkerPress }: Props) {
+export default function RouteMap({ markers, path = [], driver, height = 260, geofence, testID = "route-map", onMarkerPress, zone }: Props) {
   const { colors } = useTheme();
   const ref = useRef<WebView>(null);
   const [ready, setReady] = useState(false);
@@ -38,7 +40,8 @@ export default function RouteMap({ markers, path = [], driver, height = 260, geo
     t === "red" ? colors.brandPrimary : t === "green" ? colors.success : t === "dark" ? colors.surfaceInverse : colors.muted;
   const all = [...markers, ...(driver ? [driver] : [])];
   const data = JSON.stringify({
-    key: all.map((p) => `${p.lat.toFixed(3)},${p.lng.toFixed(3)}`).join("|"),
+    key: all.map((p) => `${p.lat.toFixed(3)},${p.lng.toFixed(3)}`).join("|") + (zone ? `|z${zone.km}` : ""),
+    zone: zone ?? null,
     markers: markers.map((m) => ({ id: m.id, lat: m.lat, lng: m.lng, label: m.label, color: toneColor(m.tone) })),
     path: path.map((p) => [p.lat, p.lng]),
     driver: driver ? [driver.lat, driver.lng] : null,

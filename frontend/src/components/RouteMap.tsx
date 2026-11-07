@@ -2,17 +2,17 @@ import React, { useEffect, useRef } from "react";
 import { View, Text } from "react-native";
 import MapView, { Marker, Polyline, Circle } from "react-native-maps";
 import { fonts, useTheme } from "@/src/theme";
-import type { LatLng } from "@/src/api";
+import { zoneEdges, type LatLng, type Zone } from "@/src/api";
 
 export type MapMarker = LatLng & { id: string; label: string; tone: "red" | "dark" | "green" | "light" };
 
 type Props = { markers: MapMarker[]; path?: LatLng[]; driver?: LatLng | null; height?: number | `${number}%`; geofence?: LatLng | null; testID?: string;
-  onMarkerPress?: (id: string) => void };
+  onMarkerPress?: (id: string) => void; zone?: Zone | null };
 
-export default function RouteMap({ markers, path = [], driver, height = 260, geofence, testID = "route-map", onMarkerPress }: Props) {
+export default function RouteMap({ markers, path = [], driver, height = 260, geofence, testID = "route-map", onMarkerPress, zone }: Props) {
   const { colors } = useTheme();
   const ref = useRef<MapView>(null);
-  const all = [...markers, ...(driver ? [driver] : [])];
+  const all = [...markers, ...(driver ? [driver] : []), ...(zone ? zoneEdges(zone) : [])];
   const key = all.map((p) => `${p.lat.toFixed(3)},${p.lng.toFixed(3)}`).join("|");
 
   useEffect(() => {
@@ -37,6 +37,9 @@ export default function RouteMap({ markers, path = [], driver, height = 260, geo
       >
         {path.length > 1 ? (
           <Polyline coordinates={path.map((p) => ({ latitude: p.lat, longitude: p.lng }))} strokeColor={colors.surfaceInverse} strokeWidth={4} lineDashPattern={[8, 6]} />
+        ) : null}
+        {zone ? (
+          <Circle center={{ latitude: zone.lat, longitude: zone.lng }} radius={zone.km * 1000} strokeColor={colors.brandPrimary} fillColor={colors.brandTertiary} strokeWidth={2} />
         ) : null}
         {geofence ? (
           <Circle center={{ latitude: geofence.lat, longitude: geofence.lng }} radius={50} strokeColor={colors.brandPrimary} fillColor={colors.brandTertiary} strokeWidth={2} />

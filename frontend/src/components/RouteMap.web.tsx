@@ -1,26 +1,34 @@
 // Web preview fallback: schematic projection (react-native-maps is native only).
 import React, { useState } from "react";
 import { Pressable, View, Text } from "react-native";
-import Svg, { Polyline, Line, Circle } from "react-native-svg";
+import Svg, { Polyline, Line, Circle, Ellipse } from "react-native-svg";
 import { fonts, useTheme } from "@/src/theme";
-import type { LatLng } from "@/src/api";
+import { zoneEdges, type LatLng, type Zone } from "@/src/api";
 
 export type MapMarker = LatLng & { id: string; label: string; tone: "red" | "dark" | "green" | "light" };
 type Props = { markers: MapMarker[]; path?: LatLng[]; driver?: LatLng | null; height?: number | `${number}%`; geofence?: LatLng | null; testID?: string;
-  onMarkerPress?: (id: string) => void };
+  onMarkerPress?: (id: string) => void; zone?: Zone | null };
 
-export default function RouteMap({ markers, path = [], driver, height = 260, testID = "route-map", onMarkerPress }: Props) {
+export default function RouteMap({ markers, path = [], driver, height = 260, testID = "route-map", onMarkerPress, zone }: Props) {
   const { colors } = useTheme();
   const [size, setSize] = useState({ w: 0, h: 0 });
-  const all = [...markers, ...path, ...(driver ? [driver] : [])];
+  const edges = zone ? zoneEdges(zone) : [];
+  const all = [...markers, ...path, ...(driver ? [driver] : []), ...edges];
   const lats = all.map((p) => p.lat);
   const lngs = all.map((p) => p.lng);
   const minLat = Math.min(...lats), maxLat = Math.max(...lats), minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
   const pad = 32;
-  const proj = (p: LatLng) => ({
+  // with a zone, keep one scale for both axes (cos-corrected) so the circle stays round; otherwise fill the box
+  const kx = zone ? Math.cos((((minLat + maxLat) / 2) * Math.PI) / 180) : 1;
+  const sx = (size.w - pad * 2) / ((maxLng - minLng) * kx || 1), sy = (size.h - pad * 2) / (maxLat - minLat || 1);
+  const sc = Math.min(sx, sy);
+  const proj = (p: LatLng) => zone ? {
+    x: size.w / 2 + (p.lng - (minLng + maxLng) / 2) * kx * sc,
+    y: size.h / 2 - (p.lat - (minLat + maxLat) / 2) * sc,
+  } : {
     x: pad + ((p.lng - minLng) / (maxLng - minLng || 1)) * (size.w - pad * 2),
     y: pad + (1 - (p.lat - minLat) / (maxLat - minLat || 1)) * (size.h - pad * 2),
-  });
+  };
   const toneColor = (t: MapMarker["tone"]) =>
     t === "red" ? colors.brandPrimary : t === "green" ? colors.success : t === "dark" ? colors.surfaceInverse : colors.muted;
   const grid = Array.from({ length: 8 }, (_, i) => i);
@@ -38,6 +46,10 @@ export default function RouteMap({ markers, path = [], driver, height = 260, tes
             ))}
             {path.length > 1 ? (
               <Polyline points={path.map((p) => { const q = proj(p); return `${q.x},${q.y}`; }).join(" ")} fill="none" stroke={colors.surfaceInverse} strokeWidth={3} strokeDasharray="8 6" />
+            ) : null}
+            {zone ? (
+              <Ellipse testID="map-zone" cx={proj(zone).x} cy={proj(zone).y} rx={Math.abs(proj(edges[2]).x - proj(zone).x)} ry={Math.abs(proj(edges[0]).y - proj(zone).y)}
+                fill={colors.brandTertiary} fillOpacity={0.35} stroke={colors.brandPrimary} strokeWidth={2} />
             ) : null}
             {driver ? <Circle cx={proj(driver).x} cy={proj(driver).y} r={18} fill={colors.brandTertiary} /> : null}
           </Svg>

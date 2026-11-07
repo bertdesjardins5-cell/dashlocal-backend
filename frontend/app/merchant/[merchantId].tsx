@@ -15,6 +15,7 @@ import ProblemAlertsCard from "@/src/components/ProblemAlertsCard";
 import RatingsCard from "@/src/components/RatingsCard";
 import { money } from "@/src/components/BillCard";
 import InvoicesCard from "@/src/components/InvoicesCard";
+import FreeZoneCard, { FreeZone } from "@/src/components/FreeZoneCard";
 import ReceiptArchive from "@/src/components/ReceiptArchive";
 import MatterTag from "@/src/components/MatterTag";
 import AmountDueTag from "@/src/components/AmountDueTag";
@@ -38,6 +39,7 @@ type Detail = {
   id: string; name: string; orders: Stop[]; flagged: ImportRow[]; jobs: Job[]; pharmacy_partner?: boolean; runs?: Run[]; business_type?: string;
   pharmacy_terms?: { batch_rate: number; standard_rate: number; min_drops: number };
   counts: { orders: number; pending: number; delivered: number; failed: number; flagged: number };
+  free_zone?: FreeZone;
 };
 
 export default function MerchantHome() {
@@ -226,6 +228,13 @@ export default function MerchantHome() {
                   <Mono style={s.fix}>FIX</Mono>
                 </Pressable>
               ))}
+            </>
+          ) : null}
+
+          {d.free_zone ? (
+            <>
+              <Mono style={s.section}>FREE DISTANCE ZONE</Mono>
+              <FreeZoneCard zone={d.free_zone} orders={d.orders} />
             </>
           ) : null}
 

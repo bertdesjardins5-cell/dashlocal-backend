@@ -1,0 +1,30 @@
+{
+  "summary": "Retest of the iteration 69 free-zone fixes (frontend). Logged in as admin, tested /merchant/mer-1 and /merchant/mer-2 at 390x844 and 375x667. (1) PASS: the map-zone ellipse is now round, rx=78 and ry=78 (ratio 1.000), on both stores at both viewports. This holds with only real orders, with the TEST_ outside-zone orders, and with more than 30 open orders. The circle stays fully inside the 220px map. With an outside order on mer-1 the circle moves right (cx 227) and the red marker sits outside it, with everything still visible. (2) PASS: map-marker-origin is the last marker in the DOM, and elementFromPoint at its centre returns the origin. HQ shows on top of the real mer-1 order at the depot. (3) PASS: free-zone-count counts every open order. With 35 open orders on mer-2 (33 bulk + 2 iter69 seed) it read '34 INSIDE · 1 OUTSIDE' while 30+1 pins were drawn. mer-1 read '3 INSIDE · 1 OUTSIDE'. Regression PASS: /driver/drv-1, /admin/route/<id> and /customer/MD1001 maps render markers, polyline and driver marker with no map-zone and no console errors. Minor finding: when there are more than 30 open orders, the red (outside) order can be cut from the 30 pins, so the count says '1 OUTSIDE' but no red pin is shown.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "FreeZoneCard open.slice(0,30)", "issue": "With more than 30 open orders the pins are the first 30 in list order, so outside (red) orders can be dropped. Seen on mer-2 with 35 orders: the count says '1 OUTSIDE' but no red pin is shown, and the map bounds also leave out that order. Fix: sort outside orders first before slice(0,30), or always include the red ones. Reference: /app/frontend/src/components/FreeZoneCard.tsx:21", "testID": "free-zone-map", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/merchant/mer-1 free-zone-map", "issues": ["HQ now sits on top of the real order at the depot, so that order's green pin is fully hidden. This is the expected trade-off. Optionally offset the origin a few px."]},
+      {"screen": "/customer/MD1001 (existing issue, unchanged)", "issues": ["The map still looks empty because the HUB/driver markers sit behind the 'DRIVER IS 1 STOP AWAY' banner. Same as iteration 69."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/ui_seed_free_zone_iter69.py", "/app/backend/tests/ui_seed_free_zone_bulk_iter70.py"],
+  "action_items": [
+    "Optional (LOW): in FreeZoneCard, put outside-zone orders first before slice(0,30) so red pins are never hidden when there are more than 30 open orders."
+  ],
+  "critical_code_review_comments": [
+    "RouteMap.web.tsx: kx uses the midpoint of the bounds, not zone.lat. That is fine at KW scale (ratio 1.000 measured).",
+    "FreeZoneCard: kmBetween() repeats haversine logic that exists elsewhere (minor DRY issue, unchanged)."
+  ],
+  "updated_files": ["/app/backend/tests/ui_seed_free_zone_bulk_iter70.py (new test seed helper)"],
+  "success_rate": {"backend": "N/A (not requested; 4/4 in iter69)", "frontend": "100% (3/3 fixes verified + regression pass; 1 low-priority finding)"},
+  "seed_data_creation": "Inserted 4 TEST_zone_* stops (iter69 script) and 33 TEST_zbulk_* stops for mer-2. All 37 were deleted by id afterwards (4 + 33 deleted, 0 left). No other data was changed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Web login: fetch /api/auth/login in the page, set localStorage 'multidrop_session'={token,user}, then open /merchant/mer-1. Seed: cd /app/backend && set -a && . ./.env && set +a && python tests/ui_seed_free_zone_iter69.py seed|cleanup and python tests/ui_seed_free_zone_bulk_iter70.py seed|cleanup (33 orders inside the mer-2 zone, used to test the 30-pin cap).",
+  "rca_of_issue": "The iteration 69 roundness bug is fixed. proj() now uses one scale sc=min(sx,sy) with cos(lat) correction when a zone is given, so rx = ry. The origin marker is pushed last in the markers array, so it renders on top."
+}
