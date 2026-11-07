@@ -93,4 +93,3 @@ test_reports/
 tests/
 scripts/store_screenshots.py
 test_result.md
-export/.download_token.json
