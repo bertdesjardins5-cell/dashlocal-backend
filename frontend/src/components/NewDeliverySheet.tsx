@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Modal, Pressable, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -24,6 +24,9 @@ const FIELDS: Field[] = [
   { k: "matter_ref", label: "MATTER / FILE NO. (OPTIONAL)", ph: "2026-0142", law: true },
   { k: "amount_due", label: "CUSTOMER PAYS IN APP, BEFORE HST (OPTIONAL, $)", ph: "45.00", kb: "decimal-pad" },
 ];
+type Estimate = { km: number; base: number; distance_fee: number; priority_fee: number; total: number; included_km: number; per_km: number;
+  tax_pct: number; pharmacy: boolean; batch_rate: number | null };
+const money = (n: number) => `CA$${n.toFixed(2)}`;
 const EMPTY: Form = { customer_name: "", phone: "", address: "", notes: "", delivery_note: "", window_date: "", window_start: "", window_end: "", matter_ref: "", amount_due: "" };
 
 // Merchant Portal: enter one delivery by hand. Same checks as a CSV row; problems show right here in the form.
@@ -37,6 +40,29 @@ export default function NewDeliverySheet({ merchantId, run, runLabel, lawOffice,
   const [priority, setPriority] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [est, setEst] = useState<Estimate | null>(null);
+  const [estMsg, setEstMsg] = useState<string | null>(null);
+
+  // Price preview: re-check shortly after the address or priority changes.
+  useEffect(() => {
+    const address = f.address.trim();
+    if (address.length < 4) {
+      setEst(null);
+      setEstMsg(address ? "KEEP TYPING THE ADDRESS TO SEE THE PRICE" : null);
+      return;
+    }
+    let live = true;
+    const t = setTimeout(async () => {
+      setEstMsg("CHECKING PRICE…");
+      try {
+        const r = await api<Estimate>(`/merchants/${merchantId}/fee-estimate`, { method: "POST", body: { address, priority } });
+        if (live) { setEst(r); setEstMsg(null); }
+      } catch (e: any) {
+        if (live) { setEst(null); setEstMsg(e.message); }
+      }
+    }, 900);
+    return () => { live = false; clearTimeout(t); };
+  }, [f.address, priority, merchantId]);
 
   const save = async () => {
     const missing = (["customer_name", "phone", "address"] as const).filter((k) => !f[k].trim());
@@ -77,6 +103,19 @@ export default function NewDeliverySheet({ merchantId, run, runLabel, lawOffice,
           </Pressable>
           <Mono style={s.hint}>NO HEALTH INFO IN NOTES: NO MEDICATION NAMES, DOSAGES OR DIAGNOSES.</Mono>
         </KeyboardAwareScrollView>
+        {est ? (
+          <View style={s.est} testID="new-delivery-estimate">
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Mono style={[s.label, { flex: 1 }]}>ESTIMATED DELIVERY FEE</Mono>
+              <Mono style={s.estTotal} testID="new-delivery-estimate-total">{money(est.total)}</Mono>
+            </View>
+            <Mono style={s.hint}>
+              ≈{est.km} KM · FEE {money(est.base)} · {est.distance_fee > 0 ? `EXTRA DISTANCE +${money(est.distance_fee)} (${money(est.per_km)}/KM AFTER ${est.included_km} KM)` : `FIRST ${est.included_km} KM INCLUDED`}
+              {est.priority_fee > 0 ? ` · PRIORITY +${money(est.priority_fee)}` : ""}{est.tax_pct ? ` · + ${est.tax_pct}% TAX` : ""}
+            </Mono>
+            {est.pharmacy && est.batch_rate ? <Mono style={s.hint}>DROPS FALL TO {money(est.batch_rate)} EACH WHEN THE RUN HAS 10+ DROPS.</Mono> : null}
+          </View>
+        ) : estMsg ? <Mono style={[s.hint, { marginTop: spacing.sm }, !estMsg.includes("…") && !estMsg.startsWith("KEEP") && { color: colors.brandPrimary, fontWeight: "700" }]} testID="new-delivery-estimate-msg">{estMsg.toUpperCase()}</Mono> : null}
         {error ? <View style={s.err} testID="new-delivery-error"><Mono style={s.errText}>{error}</Mono></View> : null}
         <Btn testID="new-delivery-save" label="ADD DELIVERY" icon="add-circle" loading={busy} onPress={save} style={{ marginTop: spacing.md }} />
       </View>
@@ -92,6 +131,8 @@ const useStyles = makeStyles((c) => ({
   hint: { fontSize: 11, color: c.muted },
   input: { height: 48, borderWidth: 2, borderColor: c.border, paddingHorizontal: spacing.md, fontFamily: fonts.mono, fontSize: 15, color: c.onSurface },
   check: { flexDirection: "row", gap: spacing.sm, alignItems: "center", minHeight: 44 },
+  est: { borderWidth: 2, borderColor: c.border, padding: spacing.md, gap: 4, marginTop: spacing.sm },
+  estTotal: { fontSize: 18, fontWeight: "700", color: c.onSurface },
   err: { backgroundColor: c.brandPrimary, padding: spacing.md, marginTop: spacing.sm },
   errText: { color: c.onBrandPrimary, fontSize: 12, fontWeight: "700" },
 }));

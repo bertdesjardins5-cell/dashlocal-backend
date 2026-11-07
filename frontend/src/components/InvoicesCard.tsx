@@ -149,6 +149,7 @@ export default function InvoicesCard({ merchantId, notify }: { merchantId: strin
               <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
                 <Mono style={s.main} numberOfLines={1}>{inv.number} · {inv.delivery.tracking_code}</Mono>
                 <Mono style={s.meta} numberOfLines={1}>{dayLabel(inv.date)} · {inv.delivery.customer_name}</Mono>
+                {inv.delivery.km != null ? <DistanceLine inv={inv} /> : null}
               </View>
               <View style={{ alignItems: "flex-end", gap: 4 }}>
                 <Mono style={s.main}>{money(inv.total)}</Mono>
@@ -228,6 +229,18 @@ export default function InvoicesCard({ merchantId, notify }: { merchantId: strin
       </View>
       <SquarePaySheet url={payUrl} title="PAY INVOICES" onClose={() => setPayUrl(null)} onDone={onPaid} />
     </View>
+  );
+}
+
+// Km driven and the extra distance charge (if any) for one delivery invoice.
+function DistanceLine({ inv }: { inv: Invoice }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const extra = inv.lines.find((l) => l.description.startsWith("Distance"))?.amount ?? 0;
+  return (
+    <Mono style={[s.meta, extra > 0 && { color: colors.brandPrimary }]} numberOfLines={2} testID={`invoice-distance-${inv.number}`}>
+      {extra > 0 ? `+${money(extra)} EXTRA DISTANCE · ` : "NO EXTRA DISTANCE · "}{inv.delivery.km} KM DRIVEN
+    </Mono>
   );
 }
 

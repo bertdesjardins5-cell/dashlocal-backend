@@ -1,0 +1,37 @@
+{
+  "summary": "Tested the fee-estimate API (9/9 pytest pass) and the New Delivery price preview in the Expo web preview at 390x844 for mer-1 and mer-2 (pharmacy). Both work. The 'Distance On Receipts' change is in BillCard.tsx, but BillCard is no longer rendered anywhere: commit 6318abf replaced it with InvoicesCard on the merchant portal. Stores therefore cannot see the new km / extra-distance line. The backend /bill lines do return km, base, distance_fee, priority_fee and total correctly; this was checked with 2 temporary seeded stops that were then deleted. No deprecated Expo packages were found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/merchants/{id}/fee-estimate", "issue": "The estimate geocodes whatever the user has typed after a 900ms pause, so partial addresses (e.g. '550 K') also go to Nominatim and get cached. Nominatim is rate-limited to 1 request/second through a global lock, so several stores typing at once will queue. This is acceptable but worth noting."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Distance On Receipts (merchant weekly bill lines)", "issue": "BillCard (src/components/BillCard.tsx) is dead code. Nothing imports it except as a source for the `money` helper. In commit 6318abf, app/merchant/[merchantId].tsx:234 started rendering <InvoicesCard> instead. In the live merchant portal, bill-card and bill-line-* elements are absent (count 0, checked with 2 seeded delivered stops for mer-1). The invoice rows in InvoicesCard show only number, tracking code, date and customer; km appears only in the expanded detail as 'Distance (x km)', and only when distance_fee > 0. The no-extra-distance case and the km driven are never shown.", "affected_testIDs": ["bill-card", "bill-line-<code>", "bill-line-distance-<code>", "invoice-<number>", "invoice-detail-<number>"]}
+    ],
+    "design_issues": [
+      {"screen": "NewDeliverySheet", "issues": ["Toggling priority immediately clears the estimate box (setEst(null)) and redraws it about 1s later, so the box flickers and the layout jumps. Keep the previous estimate visible while the new one loads.", "Typing fewer than 4 characters shows no message at all (the frontend skips the request). The review request expected a message; consider showing a hint such as 'ENTER A STREET ADDRESS'."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_fee_estimate_bill_distance.py", "/app/backend/tests/ui_seed_bill_distance_iter67.py", "/app/test_reports/pytest/pytest_iter67.xml"],
+  "action_items": [
+    "HIGH: Show the distance info where stores actually see their bills. Either add a km / 'FEE CA$x · EXTRA DISTANCE +CA$y' / 'NO EXTRA DISTANCE' meta line to each InvoicesCard row (inv.delivery.km plus the distance line amount), or render BillCard again. Right now the Distance On Receipts feature is invisible to users.",
+    "Optional: also include a km line for invoices with distance_fee == 0 (e.g. 'Distance (1.4 km, included)') in the invoice detail and PDF.",
+    "Minor: keep the previous estimate on screen while re-estimating after a priority toggle, to avoid the flicker."
+  ],
+  "critical_code_review_comments": [
+    "BillCard.tsx default export is unused (dead code). The edits made this session for bill-line-distance have no effect on what users see.",
+    "fee_estimate reuses compute_fee and get_pricing, so the preview matches what an order is charged at creation. For pharmacy stores the estimate shows the standard CA$8.99 base, with a note about the batch rate.",
+    "fee_estimate returns 400 for addresses under 4 chars, 404 for unknown addresses, 401 without a token and 503 when the geocoder fails. All verified except 503."
+  ],
+  "updated_files": ["/app/backend/tests/test_fee_estimate_bill_distance.py", "/app/backend/tests/ui_seed_bill_distance_iter67.py"],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "Price Preview 100%; Distance On Receipts 0% (component not rendered)"},
+  "seed_data_creation": "Temporarily inserted 2 delivered mer-1 stops (TB9901, TB9902, ids TEST_bill_*) to check the /bill lines, then deleted them by id. No orders were created through the UI and pricing was not changed.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Admin login admin@dashlocal.app / DashLocalAdmin2026. Web session goes in localStorage key 'multidrop_session' = {token,user}. The merchant portal needs order-consent-checkbox ticked (and, for pharmacy mer-2, a run-* chip picked) before merchant-new-delivery-button opens the sheet. 550 King St N, Waterloo gives mer-1 7.9 km / CA$15.11 and mer-2 14.7 km / CA$23.61 (+CA$16 with priority). No delivered stops have a merchant_id, so seed with: python tests/ui_seed_bill_distance_iter67.py seed|cleanup (source backend/.env first). Run pytest with EXPO_PUBLIC_BACKEND_URL set and -p no:xdist -o addopts=''.",
+  "rca_of_issue": "Commit 6318abf ('Invoices with HST...') removed <BillCard> from app/merchant/[merchantId].tsx and replaced it with <InvoicesCard>. This session's Distance On Receipts work changed BillCard only, so nothing changed in the UI."
+}

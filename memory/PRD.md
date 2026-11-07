@@ -240,3 +240,4 @@ Build a multidrop delivery app: route optimization, 50m geofencing auto-arrive, 
 - Railway migration cancelled by user; deploy/ kit and self-host switches (S3/Resend/Expo push) removed. App uses Emergent storage, email and push only.
 - Android background location removed (Nov 2026): app.json blocks ACCESS_BACKGROUND_LOCATION + FOREGROUND_SERVICE_LOCATION, expo-location Android bg/foreground-service off; driverTracking background only on iOS. Privacy text + Play guide updated.
 - Shared/standard delivery: 3 km included (was 5 km) for all delivery types; PRICING_DEFAULT + saved pricing setting updated. Admin can still change it in Pricing; per-store custom overrides still apply.
+- 2026-06: Price preview in New Delivery form (POST /api/merchants/{id}/fee-estimate {address, priority} -> km, base, distance_fee, priority_fee, total, included_km, per_km, pharmacy/batch_rate). Bill lines show km driven + fee + extra distance charge.

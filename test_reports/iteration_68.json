@@ -1,0 +1,33 @@
+{
+  "summary": "Frontend retest of the iteration 67 fixes in the Expo web preview at 390x844 and 375x667, logged in as admin. (1) InvoicesCard distance line works on /merchant/mer-1 and /merchant/mer-2. invoice-distance-<number> shows '7.9 KM DRIVEN · EXTRA DISTANCE +CA$6.12' in red rgb(230,0,0), '1.4 KM DRIVEN · NO EXTRA DISTANCE' in muted grey, and '14.7 KM DRIVEN · EXTRA DISTANCE +CA$14.62' in red for mer-2. Platform-fee invoices DL-000001 and DL-000002 (km null) have no distance line. The expanded detail lists 'Distance (7.9 km) CA$6.12' and the totals are correct. (2) New Delivery price preview works. Typing 1-3 characters shows 'KEEP TYPING THE ADDRESS TO SEE THE PRICE'. When priority is toggled on or off, the estimate box stays on screen (sampled every 250ms, never missing) and updates from CA$15.11 to CA$31.11 and back. An unknown address shows 'ADDRESS NOT FOUND IN KITCHENER-WATERLOO' and hides the old estimate. Regression checks pass: mer-1 CA$15.11, mer-2 pharmacy CA$23.61 (CA$39.61 with priority) with the 'DROPS FALL TO CA$6.25' note. One UI bug: the extra-distance amount is cut off by an ellipsis on phone widths. No deprecated Expo packages were found in the reviewed files.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "InvoicesCard DistanceLine", "issue": "numberOfLines={1} truncates the most important part, the extra-distance charge. At 390px it reads '7.9 KM DRIVEN · EXTRA DISTANCE +CA$6…'. At 375px it reads '14.7 KM DRIVEN · EXTRA DISTANCE +C…' (scrollWidth 287 vs clientWidth 247), so the amount is completely hidden. Reference: /app/frontend/src/components/InvoicesCard.tsx:241", "testID": "invoice-distance-<number>", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "NewDeliverySheet", "issues": [
+        "After the address grows from 3 to 4+ characters, 'KEEP TYPING THE ADDRESS TO SEE THE PRICE' stays on screen for the 900ms debounce before 'CHECKING PRICE…' appears. Minor.",
+        "While a new address is being re-estimated, the previous address's price stays visible for about 1-1.5s, and 'CHECKING PRICE…' is hidden because est takes precedence. Minor stale display; consider dimming the box or showing a small 'updating' hint.",
+        "The unknown-address error uses the muted grey hint style (11px), not an error colour, so it is easy to miss."
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/ui_seed_invoice_distance_iter68.py"],
+  "action_items": [
+    "MEDIUM: Make the InvoicesCard distance line show the charge on narrow phones. Options: allow numberOfLines={2}, shorten the text (e.g. '7.9 KM · +CA$6.12 EXTRA DISTANCE' with the amount first), or move the amount to its own Mono element (InvoicesCard.tsx:241-243).",
+    "Optional: show the unknown-address estimate error in brandPrimary/red, and show an 'updating' state while re-estimating after the address changes."
+  ],
+  "critical_code_review_comments": [
+    "DistanceLine finds the extra amount by matching description.startsWith('Distance'). This is fragile: if the line wording or language changes, the UI silently shows 'NO EXTRA DISTANCE'. Consider storing distance_fee on invoice.delivery when the invoice is created (invoices.py:60).",
+    "Invoices created from stops whose fee snapshot has no km (fee.get('km') is None) correctly show no line, but those deliveries also give no km info."
+  ],
+  "updated_files": ["/app/backend/tests/ui_seed_invoice_distance_iter68.py"],
+  "success_rate": {"backend": "not tested (frontend-only request; backend passed 9/9 in iteration 67)", "frontend": "100% functional (all requested checks pass); 1 medium truncation UI bug"},
+  "seed_data_creation": "Inserted 3 temporary invoices directly into db.invoices (TEST-9901 and TEST-9902 for mer-1, TEST-9903 for mer-2; ids TEST_inv_*) and deleted them by id afterwards (3 deleted). Verified that only DL-000001 and DL-000002 remain. The invoice counter, pricing and orders were not touched, and no orders were created.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "No delivery invoices exist for mer-1 or mer-2 (only platform invoices DL-000001/2). Seed with: cd /app/backend && set -a && . ./.env && set +a && python tests/ui_seed_invoice_distance_iter68.py seed|cleanup. Web login: fetch /api/auth/login in the page, then set localStorage 'multidrop_session'={token,user}. For mer-2 pick a run-* chip and tick order-consent-checkbox before merchant-new-delivery-button."
+}

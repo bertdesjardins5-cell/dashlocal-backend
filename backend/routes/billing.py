@@ -230,6 +230,31 @@ async def get_bill(merchant_id: str, week: Optional[str] = None, _: dict = Depen
     return {**(await merchant_bill(merchant_id, week)), "outstanding": await merchant_outstanding(merchant_id)}
 
 
+class FeeEstimateIn(BaseModel):
+    address: str
+    priority: bool = False
+
+
+@router.post("/merchants/{merchant_id}/fee-estimate")
+async def fee_estimate(merchant_id: str, body: FeeEstimateIn, _: dict = Depends(merchant_access)):
+    """Price preview for the New Delivery form: same address lookup and fee math the order will get."""
+    await merchant_routes.get_merchant_or_404(merchant_id)
+    address = " ".join(body.address.split())
+    if len(address) < 4:
+        raise HTTPException(400, "Enter a street address")
+    try:
+        geo = await merchant_routes.geocode(address)
+    except Exception:
+        raise HTTPException(503, "Address lookup is busy, try again in a moment")
+    if not geo:
+        raise HTTPException(404, "Address not found in Kitchener-Waterloo")
+    p = await get_pricing(merchant_id)
+    fee = compute_fee({**geo, "priority": body.priority}, p)
+    return {**{k: fee[k] for k in ("km", "base", "distance_fee", "priority_fee", "total", "currency")},
+            "included_km": p["included_km"], "per_km": p["per_km"], "tax_pct": p["tax_pct"], "pharmacy": bool(p.get("pharmacy")),
+            "batch_rate": PHARMACY["batch_rate"] if p.get("pharmacy") else None, "address": geo.get("display_name")}
+
+
 OUTSTANDING_WEEKS = 26
 
 
