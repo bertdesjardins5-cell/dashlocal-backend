@@ -86,3 +86,10 @@ android-sdk/
 credentials.json
 *.key
 .credentials
+
+# Kept out of GitHub (contain demo/test logins) — files stay in the workspace
+backend/tests/
+test_reports/
+tests/
+scripts/store_screenshots.py
+test_result.md

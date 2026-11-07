@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="5" time="5.287" timestamp="2026-10-25T19:37:24.192708+00:00" hostname="agent-env-2976ccc6-f43d-4766-923a-4c940b515b6b"><testcase classname="tests.test_card_pay_fixes.TestOldSessionsClosed" name="test_second_checkout_expires_first" time="1.695"><failure message="AssertionError: assert 'open' == 'expired'&#10;  &#10;  - expired&#10;  + open">E   AssertionError: assert 'open' == 'expired'
-      
-      - expired
-      + open</failure></testcase><testcase classname="tests.test_card_pay_fixes.TestOldSessionsClosed" name="test_partial_overlap_expires_old" time="1.928"><failure message="AssertionError: assert 'open' == 'expired'&#10;  &#10;  - expired&#10;  + open">E   AssertionError: assert 'open' == 'expired'
-      
-      - expired
-      + open</failure></testcase><testcase classname="tests.test_card_pay_fixes.TestOldSessionsClosed" name="test_status_response_shape" time="0.380" /><testcase classname="tests.test_card_pay_fixes.TestStripeLookupFailure" name="test_fake_session_424" time="0.295" /><testcase classname="tests.test_card_pay_fixes.TestStripeLookupFailure" name="test_checkout_survives_broken_old_session" time="0.903" /></testsuite></testsuites>
