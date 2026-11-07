@@ -234,7 +234,7 @@ export default function MerchantHome() {
           {d.free_zone ? (
             <>
               <Mono style={s.section}>FREE DISTANCE ZONE</Mono>
-              <FreeZoneCard zone={d.free_zone} orders={d.orders} />
+              <FreeZoneCard merchantId={merchantId} zone={d.free_zone} orders={d.orders} onSaved={() => q.refetch()} notify={toast.show} />
             </>
           ) : null}
 

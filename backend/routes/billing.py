@@ -50,9 +50,10 @@ async def get_pricing(merchant_id: Optional[str] = None) -> dict:
     if merchant_id:
         m = await db.merchants.find_one({"id": merchant_id}, {"_id": 0, "pricing_override": 1, "pharmacy_partner": 1, "pickup": 1}) or {}
         p.update(m.get("pricing_override") or {})
+        if m.get("pickup"):  # distance is measured from the store's own pickup address once it's saved, else from the depot
+            p["origin"] = m["pickup"]
         if m.get("pharmacy_partner"):  # Addendum A contract replaces the shared / custom per-drop rates
-            p.update(base_fee=PHARMACY["standard_rate"], included_km=PHARMACY["included_km"], per_km=PHARMACY["per_km"],
-                     pharmacy=True, origin=m.get("pickup") or DEPOT)
+            p.update(base_fee=PHARMACY["standard_rate"], included_km=PHARMACY["included_km"], per_km=PHARMACY["per_km"], pharmacy=True)
     return p
 
 

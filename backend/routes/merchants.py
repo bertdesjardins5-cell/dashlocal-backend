@@ -344,13 +344,36 @@ async def merchant_detail(merchant_id: str, _: dict = Depends(merchant_access)):
         recent = await db.pickups.find({"merchant_id": merchant_id}, {"_id": 0}).sort("picked_up_at", -1).to_list(5)
         m = {**m, "runs": runs, "pharmacy_terms": billing.PHARMACY, "recent_pickups": recent}
     p = await billing.get_pricing(merchant_id)
-    origin = p.get("origin") or billing.DEPOT  # distance is measured from the pharmacy pickup, else from the depot
+    origin = p.get("origin") or billing.DEPOT  # distance is measured from the store's pickup address, else from the depot
     free_zone = {"lat": origin["lat"], "lng": origin["lng"], "km": p["included_km"], "per_km": p["per_km"],
-                 "from": "pharmacy" if p.get("origin") else "depot"}
+                 "from": ("pharmacy" if p.get("pharmacy") else "store") if p.get("origin") else "depot", "address": origin.get("address")}
     return {**m, "orders": [Stop(**o).model_dump() for o in orders], "flagged": flagged, "jobs": jobs, "free_zone": free_zone,
             "counts": {"orders": len(orders), "pending": sum(1 for o in orders if o["status"] in ("pending", "arrived")),
                        "delivered": sum(1 for o in orders if o["status"] == "delivered"), "failed": sum(1 for o in orders if o["status"] == "failed"),
                        "flagged": len(flagged)}}
+
+
+class PickupAddressIn(BaseModel):
+    address: str
+
+
+@router.put("/merchants/{merchant_id}/pickup-address")
+async def set_pickup_address(merchant_id: str, body: PickupAddressIn, _: dict = Depends(merchant_access)):
+    """Store sets where its parcels are picked up. Delivery distance (and the free km zone) is measured from here
+    for new orders; orders already priced keep their fee."""
+    await get_merchant_or_404(merchant_id)
+    addr = " ".join(body.address.split())
+    if len(addr) < 4:
+        raise HTTPException(400, "Enter the store's street address")
+    try:
+        geo = await geocode(addr)
+    except Exception:
+        raise HTTPException(503, "Address lookup is busy, try again in a moment")
+    if not geo:
+        raise HTTPException(400, "Address not found in Kitchener-Waterloo — check the street and number")
+    pickup = {"lat": geo["lat"], "lng": geo["lng"], "address": addr}
+    await db.merchants.update_one({"id": merchant_id}, {"$set": {"pickup": pickup, "pickup_updated_at": now_iso()}})
+    return {"merchant_id": merchant_id, "pickup": pickup}
 
 
 class SavedNoteIn(BaseModel):

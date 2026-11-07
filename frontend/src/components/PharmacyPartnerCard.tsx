@@ -52,7 +52,7 @@ export default function PharmacyPartnerCard({ merchantId, enabled, pickup, onCha
         <Btn testID="pharmacy-pickup-save" label="SAVE" loading={busy} disabled={!addr.trim() || addr.trim() === saved} onPress={() => save(on)} />
       </View>
       {msg ? <Mono testID="pharmacy-msg" style={[s.label, { color: msg.ok ? colors.brandForest : colors.brandPrimary }]}>{msg.text}</Mono> : null}
-      <Mono style={s.meta}>{saved ? `Distance is measured from ${saved}` : "No pickup address yet — distance is measured from the depot"}</Mono>
+      <Mono style={s.meta}>{saved ? `Distance is measured from ${saved}` : "No pickup address yet — distance is measured from the depot. The store can also set it in its portal."}</Mono>
     </View>
   );
 }
