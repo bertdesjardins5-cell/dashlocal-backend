@@ -1,3 +1,4 @@
+import DispatchPanel from "./DispatchPanel";
 import React, { useCallback, useEffect, useState } from "react";
 
 type Driver = { id: string; name: string; phone?: string | null; route?: { id: string; name: string; status: string } | null };
@@ -116,6 +117,7 @@ export default function App() {
     <section className="panel" id="zones"><div className="panel-head"><div><h2>Dispatch backlog</h2><p>Unassigned delivery zones for {day}</p></div><span className="count">{zones.reduce((sum,z) => sum + (z.count || 0),0)} deliveries</span></div>
       <div className="zone-grid">{zones.length ? zones.map((z,i) => <div className="zone" key={i}><strong>{z.zone}</strong><span>{z.postal_code}</span><b>{formatNumber(z.count)}</b></div>) : <p className="empty">No unassigned zones returned for this date</p>}</div>
     </section>
+    <DispatchPanel token={session.token} day={day} onDispatched={refresh} />
     <footer>DashLocal Control Center · Phase 1 · Read-only integration with existing API</footer>
     </main></div>;
 }
