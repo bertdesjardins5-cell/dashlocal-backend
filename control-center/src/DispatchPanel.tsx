@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 
 type Driver = { id: string; name: string };
 type Preview = { service_date: string; total: number; zones: { zone: string; count: number; driver: Driver | null }[]; drivers: Driver[] };
-const BASE = (import.meta.env.VITE_DASHLOCAL_API_URL as string | undefined || "").replace(/\\/$/, "");
+const BASE = (import.meta.env.VITE_DASHLOCAL_API_URL as string | undefined || "").replace(/[/]$/, "");
 const WRITES_ENABLED = import.meta.env.VITE_ENABLE_TEST_DISPATCH === "true";
 
 async function api<T>(path: string, token: string, init?: RequestInit): Promise<T> {
