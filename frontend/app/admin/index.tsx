@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, View, Platform, useWindowDimensions, Text } from "react-native";
+import { Pressable, RefreshControl, ScrollView, View, Platform, useWindowDimensions, Text, TextInput } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -37,6 +37,14 @@ export default function AdminDashboard() {
   const { colors } = useTheme();
   const toast = useToast();
   const [desktopSection, setDesktopSection] = useState("overview");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const search = useQuery({
+    queryKey: ["admin-delivery-search", searchTerm],
+    queryFn: () => api<{ results: { id: string; customer_name?: string; address?: string; tracking_code?: string; status?: string; route_id?: string; window_date?: string }[]; truncated: boolean }>("/admin/delivery-search?q=" + encodeURIComponent(searchTerm)),
+    enabled: desktop && searchTerm.length >= 3,
+    gcTime: 0, retry: false,
+  });
   const [assign, setAssign] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -223,6 +231,23 @@ export default function AdminDashboard() {
             <View style={{ flex: 1, minWidth: 0, gap: 12 }}>
               {desktopSection === "overview" ? <>
               <Text style={{ fontSize: 26, fontWeight: "800", color: colors.onSurface }}>Delivery overview</Text>
+              <View style={{ padding: 16, borderWidth: 1, borderColor: colors.border, borderRadius: 10, gap: 10 }}>
+                <Text style={{ fontSize: 17, fontWeight: "700", color: colors.onSurface }}>Find a delivery</Text>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <TextInput accessibilityLabel="Delivery search" placeholder="Name, address, phone or tracking code" placeholderTextColor={colors.muted} value={searchInput} onChangeText={v => { setSearchInput(v); setSearchTerm(""); }} onSubmitEditing={() => setSearchTerm(searchInput.trim())} maxLength={100} style={{ flex: 1, minWidth: 0, borderWidth: 1, borderColor: colors.border, padding: 12, borderRadius: 8, color: colors.onSurface }} />
+                  <Pressable disabled={searchInput.trim().length < 3} onPress={() => setSearchTerm(searchInput.trim())} style={{ backgroundColor: "#087c59", padding: 12, borderRadius: 8, opacity: searchInput.trim().length < 3 ? 0.5 : 1 }}><Text style={{ color: "#fff", fontWeight: "700" }}>Search</Text></Pressable>
+                  <Pressable onPress={() => { setSearchInput(""); setSearchTerm(""); }} style={{ padding: 12 }}><Text style={{ color: colors.onSurface }}>Clear</Text></Pressable>
+                </View>
+                {searchTerm.length >= 3 && (search.isFetching ? <Text style={{ color: colors.muted }}>Searching…</Text> : search.isError ? <Text style={{ color: colors.onSurface }}>Search unavailable. Please retry.</Text> : <>
+                  <Text style={{ color: colors.muted }}>{search.data?.results.length ?? 0} matches{search.data?.truncated ? " · Narrow your search for more results" : ""}</Text>
+                  {search.data?.results.map(d => <View key={d.id} style={{ borderTopWidth: 1, borderColor: colors.border, paddingVertical: 10, gap: 4 }}>
+                    <Text style={{ color: colors.onSurface, fontWeight: "700" }}>{d.customer_name ?? "Customer"} · {d.status ?? "Unknown status"}</Text>
+                    <Text style={{ color: colors.onSurface }}>{d.address}</Text>
+                    <Text style={{ color: colors.muted }}>{d.tracking_code} · {d.window_date ?? "No scheduled date"} · {d.route_id ? "Assigned" : "Unassigned"}</Text>
+                    {d.route_id && <Pressable onPress={() => router.push(`/admin/route/${d.route_id}`)}><Text style={{ color: "#087c59", fontWeight: "700" }}>Open route</Text></Pressable>}
+                  </View>)}
+                </>)}
+              </View>
               <Text style={{ color: colors.muted }}>Today's operations · {depotToday()}</Text>
               <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
                 {[
