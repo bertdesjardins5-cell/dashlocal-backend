@@ -124,7 +124,7 @@ export default function AdminDashboard() {
             <Pressable testID="admin-setup-banner" onPress={() => router.push("/admin/setup")} style={({ pressed }) => [s.row, { backgroundColor: pressed ? colors.surfaceTertiary : colors.brandPrimary }]}>
               {Platform.OS !== "web" ? <Ionicons name="flag" size={24} color={colors.onBrandPrimary} /> : null}
               <View style={{ flex: 1, gap: 2 }}>
-                <Display style={[s.rowTitle, { color: colors.onBrandPrimary }]}>FINISH SETTING UP</Text>
+                <Display style={[s.rowTitle, { color: colors.onBrandPrimary }]}>FINISH SETTING UP</Display>
                 <Mono style={[s.meta, { color: colors.onBrandPrimary }]}>{Object.values(setup.data.steps).filter(Boolean).length} of 3 done · prices, first store, first driver</Mono>
               </View>
               <Ionicons name="chevron-forward" size={22} color={colors.onBrandPrimary} />
