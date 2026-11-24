@@ -1,0 +1,33 @@
+name: Desktop Phase 1 verification
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  web-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      EXPO_PUBLIC_BACKEND_URL: http://127.0.0.1:8080
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: yarn install --frozen-lockfile
+      - run: yarn tsc --noEmit
+        continue-on-error: true
+      - run: yarn expo export --platform web
+  backend-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m compileall -q backend
