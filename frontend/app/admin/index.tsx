@@ -12,6 +12,7 @@ import AlertTrends from "@/src/components/AlertTrends";
 import ApologyCodes from "@/src/components/ApologyCodes";
 import DailyDigest from "@/src/components/DailyDigest";
 import { clearSession } from "@/src/session";
+import Logo from "@/src/components/brand/Logo";
 import AutoDispatch from "@/src/components/AutoDispatch";
 import { queryClient } from "@/src/query-client";
 import Badges, { Badge } from "@/src/components/Badges";
@@ -118,8 +119,8 @@ export default function AdminDashboard() {
         <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }} refreshControl={<RefreshControl refreshing={false} onRefresh={refresh} />}>
           {desktop ? <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 20, padding: 20 }}>
             <View style={{ width: 245, borderWidth: 1, borderColor: colors.border }}>
-              <Text style={{ padding: 18, fontSize: 22, fontWeight: "800", color: "#087c59" }}>DashLocal</Text>
-              {[["Overview", "overview"], ["Dispatch", "dispatch"], ["Reports", "reports"]].map(([label, section]) => <Pressable key={section} onPress={() => setDesktopSection(section)} style={{ padding: 16, backgroundColor: desktopSection === section ? colors.surfaceSecondary : colors.surface }}><Text style={{ color: colors.onSurface, fontWeight: "700" }}>{label}</Text></Pressable>)}
+              <View style={{ padding: 18, backgroundColor: colors.surface }}><Logo size={44} /><Text style={{ color: colors.brandMuted, fontSize: 11, marginTop: 10 }}>CONTROL CENTER</Text></View>
+              {[["Overview", "overview"], ["Dispatch", "dispatch"], ["Reports", "reports"]].map(([label, section]) => <Pressable key={section} onPress={() => setDesktopSection(section)} style={{ padding: 16, backgroundColor: desktopSection === section ? colors.brandForest : colors.surface }}><Text style={{ color: desktopSection === section ? colors.onBrandForest : colors.onSurface, fontWeight: "700" }}>{label}</Text></Pressable>)}
                         {setup.data?.show ? (
             <Pressable testID="admin-setup-banner" onPress={() => router.push("/admin/setup")} style={({ pressed }) => [s.row, { backgroundColor: pressed ? colors.surfaceTertiary : colors.brandPrimary }]}>
               <Ionicons name="flag" size={24} color={colors.onBrandPrimary} />
@@ -235,7 +236,7 @@ export default function AdminDashboard() {
                 <Text style={{ fontSize: 17, fontWeight: "700", color: colors.onSurface }}>Find a delivery</Text>
                 <View style={{ flexDirection: "row", gap: 8 }}>
                   <TextInput accessibilityLabel="Delivery search" placeholder="Name, address, phone or tracking code" placeholderTextColor={colors.muted} value={searchInput} onChangeText={v => { setSearchInput(v); setSearchTerm(""); }} onSubmitEditing={() => setSearchTerm(searchInput.trim())} maxLength={100} style={{ flex: 1, minWidth: 0, borderWidth: 1, borderColor: colors.border, padding: 12, borderRadius: 8, color: colors.onSurface }} />
-                  <Pressable disabled={searchInput.trim().length < 3} onPress={() => setSearchTerm(searchInput.trim())} style={{ backgroundColor: "#087c59", padding: 12, borderRadius: 8, opacity: searchInput.trim().length < 3 ? 0.5 : 1 }}><Text style={{ color: "#fff", fontWeight: "700" }}>Search</Text></Pressable>
+                  <Pressable disabled={searchInput.trim().length < 3} onPress={() => setSearchTerm(searchInput.trim())} style={{ backgroundColor: colors.brandForest, padding: 12, borderRadius: 8, opacity: searchInput.trim().length < 3 ? 0.5 : 1 }}><Text style={{ color: colors.onBrandForest, fontWeight: "700" }}>Search</Text></Pressable>
                   <Pressable onPress={() => { setSearchInput(""); setSearchTerm(""); }} style={{ padding: 12 }}><Text style={{ color: colors.onSurface }}>Clear</Text></Pressable>
                 </View>
                 {searchTerm.length >= 3 && (search.isFetching ? <Text style={{ color: colors.muted }}>Searching…</Text> : search.isError ? <Text style={{ color: colors.onSurface }}>Search unavailable. Please retry.</Text> : <>
@@ -244,7 +245,7 @@ export default function AdminDashboard() {
                     <Text style={{ color: colors.onSurface, fontWeight: "700" }}>{d.customer_name ?? "Customer"} · {d.status ?? "Unknown status"}</Text>
                     <Text style={{ color: colors.onSurface }}>{d.address}</Text>
                     <Text style={{ color: colors.muted }}>{d.tracking_code} · {d.window_date ?? "No scheduled date"} · {d.route_id ? "Assigned" : "Unassigned"}</Text>
-                    {d.route_id && <Pressable onPress={() => router.push(`/admin/route/${d.route_id}`)}><Text style={{ color: "#087c59", fontWeight: "700" }}>Open route</Text></Pressable>}
+                    {d.route_id && <Pressable onPress={() => router.push(`/admin/route/${d.route_id}`)}><Text style={{ color: colors.brandForest, fontWeight: "700" }}>Open route</Text></Pressable>}
                   </View>)}
                 </>)}
               </View>
