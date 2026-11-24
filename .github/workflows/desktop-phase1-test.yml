@@ -23,6 +23,12 @@ jobs:
       - run: yarn tsc --noEmit
         continue-on-error: true
       - run: yarn expo export --platform web
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dashlocal-desktop-test
+          path: frontend/dist
+          retention-days: 7
+          if-no-files-found: error
   backend-syntax:
     runs-on: ubuntu-latest
     steps:
