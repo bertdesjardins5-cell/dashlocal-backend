@@ -116,123 +116,122 @@ export default function AdminDashboard() {
         </View>
       } />
       {an.isLoading ? <Loading /> : an.error ? <ErrorBlock message={(an.error as Error).message} onRetry={refresh} /> : (
-        <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }} refreshControl={<RefreshControl refreshing={false} onRefresh={refresh} />}>
-          {desktop ? <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 20, padding: 20 }}>
-            <View style={{ width: 245, borderWidth: 1, borderColor: colors.border }}>
+        desktop ? <View style={{ flex: 1, flexDirection: "row", gap: 16, padding: 16, minHeight: 0, backgroundColor: colors.surfaceSecondary }}>
+            <ScrollView style={{ width: 230, flexGrow: 0, flexShrink: 0, backgroundColor: colors.surface, borderRadius: 10 }} contentContainerStyle={{ paddingBottom: 16 }}>
               <View style={{ padding: 18, backgroundColor: colors.surface }}><Logo size={44} /><Text style={{ color: colors.brandMuted, fontSize: 11, marginTop: 10 }}>CONTROL CENTER</Text></View>
-              {[["Overview", "overview"], ["Dispatch", "dispatch"], ["Reports", "reports"]].map(([label, section]) => <Pressable key={section} onPress={() => setDesktopSection(section)} style={{ padding: 16, backgroundColor: desktopSection === section ? colors.brandForest : colors.surface }}><Text style={{ color: desktopSection === section ? colors.onBrandForest : colors.onSurface, fontWeight: "700" }}>{label}</Text></Pressable>)}
+              {[["Overview", "overview"], ["Dispatch", "dispatch"], ["Reports", "reports"]].map(([label, section]) => <Pressable key={section} onPress={() => setDesktopSection(section)} style={{ padding: 12, marginHorizontal: 8, borderRadius: 6, backgroundColor: desktopSection === section ? colors.brandForest : colors.surface }}><Text style={{ color: desktopSection === section ? colors.onBrandForest : colors.onSurface, fontWeight: "700" }}>{label}</Text></Pressable>)}
                         {setup.data?.show ? (
             <Pressable testID="admin-setup-banner" onPress={() => router.push("/admin/setup")} style={({ pressed }) => [s.row, { backgroundColor: pressed ? colors.surfaceTertiary : colors.brandPrimary }]}>
               {Platform.OS !== "web" ? <Ionicons name="flag" size={24} color={colors.onBrandPrimary} /> : null}
               <View style={{ flex: 1, gap: 2 }}>
-                <Display style={[s.rowTitle, { color: colors.onBrandPrimary }]}>FINISH SETTING UP</Display>
+                <Display style={[s.rowTitle, { color: colors.onBrandPrimary }]}>FINISH SETTING UP</Text>
                 <Mono style={[s.meta, { color: colors.onBrandPrimary }]}>{Object.values(setup.data.steps).filter(Boolean).length} of 3 done · prices, first store, first driver</Mono>
               </View>
               <Ionicons name="chevron-forward" size={22} color={colors.onBrandPrimary} />
             </Pressable>
           ) : null}
-          <Pressable testID="admin-merchant-accounts-link" onPress={() => router.push("/admin/merchants")} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
+          <Pressable testID="admin-merchant-accounts-link" onPress={() => router.push("/admin/merchants")} style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 10, gap: 8 }, pressed && { backgroundColor: colors.surfaceTertiary }]}>
             {Platform.OS !== "web" ? <Ionicons name="storefront" size={24} color={colors.onSurface} /> : null}
             <View style={{ flex: 1, gap: 2 }}>
-              <Display style={s.rowTitle}>MERCHANT ACCOUNTS</Display>
-              <Mono style={s.meta}>Create store logins · reset passwords · admin sign-in</Mono>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.onSurface }}>MERCHANT ACCOUNTS</Text>
+              
             </View>
             {Platform.OS === "web" ? <Text style={{ color: colors.onSurface, fontSize: 22 }}>›</Text> : <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />}
           </Pressable>
-          <Pressable testID="admin-driver-accounts-link" onPress={() => router.push("/admin/drivers")} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
+          <Pressable testID="admin-driver-accounts-link" onPress={() => router.push("/admin/drivers")} style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 10, gap: 8 }, pressed && { backgroundColor: colors.surfaceTertiary }]}>
             {Platform.OS !== "web" ? <Ionicons name="key" size={24} color={colors.onSurface} /> : null}
             <View style={{ flex: 1, gap: 2 }}>
-              <Display style={s.rowTitle}>DRIVER PINS</Display>
-              <Mono style={s.meta}>Set or reset each driver&apos;s 6-digit sign-in PIN</Mono>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.onSurface }}>DRIVER PINS</Text>
+              
             </View>
             {Platform.OS === "web" ? <Text style={{ color: colors.onSurface, fontSize: 22 }}>›</Text> : <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />}
           </Pressable>
-          <Pressable testID="admin-pricing-link" onPress={() => router.push("/admin/pricing")} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
+          <Pressable testID="admin-pricing-link" onPress={() => router.push("/admin/pricing")} style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 10, gap: 8 }, pressed && { backgroundColor: colors.surfaceTertiary }]}>
             {Platform.OS !== "web" ? <Ionicons name="pricetag" size={24} color={colors.onSurface} /> : null}
             <View style={{ flex: 1, gap: 2 }}>
-              <Display style={s.rowTitle}>PRICING & BILLING</Display>
-              <Mono style={s.meta}>Per-drop fee · distance · priority surcharge · store rates</Mono>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.onSurface }}>PRICING & BILLING</Text>
+              
             </View>
             {Platform.OS === "web" ? <Text style={{ color: colors.onSurface, fontSize: 22 }}>›</Text> : <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />}
           </Pressable>
-          <Pressable testID="admin-invoices-link" onPress={() => router.push("/admin/invoices")} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
+          <Pressable testID="admin-invoices-link" onPress={() => router.push("/admin/invoices")} style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 10, gap: 8 }, pressed && { backgroundColor: colors.surfaceTertiary }]}>
             {Platform.OS !== "web" ? <Ionicons name="receipt" size={24} color={colors.onSurface} /> : null}
             <View style={{ flex: 1, gap: 2 }}>
-              <Display style={s.rowTitle}>INVOICES</Display>
-              <Mono style={s.meta}>Mark paid · HST and business details</Mono>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.onSurface }}>INVOICES</Text>
+              
             </View>
             {Platform.OS === "web" ? <Text style={{ color: colors.onSurface, fontSize: 22 }}>›</Text> : <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />}
           </Pressable>
-          <Pressable testID="admin-reviews-link" onPress={() => router.push("/admin/reviews")} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
+          <Pressable testID="admin-reviews-link" onPress={() => router.push("/admin/reviews")} style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 10, gap: 8 }, pressed && { backgroundColor: colors.surfaceTertiary }]}>
             {Platform.OS !== "web" ? <Ionicons name="chatbubbles" size={24} color={colors.onSurface} /> : null}
             <View style={{ flex: 1, gap: 2 }}>
-              <Display style={s.rowTitle}>SHOP REVIEWS</Display>
-              <Mono style={s.meta}>Quotes shown on the public landing page</Mono>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.onSurface }}>SHOP REVIEWS</Text>
+              
             </View>
             {Platform.OS === "web" ? <Text style={{ color: colors.onSurface, fontSize: 22 }}>›</Text> : <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />}
           </Pressable>
-          <Pressable testID="admin-signups-link" onPress={() => router.push("/admin/signups")} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
+          <Pressable testID="admin-signups-link" onPress={() => router.push("/admin/signups")} style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 10, gap: 8 }, pressed && { backgroundColor: colors.surfaceTertiary }]}>
             {Platform.OS !== "web" ? <Ionicons name="person-add" size={24} color={colors.onSurface} /> : null}
             <View style={{ flex: 1, gap: 2 }}>
-              <Display style={s.rowTitle}>SIGN-UP REQUESTS</Display>
-              <Mono style={s.meta}>Approve new shops from the landing page</Mono>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.onSurface }}>SIGN-UP REQUESTS</Text>
+              
             </View>
             {Platform.OS === "web" ? <Text style={{ color: colors.onSurface, fontSize: 22 }}>›</Text> : <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />}
           </Pressable>
-          <Pressable testID="admin-privacy-link" onPress={() => router.push("/admin/privacy")} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
+          <Pressable testID="admin-privacy-link" onPress={() => router.push("/admin/privacy")} style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 10, gap: 8 }, pressed && { backgroundColor: colors.surfaceTertiary }]}>
             {Platform.OS !== "web" ? <Ionicons name="shield-checkmark" size={24} color={colors.onSurface} /> : null}
             <View style={{ flex: 1, gap: 2 }}>
-              <Display style={s.rowTitle}>PRIVACY & AUDIT LOG</Display>
-              <Mono style={s.meta}>Who accessed what, and how long records are kept</Mono>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.onSurface }}>PRIVACY & AUDIT LOG</Text>
+              
             </View>
             {Platform.OS === "web" ? <Text style={{ color: colors.onSurface, fontSize: 22 }}>›</Text> : <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />}
           </Pressable>
-          <Pressable testID="admin-crashes-link" onPress={() => router.push("/admin/crashes")} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
+          <Pressable testID="admin-crashes-link" onPress={() => router.push("/admin/crashes")} style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 10, gap: 8 }, pressed && { backgroundColor: colors.surfaceTertiary }]}>
             {Platform.OS !== "web" ? <Ionicons name="bug" size={24} color={colors.onSurface} /> : null}
             <View style={{ flex: 1, gap: 2 }}>
-              <Display style={s.rowTitle}>CRASH REPORTS</Display>
-              <Mono style={s.meta}>Errors the app reported from phones</Mono>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.onSurface }}>CRASH REPORTS</Text>
+              
             </View>
             {Platform.OS === "web" ? <Text style={{ color: colors.onSurface, fontSize: 22 }}>›</Text> : <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />}
           </Pressable>
-          <Pressable testID="admin-terms-link" onPress={() => router.push("/admin/terms")} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
+          <Pressable testID="admin-terms-link" onPress={() => router.push("/admin/terms")} style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 10, gap: 8 }, pressed && { backgroundColor: colors.surfaceTertiary }]}>
             {Platform.OS !== "web" ? <Ionicons name="document-text" size={24} color={colors.onSurface} /> : null}
             <View style={{ flex: 1, gap: 2 }}>
-              <Display style={s.rowTitle}>TERMS ACCEPTANCE</Display>
-              <Mono style={s.meta}>Which stores and drivers accepted the latest terms</Mono>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.onSurface }}>TERMS ACCEPTANCE</Text>
+              
             </View>
             {Platform.OS === "web" ? <Text style={{ color: colors.onSurface, fontSize: 22 }}>›</Text> : <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />}
           </Pressable>
-          <Pressable testID="admin-launch-cleanup-link" onPress={() => router.push("/admin/launch")} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
+          <Pressable testID="admin-launch-cleanup-link" onPress={() => router.push("/admin/launch")} style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 10, gap: 8 }, pressed && { backgroundColor: colors.surfaceTertiary }]}>
             {Platform.OS !== "web" ? <Ionicons name="rocket" size={24} color={colors.onSurface} /> : null}
             <View style={{ flex: 1, gap: 2 }}>
-              <Display style={s.rowTitle}>LAUNCH CLEANUP</Display>
-              <Mono style={s.meta}>Remove all sample data before going live</Mono>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.onSurface }}>LAUNCH CLEANUP</Text>
+              
             </View>
             {Platform.OS === "web" ? <Text style={{ color: colors.onSurface, fontSize: 22 }}>›</Text> : <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />}
           </Pressable>
-          <Pressable testID="admin-customer-payments-link" onPress={() => router.push("/admin/payments")} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
+          <Pressable testID="admin-customer-payments-link" onPress={() => router.push("/admin/payments")} style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 10, gap: 8 }, pressed && { backgroundColor: colors.surfaceTertiary }]}>
             {Platform.OS !== "web" ? <Ionicons name="cash" size={24} color={colors.onSurface} /> : null}
             <View style={{ flex: 1, gap: 2 }}>
-              <Display style={s.rowTitle}>CUSTOMER PAYMENTS</Display>
-              <Mono style={s.meta}>Order payments, refunds & store cards</Mono>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.onSurface }}>CUSTOMER PAYMENTS</Text>
+              
             </View>
             {Platform.OS === "web" ? <Text style={{ color: colors.onSurface, fontSize: 22 }}>›</Text> : <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />}
           </Pressable>
-          <Pressable testID="admin-reviewer-kit-link" onPress={() => router.push("/admin/reviewer")} style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surfaceTertiary }]}>
+          <Pressable testID="admin-reviewer-kit-link" onPress={() => router.push("/admin/reviewer")} style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 10, gap: 8 }, pressed && { backgroundColor: colors.surfaceTertiary }]}>
             {Platform.OS !== "web" ? <Ionicons name="logo-google-playstore" size={24} color={colors.onSurface} /> : null}
             <View style={{ flex: 1, gap: 2 }}>
-              <Display style={s.rowTitle}>PLAY STORE REVIEWER</Display>
-              <Mono style={s.meta}>Test store, driver and route for Google&apos;s review</Mono>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.onSurface }}>PLAY STORE REVIEWER</Text>
+              
             </View>
             {Platform.OS === "web" ? <Text style={{ color: colors.onSurface, fontSize: 22 }}>›</Text> : <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />}
           </Pressable>
 
-            </View>
-            <View style={{ flex: 1, minWidth: 0, gap: 12 }}>
+            </ScrollView>
+            <ScrollView key={desktopSection} style={{ flex: 1, minWidth: 0 }} contentContainerStyle={{ gap: 12, paddingBottom: 24 }}>
               {desktopSection === "overview" ? <>
               <Text style={{ fontSize: 26, fontWeight: "800", color: colors.onSurface }}>Delivery overview</Text>
-              <View style={{ padding: 16, borderWidth: 1, borderColor: colors.border, borderRadius: 10, gap: 10 }}>
+              <View style={{ padding: 16, borderWidth: 1, borderColor: colors.surfaceTertiary, backgroundColor: colors.surface, borderRadius: 10, gap: 10 }}>
                 <Text style={{ fontSize: 17, fontWeight: "700", color: colors.onSurface }}>Find a delivery</Text>
                 <View style={{ flexDirection: "row", gap: 8 }}>
                   <TextInput accessibilityLabel="Delivery search" placeholder="Name, address, phone or tracking code" placeholderTextColor={colors.muted} value={searchInput} onChangeText={v => { setSearchInput(v); setSearchTerm(""); }} onSubmitEditing={() => setSearchTerm(searchInput.trim())} maxLength={100} style={{ flex: 1, minWidth: 0, borderWidth: 1, borderColor: colors.border, padding: 12, borderRadius: 8, color: colors.onSurface }} />
@@ -242,7 +241,7 @@ export default function AdminDashboard() {
                 {searchTerm.length >= 3 && (search.isFetching ? <Text style={{ color: colors.muted }}>Searching…</Text> : search.isError ? <Text style={{ color: colors.onSurface }}>Search unavailable. Please retry.</Text> : <>
                   <Text style={{ color: colors.muted }}>{search.data?.results.length ?? 0} matches{search.data?.truncated ? " · Narrow your search for more results" : ""}</Text>
                   {search.data?.results.map(d => <View key={d.id} style={{ borderTopWidth: 1, borderColor: colors.border, paddingVertical: 10, gap: 4 }}>
-                    <Text style={{ color: colors.onSurface, fontWeight: "700" }}>{d.customer_name ?? "Customer"} · {d.status ?? "Unknown status"}</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}><Text style={{ color: colors.onSurface, fontWeight: "700" }}>{d.customer_name ?? "Customer"}</Text><Pill label={d.status ?? "Unknown status"} tone={statusTone(d.status ?? "")} /></View>
                     <Text style={{ color: colors.onSurface }}>{d.address}</Text>
                     <Text style={{ color: colors.muted }}>{d.tracking_code} · {d.window_date ?? "No scheduled date"} · {d.route_id ? "Assigned" : "Unassigned"}</Text>
                     {d.route_id && <Pressable onPress={() => router.push(`/admin/route/${d.route_id}`)}><Text style={{ color: colors.brandForest, fontWeight: "700" }}>Open route</Text></Pressable>}
@@ -256,14 +255,14 @@ export default function AdminDashboard() {
                   { label: "Active routes", value: an.data?.active_routes, section: "overview" },
                   { label: "Delivered", value: an.data?.delivered, section: "overview" },
                   { label: "Drivers without a route", value: drivers.data ? drivers.data.filter(d => !d.route).length : undefined, section: "overview" },
-                ].map(item => <Pressable key={item.label} onPress={() => setDesktopSection(item.section)} style={{ flex: 1, minWidth: 130, padding: 16, borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.surface }}>
+                ].map(item => <Pressable key={item.label} onPress={() => setDesktopSection(item.section)} style={{ flex: 1, minWidth: 130, padding: 16, borderWidth: 1, borderColor: colors.surfaceTertiary, backgroundColor: colors.surface, borderRadius: 10 }}>
                   <Text style={{ color: colors.muted, fontSize: 12 }}>{item.label}</Text>
                   <Text style={{ color: colors.onSurface, fontSize: 30, fontWeight: "800", marginTop: 8 }}>{item.value ?? "—"}</Text>
                 </Pressable>)}
               </View>
-              <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 16, gap: 8 }}>
+              <View style={{ borderWidth: 1, borderColor: colors.surfaceTertiary, backgroundColor: colors.surface, borderRadius: 10, padding: 16, gap: 8 }}>
                 <Text style={{ color: colors.onSurface, fontSize: 17, fontWeight: "700" }}>Driver assignments</Text>
-                {drivers.isError ? <Text style={{ color: colors.muted }}>Unable to load drivers. Use refresh to retry.</Text> : drivers.isLoading ? <Text style={{ color: colors.muted }}>Loading drivers…</Text> : !drivers.data?.length ? <Text style={{ color: colors.muted }}>No driver accounts returned.</Text> : drivers.data.map(d => <View key={d.id} style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, paddingVertical: 8 }}>
+                {drivers.isError ? <Text style={{ color: colors.muted }}>Unable to load drivers. Use refresh to retry.</Text> : drivers.isLoading ? <Text style={{ color: colors.muted }}>Loading drivers…</Text> : !drivers.data?.length ? <Text style={{ color: colors.muted }}>No driver accounts returned.</Text> : drivers.data.map(d => <View key={d.id} style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, paddingVertical: 8, borderBottomWidth: 1, borderColor: colors.surfaceTertiary }}>
                   <Text style={{ color: colors.onSurface, fontWeight: "600" }}>{d.name}</Text>
                   <Text style={{ color: colors.muted }}>{d.route ? d.route.name + " · " + d.route.status : "No assigned route"}</Text>
                 </View>)}
@@ -339,7 +338,7 @@ export default function AdminDashboard() {
                   const sel = assign[z.zone] === d.id;
                   return (
                     <Pressable key={d.id} testID={`zone-${z.zone}-driver-${d.id}`} onPress={() => setAssign((a) => ({ ...a, [z.zone]: d.id }))} style={[s.chip, sel && { backgroundColor: colors.surfaceInverse }]}>
-                      <Mono style={[s.chipText, sel && { color: colors.onSurfaceInverse }]}>{d.name.split(" ")[0].toUpperCase()} · {d.vehicle}</Mono>
+                      <Mono style={[s.chipText, sel && { color: colors.onSurfaceInverse }]}>{d.name} · {d.vehicle}</Mono>
                     </Pressable>
                   );
                 })}
@@ -390,8 +389,8 @@ export default function AdminDashboard() {
           <Mono style={s.section}>APOLOGY CODES · USAGE & SPEND</Mono>
           <ApologyCodes notify={toast.show} />
 </>}
-            </View>
-          </View> : <>          {setup.data?.show ? (
+            </ScrollView>
+          </View> : <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }} refreshControl={<RefreshControl refreshing={false} onRefresh={refresh} />}>          {setup.data?.show ? (
             <Pressable testID="admin-setup-banner" onPress={() => router.push("/admin/setup")} style={({ pressed }) => [s.row, { backgroundColor: pressed ? colors.surfaceTertiary : colors.brandPrimary }]}>
               {Platform.OS !== "web" ? <Ionicons name="flag" size={24} color={colors.onBrandPrimary} /> : null}
               <View style={{ flex: 1, gap: 2 }}>
@@ -587,7 +586,6 @@ export default function AdminDashboard() {
               <Btn testID={`zone-${z.zone}-batch-button`} label="BATCH & OPTIMIZE" icon="git-network" loading={busy === z.zone} onPress={() => batch(z.zone)} variant={assign[z.zone] ? "primary" : "outline"} />
             </View>
           ))}
-</>}
         </ScrollView>
       )}
       {toast.node}
