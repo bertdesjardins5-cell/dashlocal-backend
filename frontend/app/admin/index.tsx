@@ -54,7 +54,7 @@ export default function AdminDashboard() {
   const an = useQuery({ queryKey: ["analytics"], queryFn: () => api<Analytics>("/analytics"), refetchInterval: 10000 });
   const zones = useQuery({ queryKey: ["zones", day], queryFn: () => api<Zone[]>(`/zones?date=${day}`) });
   const routes = useQuery({ queryKey: ["routes"], queryFn: () => api<RouteRow[]>("/routes"), refetchInterval: 10000 });
-  const drivers = useQuery({ queryKey: ["drivers"], queryFn: () => api<(Driver & { route: any })[]>("/drivers") });
+  const drivers = useQuery({ queryKey: ["drivers"], queryFn: () => api<(Driver & { route: any })[]>("/drivers"), refetchInterval: desktop ? 15000 : false });
   const cards = useQuery({
     queryKey: ["scorecards"],
     queryFn: () => api<{ driver: Driver; on_time_rate: number | null; drops_per_hour: number; delivered: number; avg_rating: number | null; trend: number[]; badges: Badge[] }[]>("/scorecards"),
@@ -102,7 +102,7 @@ export default function AdminDashboard() {
     <View style={s.root} testID="admin-dashboard-screen">
       <Header title="CONTROL CENTER" subtitle="Dispatch · Batching · Analytics" right={
         <View style={{ flexDirection: "row", gap: spacing.sm }}>
-          <Pressable testID="admin-reset-button" onPress={desktop ? refresh : reset} style={s.iconBtn}>{desktop ? <Text style={{ color: colors.onSurfaceInverse }}>↻</Text> : <Ionicons name="refresh" size={22} color={colors.onSurfaceInverse} />}</Pressable>
+          <Pressable testID={desktop ? "admin-refresh-button" : "admin-reset-button"} accessibilityLabel={desktop ? "Refresh dashboard" : "Reset demo data"} onPress={desktop ? refresh : reset} style={s.iconBtn}>{desktop ? <Text style={{ color: colors.onSurfaceInverse }}>↻</Text> : <Ionicons name="refresh" size={22} color={colors.onSurfaceInverse} />}</Pressable>
           <Pressable testID="admin-sign-out-button" onPress={() => clearSession()} style={s.iconBtn}>{desktop ? <Text style={{ color: colors.onSurfaceInverse, fontSize: 11 }}>Exit</Text> : <Ionicons name="log-out" size={22} color={colors.onSurfaceInverse} />}</Pressable>
         </View>
       } />
@@ -221,7 +221,28 @@ export default function AdminDashboard() {
 
             </View>
             <View style={{ flex: 1, minWidth: 0, gap: 12 }}>
-              {desktopSection === "overview" ? <>{null}          <Mono style={s.section}>ANALYTICS</Mono>
+              {desktopSection === "overview" ? <>
+              <Text style={{ fontSize: 26, fontWeight: "800", color: colors.onSurface }}>Delivery overview</Text>
+              <Text style={{ color: colors.muted }}>Today's operations · {depotToday()}</Text>
+              <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+                {[
+                  { label: "Unassigned orders", value: an.data?.unassigned, section: "dispatch" },
+                  { label: "Active routes", value: an.data?.active_routes, section: "overview" },
+                  { label: "Delivered", value: an.data?.delivered, section: "overview" },
+                  { label: "Drivers without a route", value: drivers.data ? drivers.data.filter(d => !d.route).length : undefined, section: "overview" },
+                ].map(item => <Pressable key={item.label} onPress={() => setDesktopSection(item.section)} style={{ flex: 1, minWidth: 130, padding: 16, borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.surface }}>
+                  <Text style={{ color: colors.muted, fontSize: 12 }}>{item.label}</Text>
+                  <Text style={{ color: colors.onSurface, fontSize: 30, fontWeight: "800", marginTop: 8 }}>{item.value ?? "—"}</Text>
+                </Pressable>)}
+              </View>
+              <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 16, gap: 8 }}>
+                <Text style={{ color: colors.onSurface, fontSize: 17, fontWeight: "700" }}>Driver assignments</Text>
+                {drivers.isError ? <Text style={{ color: colors.muted }}>Unable to load drivers. Use refresh to retry.</Text> : drivers.isLoading ? <Text style={{ color: colors.muted }}>Loading drivers…</Text> : !drivers.data?.length ? <Text style={{ color: colors.muted }}>No driver accounts returned.</Text> : drivers.data.map(d => <View key={d.id} style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, paddingVertical: 8 }}>
+                  <Text style={{ color: colors.onSurface, fontWeight: "600" }}>{d.name}</Text>
+                  <Text style={{ color: colors.muted }}>{d.route ? d.route.name + " · " + d.route.status : "No assigned route"}</Text>
+                </View>)}
+              </View>
+          <Mono style={s.section}>ANALYTICS</Mono>
           <View style={s.grid}>
             {kpis.map((x, i) => (
               <View key={x.k} style={[s.kpi, desktop && { width: "25%" }, i % 2 === 0 && { borderRightWidth: 2, borderColor: colors.border }]} testID={x.id}>
