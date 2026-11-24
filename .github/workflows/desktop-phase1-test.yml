@@ -37,3 +37,17 @@ jobs:
         with:
           python-version: '3.13'
       - run: python -m compileall -q backend
+  baseline-types:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: yarn install --frozen-lockfile
+        working-directory: frontend
+      - run: yarn tsc --noEmit
+        working-directory: frontend
