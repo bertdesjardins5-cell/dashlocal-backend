@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, Text, TextProps, View, StyleProp, ViewStyle } from "react-native";
+import { ActivityIndicator, Pressable, Text, TextProps, View, StyleProp, ViewStyle, Platform } from "react-native";
 import Animated, { FadeInDown, FadeOutUp } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -41,7 +41,7 @@ export function Btn({ label, onPress, variant = "primary", icon, loading, disabl
         <ActivityIndicator color={fg} />
       ) : (
         <>
-          {icon ? <Ionicons name={icon} size={20} color={fg} /> : null}
+          {icon && Platform.OS !== "web" ? <Ionicons name={icon} size={20} color={fg} /> : null}
           <Text style={[s.btnText, { color: fg }]}>{label}</Text>
         </>
       )}
@@ -56,8 +56,8 @@ export function Header({ title, subtitle, right, testID }: { title: string; subt
   const { colors } = useTheme();
   return (
     <View style={[s.header, { paddingTop: insets.top + spacing.sm }]} testID={testID}>
-      <Pressable testID="header-back-button" onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))} style={s.back} hitSlop={8}>
-        <Ionicons name="arrow-back" size={24} color={colors.onSurfaceInverse} />
+      <Pressable testID="header-back-button" accessibilityLabel="Go back" onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))} style={s.back} hitSlop={8}>
+        {Platform.OS === "web" ? <Text style={{ color: colors.onSurfaceInverse, fontSize: 24 }}>‹</Text> : <Ionicons name="arrow-back" size={24} color={colors.onSurfaceInverse} />}
       </Pressable>
       <View style={{ flex: 1 }}>
         <Display style={s.headerTitle} numberOfLines={1}>{title}</Display>

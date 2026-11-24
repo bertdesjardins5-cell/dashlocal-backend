@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { Pressable, ScrollView, View, Platform, Text } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { api, dayLabel, depotToday } from "@/src/api";
 import { Btn, Display, Mono } from "@/src/ui";
@@ -90,7 +90,7 @@ export default function AutoDispatch({ day, onDone, notify }: { day: string; onD
         ))}
         <Mono style={s.meta}>Zones split at the depot. A zone with no driver goes to whoever has the fewest stops. Drivers already on a route for {day === depotToday() ? "today" : dayLabel(day)} get the new stops added and re-optimised.</Mono>
         <Pressable testID="auto-dispatch-balance" onPress={() => setBalance((b) => !b)} style={s.balanceRow}>
-          <Ionicons name={balance ? "checkbox" : "square-outline"} size={24} color={balance ? colors.brandPrimary : colors.onSurface} />
+          {Platform.OS === "web" ? <Text style={{ fontSize: 18, color: colors.onSurface }}>{balance ? "[x]" : "[ ]"}</Text> : <Ionicons name={balance ? "checkbox" : "square-outline"} size={24} color={balance ? colors.brandPrimary : colors.onSurface} />}
           <View style={{ flex: 1 }}>
             <Mono style={s.balanceText}>BALANCE BUSY ZONES</Mono>
             <Mono style={s.meta}>If one driver would get 2× the stops of the lightest driver, part of the zone goes to that driver</Mono>

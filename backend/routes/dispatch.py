@@ -299,6 +299,20 @@ async def _auto_dispatch(body: AutoDispatchIn):
     return {"service_date": service_date, "dispatched": len(docs), "routes": out, "splits": splits}
 
 
+@router.get("/admin/delivery-search", dependencies=ADMIN_ONLY)
+async def delivery_search(q: str = ""):
+    """Bounded, read-only admin lookup. Return only operational fields."""
+    import re
+    term = q.strip()
+    if len(term) < 3 or len(term) > 100:
+        raise HTTPException(400, "Enter 3 to 100 characters")
+    pattern = {"$regex": re.escape(term), "$options": "i"}
+    fields = ("id", "customer_name", "address", "tracking_code", "status", "route_id", "window_date", "merchant_id")
+    docs = await db.stops.find({"$or": [{k: pattern} for k in ("customer_name", "address", "tracking_code", "customer_phone")]},
+                               {"_id": 0, **{k: 1 for k in fields}}).sort("created_at", -1).limit(51).to_list(51)
+    return {"results": docs[:50], "truncated": len(docs) > 50}
+
+
 @router.get("/routes", dependencies=ADMIN_ONLY)
 async def list_routes():
     docs = await db.routes.find({"service_date": {"$gte": today_str()}}, {"_id": 0}).sort("created_at", -1).to_list(200)
